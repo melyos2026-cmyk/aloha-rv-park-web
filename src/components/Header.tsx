@@ -8,6 +8,7 @@ const nav = [
   { label: "Apply", href: "/apply" },
   { label: "Real Estate", href: "/real-estate" },
   { label: "Events", href: "/events" },
+  { label: "Residents", href: "/login" },
 ];
 
 export default function Header() {
