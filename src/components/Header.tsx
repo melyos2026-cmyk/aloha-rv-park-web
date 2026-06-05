@@ -1,0 +1,83 @@
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+
+const nav = [
+  { label: "Home", href: "/" },
+  { label: "Residents", href: "/residents" },
+  { label: "Apply", href: "/apply" },
+  { label: "Real Estate", href: "/real-estate" },
+  { label: "Events", href: "/events" },
+];
+
+export default function Header() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      {/* Announcement Bar */}
+      <div style={{ background: "var(--red)", color: "var(--white)", textAlign: "center", padding: "10px 20px", fontSize: 13, fontWeight: 500, letterSpacing: "0.02em" }}>
+        🌴 Now accepting new residents! Call us at <a href="tel:6892520567" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>(689) 252-0567</a> or <Link href="/apply" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Apply Online</Link>
+      </div>
+
+      {/* Header */}
+      <header style={{ background: "var(--white)", borderBottom: "2px solid var(--black)", position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 70 }}>
+          
+          {/* Logo */}
+          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 28, lineHeight: 1 }}>
+              <span style={{ color: "var(--black)" }}>★</span>
+              <span style={{ color: "var(--red)" }}>★</span>
+            </div>
+            <div>
+              <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 18, color: "var(--black)", lineHeight: 1 }}>ALOHA RV PARK</div>
+              <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.15em", textTransform: "uppercase" }}>Kissimmee, Florida</div>
+            </div>
+          </Link>
+
+          {/* Desktop Nav */}
+          <nav style={{ display: "flex", gap: 32, alignItems: "center" }} className="desktop-nav">
+            {nav.map(n => (
+              <Link key={n.href} href={n.href} style={{ fontSize: 14, fontWeight: 600, color: "var(--black)", letterSpacing: "0.03em", textTransform: "uppercase", transition: "color 0.2s" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--red)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--black)")}>
+                {n.label}
+              </Link>
+            ))}
+            <a href="tel:6892520567" style={{ background: "var(--black)", color: "var(--white)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>
+              📞 CALL US
+            </a>
+          </nav>
+
+          {/* Mobile Menu Button */}
+          <button onClick={() => setOpen(!open)} style={{ display: "none", background: "none", border: "none", fontSize: 24 }} className="mobile-menu-btn">
+            {open ? "✕" : "☰"}
+          </button>
+        </div>
+
+        {/* Mobile Nav */}
+        {open && (
+          <div style={{ background: "var(--white)", borderTop: "1px solid var(--border)", padding: "16px 24px" }} className="mobile-nav">
+            {nav.map(n => (
+              <Link key={n.href} href={n.href} onClick={() => setOpen(false)}
+                style={{ display: "block", padding: "12px 0", fontSize: 15, fontWeight: 600, borderBottom: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                {n.label}
+              </Link>
+            ))}
+            <a href="tel:6892520567" style={{ display: "block", marginTop: 16, background: "var(--red)", color: "var(--white)", padding: "12px 20px", borderRadius: 4, textAlign: "center", fontWeight: 700 }}>
+              📞 (689) 252-0567
+            </a>
+          </div>
+        )}
+      </header>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .desktop-nav { display: none !important; }
+          .mobile-menu-btn { display: block !important; }
+        }
+      `}</style>
+    </>
+  );
+}
