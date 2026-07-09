@@ -20,16 +20,16 @@ function naturalSort(a: { lot_name: string }, b: { lot_name: string }): number {
   });
 }
 
-export default function ApplyPage() {
+export default function TestLeasePage() {
+  const [mode, setMode] = useState<"applicant" | "admin">("applicant");
+  const [isMasterAdmin, setIsMasterAdmin] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [lots, setLots] = useState<LotOption[]>([]);
   const [lotsLoaded, setLotsLoaded] = useState(false);
   const [rentDuePolicy, setRentDuePolicy] = useState<"fixed" | "move_in_anniversary">("fixed");
   const [rentDueFixed, setRentDueFixed] = useState(1);
-  const [highSeasonStart, setHighSeasonStart] = useState<string | undefined>(undefined);
-  const [highSeasonEnd, setHighSeasonEnd] = useState<string | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -47,13 +47,13 @@ export default function ApplyPage() {
 
         supabase
           .from("rv_lots")
-          .select(
-            "id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price"
-          )
+          .select("id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price")
           .eq("company_id", data.id)
           .order("lot_name")
           .then(({ data: lotData, error: lotError }) => {
-            if (!lotError) {
+            if (lotError) {
+              console.error("Error loading lots:", lotError.message);
+            } else {
               setLots((lotData ?? []).slice().sort(naturalSort));
             }
             setLotsLoaded(true);
@@ -61,31 +61,24 @@ export default function ApplyPage() {
 
         supabase
           .from("park_settings")
-          .select("rent_due_day_policy, rent_due_day_fixed, high_season_start_month_day, high_season_end_month_day")
+          .select("rent_due_day_policy, rent_due_day_fixed")
           .eq("company_id", data.id)
           .single()
           .then(({ data: settingsData, error: settingsError }) => {
             if (!settingsError && settingsData) {
               setRentDuePolicy(
-                (settingsData.rent_due_day_policy as
-                  | "fixed"
-                  | "move_in_anniversary") ?? "fixed"
+                (settingsData.rent_due_day_policy as "fixed" | "move_in_anniversary") ?? "fixed"
               );
               setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
-              setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
-              setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
             }
           });
       });
   }, []);
 
-  async function uploadLicensePhoto(
-    file: File,
-    slotId: string
-  ): Promise<string> {
+  async function uploadLicensePhoto(file: File, slotId: string): Promise<string> {
     if (!company) throw new Error("No company loaded");
     const ext = file.name.split(".").pop() || "jpg";
-    const path = `${company.id}/${crypto.randomUUID()}/${slotId}.${ext}`;
+    const path = `${company.id}/test_${Date.now()}/${slotId}.${ext}`;
     const { error } = await supabase.storage
       .from("license-photos")
       .upload(path, file);
@@ -96,10 +89,9 @@ export default function ApplyPage() {
   async function handleSubmit(data: LeaseApplicationData) {
     if (!company) return;
     setSubmitting(true);
-    setErrorMsg(null);
+    setResult(null);
     try {
-      const additionalCount =
-        Number(data.application_fee_additional_count) || 0;
+      const additionalCount = Number(data.application_fee_additional_count) || 0;
       const applicationFeeTotal =
         (Number(data.application_fee_primary) || 0) +
         (Number(data.application_fee_per_additional) || 0) * additionalCount;
@@ -109,15 +101,13 @@ export default function ApplyPage() {
       const parkShareTotal =
         parkSharePrimary + parkSharePerAdditional * additionalCount;
 
-      const newId = crypto.randomUUID();
+      const [firstName, ...rest] = data.tenant_names.split(" ");
 
       const { error: insertError } = await supabase
         .from("resident_applications")
         .insert({
-          id: newId,
           company_id: company.id,
           full_name: data.tenant_names,
-          email: null,
           space_id: data.space_id || null,
           monthly_rent: Number(data.rent_amount) || 0,
           security_deposit: data.security_deposit_enabled
@@ -125,7 +115,8 @@ export default function ApplyPage() {
             : 0,
           lease_start: data.lease_start_date || null,
           status: "Pending",
-          filled_by: "applicant",
+
+          filled_by: mode,
 
           primary_applicant_dob: data.primary_applicant_dob || null,
           primary_applicant_license: data.primary_applicant_license,
@@ -205,26 +196,14 @@ export default function ApplyPage() {
         throw new Error(insertError.message);
       }
 
-      // Immediately kick off the application fee payment - the applicant
-      // goes straight from "Submit" to Stripe Checkout, no manual steps.
-      const res = await fetch(
-        "/api/create-application-fee-checkout-session",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ applicationId: newId }),
-        }
+      setResult(
+        `✅ Guardado en resident_applications. Total a pagar: $${applicationFeeTotal.toFixed(
+          2
+        )} (tu parte: $${parkShareTotal.toFixed(2)})`
       );
-      const json = await res.json();
-      if (!res.ok || !json.url) {
-        throw new Error(
-          json.error ?? "Application saved, but couldn't start payment."
-        );
-      }
-
-      window.location.href = json.url;
     } catch (err: any) {
-      setErrorMsg(err.message ?? "Something went wrong. Please try again.");
+      setResult(`❌ Error: ${err.message}`);
+    } finally {
       setSubmitting(false);
     }
   }
@@ -234,35 +213,104 @@ export default function ApplyPage() {
   }
 
   if (!company) {
-    return <p style={{ padding: 20, color: "#777" }}>Loading...</p>;
+    return <p style={{ padding: 20, color: "#777" }}>Loading company...</p>;
   }
 
   return (
     <div>
-      {errorMsg && (
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
+          background: "#000",
+          color: "#fff",
+          padding: "12px 20px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Viendo como:</span>
+        <button
+          onClick={() => setMode("applicant")}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            background: mode === "applicant" ? "#fff" : "transparent",
+            color: mode === "applicant" ? "#000" : "#fff",
+            border: "1px solid #fff",
+          }}
+        >
+          Applicant (residente)
+        </button>
+        <button
+          onClick={() => {
+            setMode("admin");
+            setIsMasterAdmin(true);
+          }}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            background:
+              mode === "admin" && isMasterAdmin ? "#fff" : "transparent",
+            color: mode === "admin" && isMasterAdmin ? "#000" : "#fff",
+            border: "1px solid #fff",
+          }}
+        >
+          Admin (tu - master_admin)
+        </button>
+        <button
+          onClick={() => {
+            setMode("admin");
+            setIsMasterAdmin(false);
+          }}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 6,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            background:
+              mode === "admin" && !isMasterAdmin ? "#fff" : "transparent",
+            color: mode === "admin" && !isMasterAdmin ? "#000" : "#fff",
+            border: "1px solid #fff",
+          }}
+        >
+          Admin (Yarinette - park_admin)
+        </button>
+      </div>
+
+      {result && (
         <div
           style={{
             padding: "12px 20px",
-            background: "#fee2e2",
-            color: "#991b1b",
+            background: result.startsWith("✅") ? "#dcfce7" : "#fee2e2",
             fontSize: 14,
           }}
         >
-          ❌ {errorMsg}
+          {result}
         </div>
       )}
 
       {lotsLoaded && lots.length === 0 && (
-        <div
-          style={{ padding: "10px 20px", background: "#fef3c7", fontSize: 13 }}
-        >
-          ⚠️ No lots are available to apply for right now. Please contact the
-          park directly.
+        <div style={{ padding: "10px 20px", background: "#fef3c7", fontSize: 13 }}>
+          ⚠️ No se encontraron lotes en `rv_lots` para esta compañía — el
+          selector de "Lot" saldrá vacío hasta que tengas lotes cargados ahí.
         </div>
       )}
 
       <LeaseApplicationForm
-        mode="applicant"
+        key={`${mode}-${isMasterAdmin}`}
+        mode={mode}
+        isMasterAdmin={mode === "admin" && isMasterAdmin}
         submitting={submitting}
         company={{
           name: company.company_name,
@@ -272,8 +320,6 @@ export default function ApplyPage() {
         availableLots={lots}
         rentDueDayPolicy={rentDuePolicy}
         rentDueDayFixed={rentDueFixed}
-        highSeasonStartMonthDay={highSeasonStart}
-        highSeasonEndMonthDay={highSeasonEnd}
         onUploadFile={uploadLicensePhoto}
         onSubmit={handleSubmit}
       />
