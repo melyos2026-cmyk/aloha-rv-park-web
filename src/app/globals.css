@@ -4,12 +4,17 @@
   --black: #0a0a0a;
   --white: #ffffff;
   --cream: #fafaf7;
-  --red: #dc2626;
-  --red-dark: #991b1b;
+  --red: #16a34a;
+  --red-dark: #14532d;
   --gold: #b45309;
   --green: #14532d;
   --gray: #6b7280;
   --gray-light: #f3f4f6;
+  --sea: #e1f8f7;
+  --offwhite: #f6f5f5;
+  --blue-light: #e1f8f7;
+  --blue-accent: #1e40af;
+  --mint: #d3f8e2;
   --border: #e5e7eb;
 }
 
@@ -17,7 +22,7 @@
 html { scroll-behavior: smooth; }
 body {
   font-family: 'DM Sans', sans-serif;
-  background: var(--cream);
+  background: var(--offwhite);
   color: var(--black);
   -webkit-font-smoothing: antialiased;
 }

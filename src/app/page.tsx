@@ -6,7 +6,9 @@ export default function Home() {
     <>
       {/* Hero Banner */}
       <section style={{
-        background: "var(--black)",
+        backgroundImage: "linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)), url(/aloha-rv-park-header.jpg)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
         color: "var(--white)",
         padding: "80px 24px",
         textAlign: "center",
@@ -18,7 +20,7 @@ export default function Home() {
           background: "repeating-linear-gradient(45deg, transparent, transparent 40px, rgba(220,38,38,0.03) 40px, rgba(220,38,38,0.03) 80px)"
         }} />
         <div style={{ position: "relative", maxWidth: 800, margin: "0 auto" }}>
-          <div style={{ fontSize: 13, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 16 }}>
+          <div style={{ fontSize: 13, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--white)", fontWeight: 600, marginBottom: 16 }}>
             ★ Kissimmee, Florida ★
           </div>
           <h1 style={{ fontSize: "clamp(40px, 7vw, 80px)", fontWeight: 900, lineHeight: 1.05, marginBottom: 24 }}>
@@ -30,7 +32,7 @@ export default function Home() {
           </p>
           <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
             <a href="#map" style={{
-              background: "var(--red)", color: "var(--white)",
+              background: "var(--mint)", color: "var(--red-dark)",
               padding: "16px 32px", borderRadius: 4, fontWeight: 700,
               fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase"
             }}>
@@ -49,44 +51,14 @@ export default function Home() {
       </section>
 
       {/* Rates Bar */}
-      <section style={{ background: "var(--red)", color: "var(--white)", padding: "20px 24px" }}>
+      <section style={{ background: "var(--blue-light)", color: "var(--blue-accent)", padding: "20px 24px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "center", gap: "clamp(24px, 5vw, 80px)", flexWrap: "wrap" }}>
-          {[["Daily","$40/night"],["Weekly","$225/week"],["Monthly (Peak)","$750/mo"],["Monthly (Off-Peak)","$600/mo"]].map(([l,v]) => (
+          {[["Daily","$40/night"],["Weekly","$225/week"],["Monthly (Peak)","$750/mo"],["Monthly (Off-Peak)","$850/mo"]].map(([l,v]) => (
             <div key={l} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", opacity: 0.8 }}>{l}</div>
               <div style={{ fontSize: 22, fontFamily: "Playfair Display, serif", fontWeight: 700 }}>{v}</div>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* Amenities */}
-      <section style={{ padding: "80px 24px", background: "var(--cream)" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
-            <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>What We Offer</div>
-            <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Park Amenities</h2>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 24 }}>
-            {[
-              ["🏊","Pool"],["⛹️","Shuffleboard"],["🔥","Fire Pit"],
-              ["⛽","Propane Station"],["🚐","RV Storage"],["🚿","Restrooms & Showers"],
-              ["👕","Laundry 24/7"],["📶","WiFi"],["⚡","50/100 Amps (1,000 kWh incl.)"],
-              ["💧","Water & Sewer Included"],["🐾","Pet Area"],["🎉","Rec Hall"]
-            ].map(([icon, label]) => (
-              <div key={label} style={{
-                background: "var(--white)", border: "1.5px solid var(--border)",
-                borderRadius: 8, padding: "24px 16px", textAlign: "center",
-                transition: "border-color 0.2s, transform 0.2s"
-              }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--red)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLDivElement).style.transform = "translateY(0)"; }}
-              >
-                <div style={{ fontSize: 32, marginBottom: 10 }}>{icon}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: "0.03em" }}>{label}</div>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -100,7 +72,7 @@ export default function Home() {
           </div>
           <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
             <iframe
-              src="https://aloha-rv-park.vercel.app"
+              src="http://localhost:5173"
               style={{ width: "100%", height: 700, border: "none" }}
               title="Aloha RV Park Lot Map"
             />
@@ -109,7 +81,7 @@ export default function Home() {
       </section>
 
       {/* Location */}
-      <section style={{ padding: "80px 24px", background: "var(--cream)" }}>
+      <section style={{ padding: "80px 24px", background: "var(--offwhite)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 48, alignItems: "center" }}>
           <div>
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Find Us</div>
@@ -126,15 +98,15 @@ export default function Home() {
               ))}
             </div>
             <div style={{ marginTop: 32 }}>
-              <a href="https://maps.google.com/?q=4648+S+Orange+Blossom+Trl+Kissimmee+FL" target="_blank" rel="noreferrer"
-                style={{ background: "var(--black)", color: "var(--white)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14, display: "inline-block" }}>
+              <a href="https://www.google.com/maps/place/Aloha+RV+Park/@28.2552101,-81.4693616,17z/data=!3m1!4b1!4m6!3m5!1s0x88dd830326ed5177:0x76753c6e57ac99b6!8m2!3d28.2552101!4d-81.4693616!16s%2Fg%2F1hc4p4gxj" target="_blank" rel="noreferrer"
+                style={{ background: "var(--mint)", color: "var(--red-dark)", border: "2px solid var(--red-dark)", padding: "12px 26px", borderRadius: 4, fontWeight: 700, fontSize: 14, display: "inline-block" }}>
                 📍 Get Directions
               </a>
             </div>
           </div>
           <div style={{ background: "var(--black)", borderRadius: 8, overflow: "hidden", aspectRatio: "4/3" }}>
             <iframe
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3509.6!2d-81.4!3d28.3!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2s4648+S+Orange+Blossom+Trl+Kissimmee+FL!5e0!3m2!1sen!2sus!4v1"
+              src="https://www.google.com/maps?q=Aloha+RV+Park+Kissimmee+FL&output=embed"
               width="100%" height="100%" style={{ border: 0 }} loading="lazy"
               title="Aloha RV Park Location"
             />
