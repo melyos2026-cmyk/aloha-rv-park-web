@@ -16,8 +16,8 @@ export default function Header() {
   return (
     <>
       {/* Announcement Bar */}
-      <div style={{ background: "var(--red)", color: "var(--white)", textAlign: "center", padding: "10px 20px", fontSize: 13, fontWeight: 500, letterSpacing: "0.02em" }}>
-        🌴 Now accepting new residents! Call us at <a href="tel:6892520567" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>(689) 252-0567</a> or <Link href="/apply" style={{ color: "#fff", fontWeight: 700, textDecoration: "underline" }}>Apply Online</Link>
+      <div style={{ background: "var(--blue-light)", color: "var(--blue-accent)", textAlign: "center", padding: "10px 20px", fontSize: 13, fontWeight: 500, letterSpacing: "0.02em" }}>
+        🌴 Now accepting new residents! Call us at <a href="tel:6892520567" style={{ color: "var(--blue-accent)", fontWeight: 700, textDecoration: "underline" }}>(689) 252-0567</a> or <Link href="/apply" style={{ color: "var(--blue-accent)", fontWeight: 700, textDecoration: "underline" }}>Apply Online</Link>
       </div>
 
       {/* Header */}
@@ -26,10 +26,7 @@ export default function Header() {
           
           {/* Logo */}
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 28, lineHeight: 1 }}>
-              <span style={{ color: "var(--black)" }}>★</span>
-              <span style={{ color: "var(--red)" }}>★</span>
-            </div>
+            <img src="/aloha-logo.png" alt="Aloha RV Park Logo" style={{ height: 70, width: "auto" }} />
             <div>
               <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 18, color: "var(--black)", lineHeight: 1 }}>ALOHA RV PARK</div>
               <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.15em", textTransform: "uppercase" }}>Kissimmee, Florida</div>
@@ -45,7 +42,7 @@ export default function Header() {
                 {n.label}
               </Link>
             ))}
-            <a href="tel:6892520567" style={{ background: "var(--black)", color: "var(--white)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>
+            <a href="tel:6892520567" style={{ background: "var(--mint)", color: "var(--red-dark)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>
               📞 CALL US
             </a>
           </nav>

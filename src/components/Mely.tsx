@@ -6,15 +6,25 @@ type Message = { role: "user" | "assistant"; text: string };
 export default function Mely() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", text: "Hi! I'm Mely 🌴 Your Aloha RV Park assistant. How can I help you today?" }
+    { role: "assistant", text: "Hi! I'm Mely 🌺 Your Aloha RV Park assistant. How can I help you today?" }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    const showTimer = setTimeout(() => setShowTooltip(true), 2000);
+    const hideTimer = setTimeout(() => setShowTooltip(false), 9000);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, []);
 
   const send = async () => {
     if (!input.trim() || loading) return;
@@ -62,17 +72,38 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
 
   return (
     <>
+      {/* Tooltip */}
+      {showTooltip && !open && (
+        <div
+          onClick={() => { setOpen(true); setShowTooltip(false); }}
+          style={{
+            position: "fixed", bottom: 94, right: 24, zIndex: 999,
+            background: "var(--sea)", color: "var(--black)",
+            padding: "12px 16px", borderRadius: 12, maxWidth: 220,
+            fontSize: 13, fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+            border: "2px solid var(--white)", cursor: "pointer",
+            fontFamily: "DM Sans, sans-serif"
+          }}
+        >
+          Aloha! Need any help?
+        </div>
+      )}
+
       {/* Chat Button */}
-      <button onClick={() => setOpen(!open)} style={{
+      <button onClick={() => { setOpen(!open); setShowTooltip(false); }} style={{
         position: "fixed", bottom: 24, right: 24, zIndex: 1000,
         width: 60, height: 60, borderRadius: "50%",
-        background: "var(--black)", color: "var(--white)",
-        border: "3px solid var(--red)", fontSize: 26,
+        background: open ? "var(--sea)" : "var(--white)",
+        color: "var(--black)",
+        border: "3px solid var(--white)", fontSize: 22,
         boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
         display: "flex", alignItems: "center", justifyContent: "center",
+        overflow: "hidden", padding: 0,
         transition: "transform 0.2s"
       }}>
-        {open ? "✕" : "🌴"}
+        {open ? "✕" : (
+          <img src="/mely-avatar.jpeg" alt="Mely" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+        )}
       </button>
 
       {/* Chat Window */}
@@ -81,13 +112,13 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
           position: "fixed", bottom: 96, right: 24, zIndex: 1000,
           width: 360, height: 500,
           background: "var(--white)", borderRadius: 16,
-          border: "2px solid var(--black)",
+          border: "2px solid var(--red)",
           boxShadow: "0 24px 64px rgba(0,0,0,0.25)",
           display: "flex", flexDirection: "column", overflow: "hidden"
         }}>
           {/* Header */}
-          <div style={{ background: "var(--black)", color: "var(--white)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 20 }}>🌴</div>
+          <div style={{ background: "var(--sea)", color: "var(--black)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 20 }}>🌺</div>
             <div>
               <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 700, fontSize: 15 }}>Mely</div>
               <div style={{ fontSize: 11, color: "#9ca3af" }}>Aloha RV Park Assistant</div>
@@ -102,8 +133,8 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
                 <div style={{
                   maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
                   fontSize: 13, lineHeight: 1.6,
-                  background: m.role === "user" ? "var(--black)" : "var(--gray-light)",
-                  color: m.role === "user" ? "var(--white)" : "var(--black)",
+                  background: m.role === "user" ? "var(--sea)" : "var(--gray-light)",
+                  color: m.role === "user" ? "var(--black)" : "var(--black)",
                   borderBottomRightRadius: m.role === "user" ? 2 : 12,
                   borderBottomLeftRadius: m.role === "assistant" ? 2 : 12,
                 }}>
@@ -131,7 +162,7 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
               style={{ flex: 1, border: "1.5px solid var(--border)", borderRadius: 8, padding: "10px 12px", fontSize: 13, outline: "none", fontFamily: "DM Sans, sans-serif" }}
             />
             <button onClick={send} disabled={loading} style={{
-              background: "var(--black)", color: "var(--white)",
+              background: "#d1f6e0", color: "var(--red-dark)",
               border: "none", borderRadius: 8, padding: "10px 14px", fontSize: 13, fontWeight: 600
             }}>→</button>
           </div>
