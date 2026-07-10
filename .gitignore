@@ -42,3 +42,4 @@ next-env.d.ts
 
 # backup files (never commit)
 *.backup
+*.backup*
