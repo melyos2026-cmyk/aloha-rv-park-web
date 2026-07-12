@@ -343,6 +343,10 @@ export default function ResidentDashboard() {
 
           {/* Quick links */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <button onClick={() => router.push("/residents/invoices")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🧾 Invoices</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>View your monthly invoices and charges.</p>
+            </button>
             <button onClick={() => router.push("/residents/payments")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>💳 Payments</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View and pay outstanding charges.</p>
