@@ -355,6 +355,10 @@ export default function ResidentDashboard() {
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📜 Payment History</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View completed payments.</p>
             </button>
+            <button onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement.</p>
+            </button>
           </div>
 
           {/* Announcements */}
