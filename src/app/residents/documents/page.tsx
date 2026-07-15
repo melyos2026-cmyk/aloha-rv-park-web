@@ -116,7 +116,7 @@ export default function DocumentsPage() {
               </div>
 
               {lease.lease_document_url ? (
-                
+                <a
                   href={lease.lease_document_url}
                   target="_blank"
                   rel="noopener noreferrer"
