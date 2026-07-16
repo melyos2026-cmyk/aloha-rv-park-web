@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const { data: application, error } = await supabase
       .from("resident_applications")
       .select(
-        "id, full_name, email, application_fee_total, application_fee_paid"
+        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount"
       )
       .eq("id", applicationId)
       .single();
@@ -43,7 +43,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const amount = Number(application.application_fee_total) || 0;
+    const smsFee = Number(application.sms_fee_amount) || 0;
+    const amount = (Number(application.application_fee_total) || 0) + smsFee;
     if (amount <= 0) {
       return NextResponse.json(
         { error: "Application fee total is $0 - nothing to charge." },
@@ -66,7 +67,9 @@ export async function POST(req: Request) {
             unit_amount: Math.round(amount * 100),
             product_data: {
               name: "Rental Application Fee & Background Check",
-              description: `Application fee for ${application.full_name || "applicant"}`,
+              description: smsFee > 0
+                ? `Application fee for ${application.full_name || "applicant"} (includes $${smsFee.toFixed(2)} SMS delivery fee)`
+                : `Application fee for ${application.full_name || "applicant"}`,
             },
           },
         },
