@@ -72,7 +72,7 @@ export default function Home() {
           </div>
           <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
             <iframe
-              src="https://aloha-rv-park-lilac.vercel.app"
+              src="https://aloha-rv-park-map.vercel.app"
               style={{ width: "100%", height: 1350, border: "none" }}
               title="Aloha RV Park Lot Map"
               scrolling="no"
