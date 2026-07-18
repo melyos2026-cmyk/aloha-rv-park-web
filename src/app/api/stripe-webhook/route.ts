@@ -28,6 +28,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // ── NEW: Manual reservation payment (from melyos-builder admin) ──
+    if (session.metadata?.type === "manual_reservation") {
+      await handleManualReservationPaid(session);
+      return NextResponse.json({ received: true });
+    }
+
     // ── Existing: Resident rent/balance payment (unchanged) ──────────
     const residentId = session.metadata?.resident_id;
     const paymentIdsRaw = session.metadata?.payment_ids || "";
@@ -177,4 +183,33 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   } catch (emailErr) {
     console.error("Failed to send background check admin notification:", emailErr);
   }
+}
+
+async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
+  const lotOrderId = session.metadata?.lot_order_id;
+  if (!lotOrderId) {
+    console.log("Manual reservation webhook missing lot_order_id metadata");
+    return;
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+
+  const { error } = await supabase
+    .from("lot_orders")
+    .update({
+      status: "paid",
+      stripe_session_id: session.id,
+      stripe_payment_intent: paymentIntentId,
+    })
+    .eq("id", lotOrderId);
+
+  if (error) {
+    console.log("Error updating lot_orders after manual reservation payment:", error.message);
+    return;
+  }
+
+  console.log(`Manual reservation payment confirmed for lot_order ${lotOrderId}.`);
 }
