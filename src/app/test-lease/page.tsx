@@ -314,7 +314,7 @@ export default function TestLeasePage() {
         submitting={submitting}
         company={{
           name: company.company_name,
-          address: company.address,
+          address: company.address ?? "",
           logoUrl: company.logo_url ?? undefined,
         }}
         availableLots={lots}
