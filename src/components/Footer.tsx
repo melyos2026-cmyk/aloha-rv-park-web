@@ -1,7 +1,16 @@
 "use client";
 import Link from "next/link";
+import { useCompany } from "@/lib/CompanyContext";
 
 export default function Footer() {
+  const { company } = useCompany();
+
+  const companyName = company?.company_name || "Aloha RV Park";
+  const address = company?.address || "4648 S. Orange Blossom Trl, Kissimmee, FL 34746";
+  const phone = company?.contact_phone || "(689) 252-0567";
+  const phoneHref = `tel:${phone.replace(/[^\d]/g, "")}`;
+  const email = company?.contact_email || "info@aloharvparkfl.com";
+
   return (
     <footer style={{ background: "var(--sea)", color: "var(--black)", padding: "60px 24px 30px", borderTop: "6px solid var(--white)" }}>
       <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -10,10 +19,9 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-              <img src="/aloha-logo-footer.png" alt="Aloha RV Park Compass" style={{ height: 90, width: "auto" }} />
+              <img src="/aloha-logo-footer.png" alt={`${companyName} Compass`} style={{ height: 90, width: "auto" }} />
               <div>
-                <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 16 }}>ALOHA RV PARK</div>
-                <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.15em", textTransform: "uppercase" }}>Kissimmee, Florida</div>
+                <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 16 }}>{companyName.toUpperCase()}</div>
               </div>
             </div>
             <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.7 }}>
@@ -25,10 +33,9 @@ export default function Footer() {
           <div>
             <h4 style={{ fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", color: "#4b5563", marginBottom: 16 }}>Contact</h4>
             <div style={{ fontSize: 13, color: "#374151", lineHeight: 2 }}>
-              <div>4648 S. Orange Blossom Trl</div>
-              <div>Kissimmee, FL 34746</div>
-              <a href="tel:6892520567" style={{ display: "block", color: "var(--red-dark)", fontWeight: 600 }}>(689) 252-0567</a>
-              <a href="mailto:info@aloharvparkfl.com" style={{ color: "#4b5563" }}>info@aloharvparkfl.com</a>
+              <div>{address}</div>
+              <a href={phoneHref} style={{ display: "block", color: "var(--red-dark)", fontWeight: 600 }}>{phone}</a>
+              <a href={`mailto:${email}`} style={{ color: "#4b5563" }}>{email}</a>
             </div>
           </div>
 
@@ -50,7 +57,7 @@ export default function Footer() {
           <div>
             <h4 style={{ fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", color: "#4b5563", marginBottom: 16 }}>Office Hours</h4>
             <div style={{ fontSize: 13, color: "#374151", lineHeight: 2 }}>
-              <div>Mon – Fri: 8:00 AM – 5:00 PM</div>
+              <div>Mon – Fri: 10:00 AM – 5:00 PM</div>
               <div>Saturday: 10:00 AM – 3:00 PM</div>
               <div style={{ color: "#4b5563" }}>Sunday: Closed</div>
             </div>
@@ -58,14 +65,14 @@ export default function Footer() {
         </div>
 
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.15)", paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <p style={{ fontSize: 12, color: "#4b5563" }}>© 2026 Aloha RV Park. All rights reserved.</p>
+          <p style={{ fontSize: 12, color: "#4b5563" }}>© 2026 {companyName}. All rights reserved.</p>
           <p style={{ fontSize: 11, color: "#4b5563", marginTop: 4 }}>
             Powered by{" "}
             <a href="https://melyos.io" target="_blank" rel="noopener noreferrer" style={{ color: "var(--red-dark)", textDecoration: "underline" }}>
               MelyOS.io
             </a>
           </p>
-          <p style={{ fontSize: 12, color: "#4b5563" }}>4648 S. Orange Blossom Trl, Kissimmee, FL 34746</p>
+          <p style={{ fontSize: 12, color: "#4b5563" }}>{address}</p>
         </div>
       </div>
     </footer>

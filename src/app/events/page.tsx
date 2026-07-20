@@ -1,8 +1,13 @@
 "use client";
 import { useState } from "react";
+import { useCompany } from "@/lib/CompanyContext";
 
 export default function EventsPage() {
   const [dragging, setDragging] = useState(false);
+  const { company } = useCompany();
+  const contactEmail = company?.contact_email || "info@aloharvparkfl.com";
+  const contactPhone = company?.contact_phone || "(689) 252-0567";
+  const phoneHref = `tel:${contactPhone.replace(/[^\d]/g, "")}`;
 
   return (
     <>
@@ -18,7 +23,6 @@ export default function EventsPage() {
       {/* Activities */}
       <section style={{ padding: "60px 24px", background: "var(--cream)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          {/* Monthly Calendar PDF */}
           <div style={{ background: "var(--white)", border: "2px solid var(--black)", borderRadius: 8, padding: 48, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
             <h2 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12 }}>Monthly Events Calendar</h2>
@@ -26,7 +30,6 @@ export default function EventsPage() {
               Download our monthly events calendar to see everything planned for this month at the Rec Hall.
             </p>
 
-            {/* PDF Display Area */}
             <div style={{
               border: "2px dashed var(--border)", borderRadius: 8,
               padding: "60px 24px", marginBottom: 24,
@@ -52,10 +55,10 @@ export default function EventsPage() {
             Interested in renting the Rec Hall for a private event? Contact our office to check availability and pricing.
           </p>
           <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-            <a href="tel:6892520567" style={{ background: "var(--mint)", color: "var(--red-dark)", border: "2px solid var(--red-dark)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14 }}>
+            <a href={phoneHref} style={{ background: "var(--mint)", color: "var(--red-dark)", border: "2px solid var(--red-dark)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14 }}>
               📞 Contact Office
             </a>
-            <a href="mailto:info@aloharvparkfl.com" style={{ background: "transparent", color: "var(--black)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14, border: "2px solid var(--black)" }}>
+            <a href={`mailto:${contactEmail}`} style={{ background: "transparent", color: "var(--black)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14, border: "2px solid var(--black)" }}>
               ✉️ Email Us
             </a>
           </div>

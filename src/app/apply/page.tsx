@@ -6,13 +6,7 @@ import LeaseApplicationForm, {
   LotOption,
 } from "@/components/LeaseApplicationForm";
 import { supabase } from "@/lib/supabase";
-
-interface Company {
-  id: string;
-  company_name: string;
-  address: string;
-  logo_url: string | null;
-}
+import { useCompany } from "@/lib/CompanyContext";
 
 function naturalSort(a: { lot_name: string }, b: { lot_name: string }): number {
   return a.lot_name.localeCompare(b.lot_name, undefined, {
@@ -25,9 +19,10 @@ function ApplyPageInner() {
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token");
 
+  const { company, loading: companyLoading, error: companyError } = useCompany();
+
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [company, setCompany] = useState<Company | null>(null);
   const [lots, setLots] = useState<LotOption[]>([]);
   const [lotsLoaded, setLotsLoaded] = useState(false);
   const [rentDuePolicy, setRentDuePolicy] = useState<"fixed" | "move_in_anniversary">("fixed");
@@ -36,61 +31,51 @@ function ApplyPageInner() {
   const [highSeasonEnd, setHighSeasonEnd] = useState<string | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Set when the form was opened via an emailed invite link. When present,
-  // Submit updates this existing row instead of inserting a new one.
   const [invitationId, setInvitationId] = useState<string | null>(null);
   const [initialData, setInitialData] = useState<Partial<LeaseApplicationData> | undefined>(undefined);
   const [invitationLoaded, setInvitationLoaded] = useState(!inviteToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (companyLoading) return;
+    if (companyError || !company) {
+      setLoadError(companyError ?? "Company not found");
+      return;
+    }
+
     supabase
-      .from("companies")
-      .select("id, company_name, address, logo_url")
-      .eq("domain", "aloharvparkfl.com")
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          setLoadError(error?.message ?? "Company not found");
-          return;
+      .from("rv_lots")
+      .select(
+        "id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price"
+      )
+      .eq("company_id", company.id)
+      .order("lot_name")
+      .then(({ data: lotData, error: lotError }) => {
+        if (!lotError) {
+          setLots((lotData ?? []).slice().sort(naturalSort));
         }
-        setCompany(data);
-
-        supabase
-          .from("rv_lots")
-          .select(
-            "id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price"
-          )
-          .eq("company_id", data.id)
-          .order("lot_name")
-          .then(({ data: lotData, error: lotError }) => {
-            if (!lotError) {
-              setLots((lotData ?? []).slice().sort(naturalSort));
-            }
-            setLotsLoaded(true);
-          });
-
-        supabase
-          .from("park_settings")
-          .select("rent_due_day_policy, rent_due_day_fixed, high_season_start_month_day, high_season_end_month_day")
-          .eq("company_id", data.id)
-          .single()
-          .then(({ data: settingsData, error: settingsError }) => {
-            if (!settingsError && settingsData) {
-              setRentDuePolicy(
-                (settingsData.rent_due_day_policy as
-                  | "fixed"
-                  | "move_in_anniversary") ?? "fixed"
-              );
-              setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
-              setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
-              setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
-            }
-          });
+        setLotsLoaded(true);
       });
-  }, []);
 
-  // If a ?token= is present, load that invited application and pre-fill the form.
+    supabase
+      .from("park_settings")
+      .select("rent_due_day_policy, rent_due_day_fixed, high_season_start_month_day, high_season_end_month_day")
+      .eq("company_id", company.id)
+      .single()
+      .then(({ data: settingsData, error: settingsError }) => {
+        if (!settingsError && settingsData) {
+          setRentDuePolicy(
+            (settingsData.rent_due_day_policy as
+              | "fixed"
+              | "move_in_anniversary") ?? "fixed"
+          );
+          setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
+          setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
+          setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
+        }
+      });
+  }, [company, companyLoading, companyError]);
+
   useEffect(() => {
     if (!inviteToken) return;
 
@@ -246,14 +231,12 @@ function ApplyPageInner() {
 
       let dbError;
       if (invitationId) {
-        // Came from an emailed invite link -> update the existing row.
         const { error } = await supabase
           .from("resident_applications")
           .update(row)
           .eq("id", invitationId);
         dbError = error;
       } else {
-        // No invite -> brand new application, same as before.
         const { error } = await supabase
           .from("resident_applications")
           .insert({ id: applicationId, ...row });
@@ -264,8 +247,6 @@ function ApplyPageInner() {
         throw new Error(dbError.message);
       }
 
-      // Immediately kick off the application fee payment - the applicant
-      // goes straight from "Submit" to Stripe Checkout, no manual steps.
       const res = await fetch(
         "/api/create-application-fee-checkout-session",
         {

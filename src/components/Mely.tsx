@@ -1,12 +1,17 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { useCompany } from "@/lib/CompanyContext";
 
 type Message = { role: "user" | "assistant"; text: string };
 
 export default function Mely() {
+  const { company } = useCompany();
+  const companyName = company?.company_name || "Aloha RV Park";
+  const phone = company?.contact_phone || "(689) 252-0567";
+
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", text: "Hi! I'm Mely 🌺 Your Aloha RV Park assistant. How can I help you today?" }
+    { role: "assistant", text: `Hi! I'm Mely 🌺 Your ${companyName} assistant. How can I help you today?` }
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,49 +35,27 @@ export default function Mely() {
     if (!input.trim() || loading) return;
     const userMsg = input.trim();
     setInput("");
-    setMessages(m => [...m, { role: "user", text: userMsg }]);
+    const nextMessages = [...messages, { role: "user" as const, text: userMsg }];
+    setMessages(nextMessages);
     setLoading(true);
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/mely-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: `You are Mely, the friendly AI assistant for Aloha RV Park located at 4648 S. Orange Blossom Trl, Kissimmee, FL 34746. Phone: (689) 252-0567. Email: info@aloharvparkfl.com.
-
-The park is near Orlando, Disney World, Universal Studios, and SeaWorld.
-
-Rates:
-- Daily: $40/night
-- Weekly: $225/week  
-- Monthly Peak (Jan-Apr, Oct-Dec): $750/month
-- Monthly Off-Peak (May-Sep): $600/month
-
-Amenities: Pool, Shuffleboard, Fire Pit, Propane Station, RV Storage, Men's & Women's Restrooms & Showers, Laundry 24/7, WiFi, Water, Sewerage, 50/100 Amps available.
-
-Office Hours: Mon-Fri 8AM-5PM, Sat 10AM-3PM, Sun Closed.
-
-Be friendly, helpful, and concise. Answer questions about the park, rates, amenities, and nearby attractions. For reservations direct them to the map on the home page or call the office.`,
-          messages: messages.concat({ role: "user", text: userMsg }).map(m => ({
-            role: m.role,
-            content: m.text
-          }))
-        })
+        body: JSON.stringify({ messages: nextMessages, company }),
       });
       const data = await res.json();
-      const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response. Please call us at (689) 252-0567.";
+      const reply = data.reply || `Sorry, I couldn't get a response. Please call us at ${phone}.`;
       setMessages(m => [...m, { role: "assistant", text: reply }]);
     } catch {
-      setMessages(m => [...m, { role: "assistant", text: "Sorry, something went wrong. Please call us at (689) 252-0567." }]);
+      setMessages(m => [...m, { role: "assistant", text: `Sorry, something went wrong. Please call us at ${phone}.` }]);
     }
     setLoading(false);
   };
 
   return (
     <>
-      {/* Tooltip */}
       {showTooltip && !open && (
         <div
           onClick={() => { setOpen(true); setShowTooltip(false); }}
@@ -89,7 +72,6 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
         </div>
       )}
 
-      {/* Chat Button */}
       <button onClick={() => { setOpen(!open); setShowTooltip(false); }} style={{
         position: "fixed", bottom: 24, right: 24, zIndex: 1000,
         width: 60, height: 60, borderRadius: "50%",
@@ -106,7 +88,6 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
         )}
       </button>
 
-      {/* Chat Window */}
       {open && (
         <div style={{
           position: "fixed", bottom: 96, right: 24, zIndex: 1000,
@@ -116,17 +97,15 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
           boxShadow: "0 24px 64px rgba(0,0,0,0.25)",
           display: "flex", flexDirection: "column", overflow: "hidden"
         }}>
-          {/* Header */}
           <div style={{ background: "var(--sea)", color: "var(--black)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ fontSize: 20 }}>🌺</div>
             <div>
               <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 700, fontSize: 15 }}>Mely</div>
-              <div style={{ fontSize: 11, color: "#9ca3af" }}>Aloha RV Park Assistant</div>
+              <div style={{ fontSize: 11, color: "#9ca3af" }}>{companyName} Assistant</div>
             </div>
             <div style={{ marginLeft: "auto", width: 8, height: 8, borderRadius: "50%", background: "#22c55e" }} />
           </div>
 
-          {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             {messages.map((m, i) => (
               <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
@@ -134,7 +113,7 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
                   maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
                   fontSize: 13, lineHeight: 1.6,
                   background: m.role === "user" ? "var(--sea)" : "var(--gray-light)",
-                  color: m.role === "user" ? "var(--black)" : "var(--black)",
+                  color: "var(--black)",
                   borderBottomRightRadius: m.role === "user" ? 2 : 12,
                   borderBottomLeftRadius: m.role === "assistant" ? 2 : 12,
                 }}>
@@ -152,7 +131,6 @@ Be friendly, helpful, and concise. Answer questions about the park, rates, ameni
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
             <input
               value={input}

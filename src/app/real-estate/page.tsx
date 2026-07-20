@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useCompany } from "@/lib/CompanyContext";
 
 type Listing = {
   id: string;
@@ -32,13 +33,19 @@ export default function RealEstatePage() {
   const [filter, setFilter] = useState("all");
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const { company, loading: companyLoading } = useCompany();
+  const contactEmail = company?.contact_email || "info@aloharvparkfl.com";
+  const contactPhone = company?.contact_phone || "(689) 252-0567";
+  const phoneHref = `tel:${contactPhone.replace(/[^\d]/g, "")}`;
 
   useEffect(() => {
+    if (companyLoading || !company?.park_id) return;
+
     async function loadListings() {
       const { data, error } = await supabase
         .from("real_estate_listings")
         .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url")
-        .eq("park_id", "aloha")
+        .eq("park_id", company!.park_id)
         .eq("available", true)
         .order("created_at", { ascending: false });
 
@@ -48,7 +55,7 @@ export default function RealEstatePage() {
       setLoading(false);
     }
     loadListings();
-  }, []);
+  }, [company, companyLoading]);
 
   const filtered = filter === "all" ? listings : listings.filter(l => l.type === filter);
 
@@ -109,7 +116,7 @@ export default function RealEstatePage() {
                     {l.description && (
                       <p style={{ fontSize: 13, color: "var(--gray)", lineHeight: 1.6, marginBottom: 20 }}>{l.description}</p>
                     )}
-                    <a href={`mailto:info@aloharvparkfl.com?subject=Inquiry: ${l.title}`} style={{
+                    <a href={`mailto:${contactEmail}?subject=Inquiry: ${l.title}`} style={{
                       display: "block", textAlign: "center",
                       background: "var(--mint)", color: "var(--red-dark)",
                       padding: "12px", borderRadius: 6, fontWeight: 700, fontSize: 13,
@@ -129,10 +136,10 @@ export default function RealEstatePage() {
             <h2 style={{ fontSize: 32, fontWeight: 900, marginBottom: 12 }}>Don't see what you're looking for?</h2>
             <p style={{ color: "var(--black)", marginBottom: 28, fontSize: 15 }}>Contact our office — new properties become available regularly.</p>
             <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-              <a href="tel:6892520567" style={{ background: "var(--red)", color: "var(--white)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14 }}>
-                📞 (689) 252-0567
+              <a href={phoneHref} style={{ background: "var(--red)", color: "var(--white)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14 }}>
+                📞 {contactPhone}
               </a>
-              <a href="mailto:info@aloharvparkfl.com" style={{ background: "transparent", color: "var(--red)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14, border: "2px solid var(--black)" }}>
+              <a href={`mailto:${contactEmail}`} style={{ background: "transparent", color: "var(--red)", padding: "14px 28px", borderRadius: 4, fontWeight: 700, fontSize: 14, border: "2px solid var(--black)" }}>
                 ✉️ Email Us
               </a>
             </div>

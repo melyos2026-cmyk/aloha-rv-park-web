@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useCompany } from "@/lib/CompanyContext";
 
 const nav = [
   { label: "Home", href: "/" },
@@ -12,12 +13,18 @@ const nav = [
 
 export default function Header() {
   const [open, setOpen] = useState(false);
+  const { company } = useCompany();
+
+  const companyName = company?.company_name || "Aloha RV Park";
+  const logoUrl = company?.logo_url || "/aloha-logo.png";
+  const phone = company?.contact_phone || "(689) 252-0567";
+  const phoneHref = `tel:${phone.replace(/[^\d]/g, "")}`;
 
   return (
     <>
       {/* Announcement Bar */}
       <div style={{ background: "var(--blue-light)", color: "var(--blue-accent)", textAlign: "center", padding: "10px 20px", fontSize: 13, fontWeight: 500, letterSpacing: "0.02em" }}>
-        🌴 Now accepting new residents! Call us at <a href="tel:6892520567" style={{ color: "var(--blue-accent)", fontWeight: 700, textDecoration: "underline" }}>(689) 252-0567</a> or <Link href="/apply" style={{ color: "var(--blue-accent)", fontWeight: 700, textDecoration: "underline" }}>Apply Online</Link>
+        🌴 Now accepting new residents! Call us at <a href={phoneHref} style={{ color: "var(--blue-accent)", fontWeight: 700, textDecoration: "underline" }}>{phone}</a> or <Link href="/apply" style={{ color: "var(--blue-accent)", fontWeight: 700, textDecoration: "underline" }}>Apply Online</Link>
       </div>
 
       {/* Header */}
@@ -26,10 +33,12 @@ export default function Header() {
           
           {/* Logo */}
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="/aloha-logo.png" alt="Aloha RV Park Logo" style={{ height: 70, width: "auto" }} />
+            <img src={logoUrl} alt={`${companyName} Logo`} style={{ height: 70, width: "auto" }} />
             <div>
-              <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 18, color: "var(--black)", lineHeight: 1 }}>ALOHA RV PARK</div>
-              <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.15em", textTransform: "uppercase" }}>Kissimmee, Florida</div>
+              <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 18, color: "var(--black)", lineHeight: 1 }}>{companyName.toUpperCase()}</div>
+              {company?.address && (
+                <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{company.address}</div>
+              )}
             </div>
           </Link>
 
@@ -42,7 +51,7 @@ export default function Header() {
                 {n.label}
               </Link>
             ))}
-            <a href="tel:6892520567" style={{ background: "var(--mint)", color: "var(--red-dark)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>
+            <a href={phoneHref} style={{ background: "var(--mint)", color: "var(--red-dark)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>
               📞 CALL US
             </a>
           </nav>
@@ -62,8 +71,8 @@ export default function Header() {
                 {n.label}
               </Link>
             ))}
-            <a href="tel:6892520567" style={{ display: "block", marginTop: 16, background: "var(--red)", color: "var(--white)", padding: "12px 20px", borderRadius: 4, textAlign: "center", fontWeight: 700 }}>
-              📞 (689) 252-0567
+            <a href={phoneHref} style={{ display: "block", marginTop: 16, background: "var(--red)", color: "var(--white)", padding: "12px 20px", borderRadius: 4, textAlign: "center", fontWeight: 700 }}>
+              📞 {phone}
             </a>
           </div>
         )}
