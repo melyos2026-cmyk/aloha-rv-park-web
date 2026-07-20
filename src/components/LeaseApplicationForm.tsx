@@ -106,6 +106,7 @@ export interface OccupantInfo {
   date_of_birth: string; // yyyy-mm-dd
   license_number: string;
   license_photo_url: string;
+  email?: string; // optional — falls back to the primary applicant's email for Checkr invitations
 }
 
 function calculateAge(dateOfBirth: string): number | null {
@@ -208,11 +209,11 @@ function getSeasonalRent(
 }
 
 const emptyOccupants: OccupantInfo[] = [
-  { name: "", date_of_birth: "", license_number: "", license_photo_url: "" },
-  { name: "", date_of_birth: "", license_number: "", license_photo_url: "" },
-  { name: "", date_of_birth: "", license_number: "", license_photo_url: "" },
-  { name: "", date_of_birth: "", license_number: "", license_photo_url: "" },
-  { name: "", date_of_birth: "", license_number: "", license_photo_url: "" },
+  { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
+  { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
+  { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
+  { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
+  { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
 ];
 
 const defaultParkRules: ParkRule[] = [
@@ -1145,8 +1146,7 @@ export default function LeaseApplicationForm({
                       />
                     </div>
                     <div style={styles.field}>
-                      <label style={styles.label}>
-                        Driver's License #{" "}
+                      <label style={styles.label}>Driver's License #{" "}
                         {age !== null && age >= 18 ? "(required)" : ""}
                       </label>
                       <input
@@ -1162,6 +1162,24 @@ export default function LeaseApplicationForm({
                         }}
                       />
                     </div>
+                    {age !== null && age >= 18 && (
+                      <div style={styles.field}>
+                        <label style={styles.label}>
+                          Email (optional — for their own background check invite)
+                        </label>
+                        <input
+                          type="email"
+                          style={styles.input}
+                          value={occ.email || ""}
+                          placeholder="Leave blank to use the primary applicant's email"
+                          onChange={(e) => {
+                            const updated = [...data.occupants];
+                            updated[i] = { ...occ, email: e.target.value };
+                            set("occupants", updated);
+                          }}
+                        />
+                      </div>
+                    )}
                     <div style={styles.field}>
                       <label style={styles.label}>Photo of License</label>
                       {occ.license_photo_url ? (

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
+import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
@@ -22,19 +23,16 @@ export async function POST(req: Request) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    // ── NEW: Application Fee & Background Check payment ──────────────
     if (session.metadata?.type === "application_fee") {
       await handleApplicationFeePaid(session);
       return NextResponse.json({ received: true });
     }
 
-    // ── NEW: Manual reservation payment (from melyos-builder admin) ──
     if (session.metadata?.type === "manual_reservation") {
       await handleManualReservationPaid(session);
       return NextResponse.json({ received: true });
     }
 
-    // ── Existing: Resident rent/balance payment (unchanged) ──────────
     const residentId = session.metadata?.resident_id;
     const paymentIdsRaw = session.metadata?.payment_ids || "";
     const paymentIds = paymentIdsRaw.split(",").filter(Boolean);
@@ -74,7 +72,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // Enviar receipt por email
     if (residentId) {
       try {
         const { data: resident } = await supabase
@@ -120,14 +117,6 @@ export async function POST(req: Request) {
   return NextResponse.json({ received: true });
 }
 
-/**
- * Handles a paid Application Fee & Background Check checkout session.
- * Marks the application as paid, then notifies the admin that a background
- * check needs to be run. While Checkr isn't connected yet, this is a manual
- * step (admin orders it themselves on Checkr's dashboard) - once Checkr API
- * access is granted, this function is where the automatic Checkr invitation
- * call gets added.
- */
 async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   const applicationId = session.metadata?.application_id;
   if (!applicationId) {
@@ -146,10 +135,10 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       application_fee_paid: true,
       application_fee_paid_at: new Date().toISOString(),
       application_fee_stripe_payment_intent_id: paymentIntentId,
-      background_check_status: "payment_confirmed", // TODO: switch to Checkr-triggered status once API is connected
+      background_check_status: "payment_confirmed",
     })
     .eq("id", applicationId)
-    .select("full_name, email, application_fee_total, company_id")
+    .select("id, full_name, email, application_fee_total, company_id, occupants")
     .single();
 
   if (error) {
@@ -161,8 +150,61 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     `Application fee paid for ${application?.full_name} ($${application?.application_fee_total}). Background check status: payment_confirmed.`
   );
 
-  // Notify admin that a background check is ready to be manually ordered
-  // (remove/replace this once Checkr API triggers it automatically).
+  const people: { personKey: string; name: string; email: string }[] = [];
+
+  if (application?.email) {
+    people.push({
+      personKey: "primary",
+      name: application.full_name || "Applicant",
+      email: application.email,
+    });
+  }
+
+  const occupants = (application?.occupants || []) as Array<{
+    name?: string;
+    date_of_birth?: string;
+    email?: string;
+  }>;
+  occupants.forEach((occ, i) => {
+    if (!occ?.name || !occ?.date_of_birth) return;
+    const age = calculateAge(occ.date_of_birth);
+    if (age === null || age < 18) return;
+    people.push({
+      personKey: `occupant:${i}`,
+      name: occ.name,
+      email: occ.email || application!.email,
+    });
+  });
+
+  const results: CheckrResultEntry[] = [];
+  for (const person of people) {
+    try {
+      const { candidateId } = await createCheckrInvitation({
+        applicationId: application.id,
+        personKey: person.personKey,
+        email: person.email,
+        fullName: person.name,
+      });
+      results.push({
+        personKey: person.personKey,
+        name: person.name,
+        candidateId,
+        status: "invitation_sent",
+      });
+    } catch (checkrErr: any) {
+      console.error(`Checkr invitation failed for ${person.name}:`, checkrErr.message);
+      results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
+    }
+  }
+
+  const aggregateStatus = computeAggregateStatus(results);
+  await supabase
+    .from("resident_applications")
+    .update({ checkr_results: results, background_check_status: aggregateStatus })
+    .eq("id", application.id);
+
+  const checkrInvited = results.length > 0 && results.every((r) => r.status !== "invitation_failed");
+
   try {
     if (process.env.RESEND_API_KEY) {
       await fetch("https://api.resend.com/emails", {
@@ -174,15 +216,30 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         body: JSON.stringify({
           from: "ARIA Agent <notifications@melyos.io>",
           to: process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com",
-          subject: `Application fee paid — background check needed for ${application?.full_name || "applicant"}`,
-          html: `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee.</p>
-                 <p>Please order their background check manually on Checkr's dashboard until the automated integration is connected.</p>`,
+          subject: checkrInvited
+            ? `Application fee paid — Checkr invitations sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
+            : `Application fee paid — some Checkr invitations FAILED for ${application?.full_name || "applicant"}, check manually`,
+          html: checkrInvited
+            ? `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee.</p>
+               <p>Checkr invitations were automatically sent for ${results.length} ${results.length === 1 ? "person" : "people"} on this application. You'll be notified again once results are in.</p>`
+            : `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee, but one or more Checkr invitations failed to send.</p>
+               <p>Check the Applications tab for details on who still needs to be invited manually.</p>`,
         }),
       });
     }
   } catch (emailErr) {
     console.error("Failed to send background check admin notification:", emailErr);
   }
+}
+
+function calculateAge(dateOfBirth: string): number | null {
+  const dob = new Date(dateOfBirth);
+  if (isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
 }
 
 async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
