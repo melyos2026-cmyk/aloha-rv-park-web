@@ -64,6 +64,7 @@ export async function createCheckrInvitation(params: {
     body: JSON.stringify({
       candidate_id: candidate.id,
       package: CHECKR_PACKAGE,
+      work_locations: [{ country: "US", state: params.state || "FL" }],
     }),
   });
 
