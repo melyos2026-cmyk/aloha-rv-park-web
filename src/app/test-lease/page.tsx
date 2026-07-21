@@ -114,6 +114,7 @@ export default function TestLeasePage() {
             ? Number(data.security_deposit_amount) || 0
             : 0,
           lease_start: data.lease_start_date || null,
+          lease_end: !data.month_to_month && data.lease_end_date ? data.lease_end_date : null,
           status: "Pending",
 
           filled_by: mode,
@@ -125,6 +126,8 @@ export default function TestLeasePage() {
 
           occupants: data.occupants,
           occupants_enabled: data.occupants_enabled,
+          vehicles: data.vehicles,
+          vehicles_enabled: data.vehicles_enabled,
 
           notice_days: Number(data.notice_days) || null,
           rent_payment_instructions: data.rent_payment_instructions,

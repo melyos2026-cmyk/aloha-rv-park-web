@@ -30,6 +30,8 @@ export interface LeaseApplicationData {
   space_id: string;
 
   lease_start_date: string;
+  month_to_month: boolean;
+  lease_end_date: string;
   notice_days: string;
 
   rent_amount: string;
@@ -274,6 +276,8 @@ const emptyForm: LeaseApplicationData = {
   property_address: "",
   space_id: "",
   lease_start_date: "",
+  month_to_month: true,
+  lease_end_date: "",
   notice_days: "15",
   rent_amount: "",
   rent_due_day: "1",
@@ -802,6 +806,39 @@ export default function LeaseApplicationForm({
             )}
           </div>
         </div>
+
+        
+        <label style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={data.month_to_month}
+            onChange={(e) =>
+              set("month_to_month", e.target.checked)
+            }
+          />
+          Month-to-month (no set end date)
+        </label>
+
+        {!data.month_to_month && (
+          <div style={styles.row}>
+            <div style={styles.field}>
+              <label style={styles.label}>Lease End / Checkout Date</label>
+              <input
+                type="date"
+                style={styles.input}
+                value={data.lease_end_date}
+                min={data.lease_start_date || new Date().toISOString().split("T")[0]}
+                onChange={(e) => set("lease_end_date", e.target.value)}
+              />
+              {mode === "applicant" &&
+                attemptedSubmit &&
+                !data.month_to_month &&
+                !data.lease_end_date && (
+                  <div style={styles.requiredNote}>Field required</div>
+                )}
+            </div>
+          </div>
+        )}
 
         {mode === "admin" ? (
           <>
