@@ -780,6 +780,7 @@ export default function LeaseApplicationForm({
               type="date"
               style={styles.input}
               value={data.lease_start_date}
+              min={new Date().toISOString().split("T")[0]}
               onChange={(e) => {
                 const newDate = e.target.value;
                 set("lease_start_date", newDate);
