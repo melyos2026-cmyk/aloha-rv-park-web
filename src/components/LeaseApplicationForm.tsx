@@ -51,6 +51,9 @@ export interface LeaseApplicationData {
   occupants_enabled: boolean;
   occupants: OccupantInfo[]; // up to 5 slots
 
+  vehicles_enabled: boolean;
+  vehicles: VehicleInfo[]; // up to 3 slots
+
   rv_make: string;
   rv_model: string;
   rv_year: string;
@@ -216,6 +219,21 @@ const emptyOccupants: OccupantInfo[] = [
   { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
 ];
 
+interface VehicleInfo {
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_year: string;
+  color: string;
+  license_plate: string;
+  license_state: string;
+}
+
+const emptyVehicles: VehicleInfo[] = [
+  { vehicle_make: "", vehicle_model: "", vehicle_year: "", color: "", license_plate: "", license_state: "" },
+  { vehicle_make: "", vehicle_model: "", vehicle_year: "", color: "", license_plate: "", license_state: "" },
+  { vehicle_make: "", vehicle_model: "", vehicle_year: "", color: "", license_plate: "", license_state: "" },
+];
+
 const defaultParkRules: ParkRule[] = [
   {
     id: "quiet_hours",
@@ -271,6 +289,8 @@ const emptyForm: LeaseApplicationData = {
   nsf_fee_amount: "",
   occupants_enabled: false,
   occupants: emptyOccupants,
+  vehicles_enabled: false,
+  vehicles: emptyVehicles,
   rv_make: "",
   rv_model: "",
   rv_year: "",
@@ -1252,6 +1272,115 @@ export default function LeaseApplicationForm({
                         License # and photo are required for adult occupants.
                       </div>
                     )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <label style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={data.vehicles_enabled}
+            onChange={(e) => set("vehicles_enabled", e.target.checked)}
+          />
+          I have a vehicle/car that will be parked at the property
+        </label>
+        {data.vehicles_enabled && (
+          <div>
+            {[0, 1, 2].map((i) => {
+              const veh = data.vehicles[i] ?? {
+                vehicle_make: "",
+                vehicle_model: "",
+                vehicle_year: "",
+                color: "",
+                license_plate: "",
+                license_state: "",
+              };
+              return (
+                <div
+                  key={i}
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 8,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={styles.row}>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Vehicle {i + 1} Make</label>
+                      <input
+                        style={styles.input}
+                        value={veh.vehicle_make}
+                        onChange={(e) => {
+                          const updated = [...data.vehicles];
+                          updated[i] = { ...veh, vehicle_make: e.target.value };
+                          set("vehicles", updated);
+                        }}
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Model</label>
+                      <input
+                        style={styles.input}
+                        value={veh.vehicle_model}
+                        onChange={(e) => {
+                          const updated = [...data.vehicles];
+                          updated[i] = { ...veh, vehicle_model: e.target.value };
+                          set("vehicles", updated);
+                        }}
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Year</label>
+                      <input
+                        style={styles.input}
+                        value={veh.vehicle_year}
+                        onChange={(e) => {
+                          const updated = [...data.vehicles];
+                          updated[i] = { ...veh, vehicle_year: e.target.value };
+                          set("vehicles", updated);
+                        }}
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Color</label>
+                      <input
+                        style={styles.input}
+                        value={veh.color}
+                        onChange={(e) => {
+                          const updated = [...data.vehicles];
+                          updated[i] = { ...veh, color: e.target.value };
+                          set("vehicles", updated);
+                        }}
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>License Plate #</label>
+                      <input
+                        style={styles.input}
+                        value={veh.license_plate}
+                        onChange={(e) => {
+                          const updated = [...data.vehicles];
+                          updated[i] = { ...veh, license_plate: e.target.value };
+                          set("vehicles", updated);
+                        }}
+                      />
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>License State</label>
+                      <input
+                        style={styles.input}
+                        value={veh.license_state}
+                        onChange={(e) => {
+                          const updated = [...data.vehicles];
+                          updated[i] = { ...veh, license_state: e.target.value };
+                          set("vehicles", updated);
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               );
             })}

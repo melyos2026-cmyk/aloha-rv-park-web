@@ -216,13 +216,13 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         body: JSON.stringify({
           from: "MelyOS <onboarding@resend.dev>",
           to: process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com",
-          subject: checkrInvited
-            ? `Application fee paid — Checkr invitations sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
-            : `Application fee paid — some Checkr invitations FAILED for ${application?.full_name || "applicant"}, check manually`,
+         subject: checkrInvited
+            ? `Background check application sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
+            : `Application fee paid — background check FAILED to send for ${application?.full_name || "applicant"}, check manually`,
           html: checkrInvited
             ? `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee.</p>
-               <p>Checkr invitations were automatically sent for ${results.length} ${results.length === 1 ? "person" : "people"} on this application. You'll be notified again once results are in.</p>`
-            : `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee, but one or more Checkr invitations failed to send.</p>
+               <p>The background check application has been sent for ${results.length} ${results.length === 1 ? "person" : "people"} on this application. You'll be notified again once results are in.</p>`
+            : `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee, but the background check failed to send.</p>
                <p>Check the Applications tab for details on who still needs to be invited manually.</p>`,
         }),
       });
