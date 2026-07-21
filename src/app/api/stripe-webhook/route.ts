@@ -207,14 +207,14 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
 
   try {
     if (process.env.RESEND_API_KEY) {
-      await fetch("https://api.resend.com/emails", {
+      const emailRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "ARIA Agent <notifications@melyos.io>",
+          from: "MelyOS <onboarding@resend.dev>",
           to: process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com",
           subject: checkrInvited
             ? `Application fee paid — Checkr invitations sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
@@ -226,10 +226,19 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
                <p>Check the Applications tab for details on who still needs to be invited manually.</p>`,
         }),
       });
+      const emailJson = await emailRes.json();
+      if (!emailRes.ok) {
+        console.error("Resend admin email failed:", emailJson);
+      } else {
+        console.log("Admin notification email sent:", emailJson.id);
+      }
+    } else {
+      console.log("RESEND_API_KEY not set — skipping admin notification email.");
     }
   } catch (emailErr) {
     console.error("Failed to send background check admin notification:", emailErr);
   }
+}
 }
 
 function calculateAge(dateOfBirth: string): number | null {

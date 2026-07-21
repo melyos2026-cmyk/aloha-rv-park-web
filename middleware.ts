@@ -26,6 +26,6 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api/stripe-webhook|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/stripe-webhook|api/checkr-webhook|_next/static|_next/image|favicon.ico).*)",
   ],
 };
