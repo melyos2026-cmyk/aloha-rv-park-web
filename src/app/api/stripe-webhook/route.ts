@@ -239,7 +239,6 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     console.error("Failed to send background check admin notification:", emailErr);
   }
 }
-}
 
 function calculateAge(dateOfBirth: string): number | null {
   const dob = new Date(dateOfBirth);
