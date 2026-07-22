@@ -649,6 +649,19 @@ export default function LeaseApplicationForm({
     data.month_to_month ||
     (stayNights !== null && stayNights > backgroundCheckThresholdDays);
 
+  const applicationFeeTotalForModal =
+    (Number(data.application_fee_primary) || 0) +
+    (Number(data.application_fee_per_additional) || 0) * additionalAdultsCount;
+  // Mirrors apply/page.tsx's stayAmountForCheckout: short stays (no
+  // background check) fold the stay total into the same Stripe checkout
+  // as the application fee, since there's no separate fee/BG-check section
+  // shown for them in the form.
+  const stayAmountForModal =
+    !backgroundCheckRequired && stayNights !== null
+      ? Number(data.rent_amount) || 0
+      : 0;
+  const totalChargeForModal = applicationFeeTotalForModal + stayAmountForModal;
+
   const lotAvailabilityConflict =
     mode === "applicant" &&
     !!selectedLot &&
@@ -661,6 +674,14 @@ export default function LeaseApplicationForm({
         ? new Date("2099-12-31T00:00:00")
         : new Date(data.lease_end_date + "T00:00:00")
     );
+
+  // The typed signature must match the primary applicant's name exactly
+  // (case/extra-whitespace insensitive) — no partial or nickname matches.
+  const fullTenantName = `${tenantFirstName} ${tenantLastName}`.trim();
+  const normalizeName = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
+  const signatureMatchesName =
+    !data.tenant_signature_name ||
+    normalizeName(data.tenant_signature_name) === normalizeName(fullTenantName);
 
   const canSubmit =
     mode === "admin"
@@ -678,6 +699,7 @@ export default function LeaseApplicationForm({
         !primaryApplicantUnderage &&
         !adultOccupantsMissingLicense &&
         data.tenant_signature_name &&
+        signatureMatchesName &&
         data.tenant_signature_agreed &&
         data.park_rules_acknowledged &&
         (!backgroundCheckRequired || data.background_check_consent_given) &&
@@ -2270,13 +2292,22 @@ export default function LeaseApplicationForm({
           <div style={styles.field}>
             <label style={styles.label}>Type your full legal name</label>
             <input
-              style={styles.input}
+              style={{
+                ...styles.input,
+                borderColor: !signatureMatchesName ? "#c00" : "#ccc",
+              }}
               value={data.tenant_signature_name}
               onChange={(e) => set("tenant_signature_name", e.target.value)}
               placeholder="e.g. John A. Smith"
             />
             {attemptedSubmit && !data.tenant_signature_name && (
               <div style={styles.requiredNote}>Field required</div>
+            )}
+            {!!data.tenant_signature_name && !signatureMatchesName && (
+              <div style={styles.requiredNote}>
+                The signature must exactly match the applicant name on file:
+                "{fullTenantName}"
+              </div>
             )}
           </div>
           {data.tenant_signature_name && (
@@ -2343,7 +2374,7 @@ export default function LeaseApplicationForm({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.5)",
+            background: "rgba(0,0,0,0.55)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2354,59 +2385,138 @@ export default function LeaseApplicationForm({
           <div
             style={{
               background: "#fff",
-              borderRadius: 12,
-              padding: 28,
-              maxWidth: 440,
+              borderRadius: 14,
+              padding: 0,
+              maxWidth: 460,
               width: "100%",
+              overflow: "hidden",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
             }}
           >
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>
-              Before you continue
+            <div style={{ padding: "24px 28px 4px" }}>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 14 }}>
+                Before You Submit
+              </div>
+
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#374151",
+                  lineHeight: 1.55,
+                  marginBottom: 12,
+                }}
+              >
+                Double-check that you've listed{" "}
+                <strong>everyone who will be living on the lot</strong> —
+                every adult and every child.
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#991b1b",
+                  fontWeight: 600,
+                  lineHeight: 1.5,
+                  border: "1px solid #fecaca",
+                  background: "#fef2f2",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  marginBottom: 16,
+                }}
+              >
+                Go to "Occupants, RV Info &amp; Utilities" → "Additional
+                people besides the primary applicant" if anyone is missing.
+              </div>
             </div>
-            <p style={{ fontSize: 14, color: "#333", lineHeight: 1.5 }}>
-              Please make sure you've included{" "}
-              <strong>every adult and minor</strong> who will be living on
-              the lot with you.
-            </p>
-            <p
-              style={{
-                fontSize: 14,
-                color: "#c00",
-                fontWeight: 700,
-                lineHeight: 1.5,
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                borderRadius: 8,
-                padding: "10px 12px",
-              }}
-            >
-              Occupants, RV Info &amp; Utilities → "Additional people besides
-              the primary applicant"
-            </p>
-            <p style={{ fontSize: 13, color: "#666", marginBottom: 20 }}>
-              If someone is missing, cancel and add them before submitting.
-            </p>
+
             <div
               style={{
-                background: "#f7f7f7",
-                borderRadius: 8,
-                padding: "12px 14px",
-                marginBottom: 20,
-                fontSize: 14,
+                margin: "0 28px 20px",
+                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                overflow: "hidden",
               }}
             >
-              You will be charged{" "}
-              <strong>
-                $
-                {(
-                  (Number(data.application_fee_primary) || 0) +
-                  (Number(data.application_fee_per_additional) || 0) *
-                    additionalAdultsCount
-                ).toFixed(2)}
-              </strong>{" "}
-              for the application fee &amp; background check.
+              <div
+                style={{
+                  padding: "14px 16px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#6b7280",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  borderBottom: "1px solid #e5e7eb",
+                }}
+              >
+                Charged Today
+              </div>
+              <div style={{ padding: "14px 16px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 14,
+                    color: "#111",
+                    marginBottom: stayAmountForModal > 0 ? 8 : 4,
+                  }}
+                >
+                  <span>
+                    Application Fee
+                    {backgroundCheckRequired ? " & Background Check" : ""}
+                  </span>
+                  <strong>${applicationFeeTotalForModal.toFixed(2)}</strong>
+                </div>
+                {stayAmountForModal > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span>
+                      RV Lot Stay
+                      {data.lease_start_date && data.lease_end_date
+                        ? ` (${data.lease_start_date} \u2013 ${data.lease_end_date})`
+                        : ""}
+                    </span>
+                    <strong>${stayAmountForModal.toFixed(2)}</strong>
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#6b7280",
+                    marginTop: 6,
+                    marginBottom: 12,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {stayAmountForModal > 0
+                    ? "The application fee is separate from your stay charge — both are billed together in one payment."
+                    : backgroundCheckRequired
+                    ? "This fee is separate from your monthly rent, which is billed after your lease is approved."
+                    : "This fee is separate from your rent, which will be billed after your lease is approved."}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderTop: "1px solid #e5e7eb",
+                    paddingTop: 10,
+                    fontSize: 15,
+                  }}
+                >
+                  <strong>Total Due Today</strong>
+                  <strong>${totalChargeForModal.toFixed(2)}</strong>
+                </div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
+
+            <div style={{ padding: "0 28px 24px", display: "flex", gap: 10 }}>
               <button
                 onClick={() => setShowConfirmModal(false)}
                 style={{
@@ -2421,7 +2531,7 @@ export default function LeaseApplicationForm({
                   cursor: "pointer",
                 }}
               >
-                ✕ Go Back &amp; Check
+                Go Back &amp; Check
               </button>
               <button
                 onClick={() => {
