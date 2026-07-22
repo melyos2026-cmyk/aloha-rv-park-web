@@ -124,6 +124,12 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     return;
   }
 
+  // Defaults to true so any older/other caller of this checkout route
+  // (without this metadata) keeps the pre-existing always-run-Checkr behavior.
+  const requiresBackgroundCheck =
+    session.metadata?.requires_background_check !== "false";
+  const stayAmount = Number(session.metadata?.stay_amount) || 0;
+
   const paymentIntentId =
     typeof session.payment_intent === "string"
       ? session.payment_intent
@@ -135,7 +141,9 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       application_fee_paid: true,
       application_fee_paid_at: new Date().toISOString(),
       application_fee_stripe_payment_intent_id: paymentIntentId,
-      background_check_status: "payment_confirmed",
+      background_check_status: requiresBackgroundCheck
+        ? "payment_confirmed"
+        : "not_required",
     })
     .eq("id", applicationId)
     .select("id, full_name, email, application_fee_total, company_id, occupants")
@@ -147,8 +155,40 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   }
 
   console.log(
-    `Application fee paid for ${application?.full_name} ($${application?.application_fee_total}). Background check status: payment_confirmed.`
+    `Application fee paid for ${application?.full_name} ($${application?.application_fee_total}).` +
+      (requiresBackgroundCheck
+        ? " Background check status: payment_confirmed."
+        : ` No background check required for this stay (short stay${stayAmount > 0 ? `, $${stayAmount.toFixed(2)} stay charge included` : ""}).`)
   );
+
+  if (!requiresBackgroundCheck) {
+    try {
+      if (process.env.RESEND_API_KEY) {
+        const emailRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "MelyOS <onboarding@resend.dev>",
+            to: process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com",
+            subject: `Short-stay application fee${stayAmount > 0 ? " + stay charge" : ""} paid for ${application?.full_name || "applicant"} — no background check needed`,
+            html: `<p>${application?.full_name || "An applicant"} just paid their application fee${
+              stayAmount > 0 ? ` and $${stayAmount.toFixed(2)} stay charge` : ""
+            } for a short stay. No background check was required.</p>`,
+          }),
+        });
+        const emailJson = await emailRes.json();
+        if (!emailRes.ok) {
+          console.error("Resend admin email failed:", emailJson);
+        }
+      }
+    } catch (emailErr) {
+      console.error("Failed to send short-stay admin notification:", emailErr);
+    }
+    return;
+  }
 
   const people: { personKey: string; name: string; email: string }[] = [];
 

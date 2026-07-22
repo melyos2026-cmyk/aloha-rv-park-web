@@ -2136,9 +2136,13 @@ export default function LeaseApplicationForm({
       </div>
 
       {/* Application Fee & Background Check */}
-      {(mode === "admin" || hasDecidedTerm) && (
+      {(mode === "admin" || (hasDecidedTerm && backgroundCheckRequired)) && (
         <div style={styles.card}>
-          <div style={styles.sectionTitle}>Application Fee &amp; Background Check</div>
+          <div style={styles.sectionTitle}>
+            {mode === "applicant" && data.month_to_month
+              ? "Background Check"
+              : "Application Fee & Background Check"}
+          </div>
 
           {isMasterAdmin ? (
             <>
@@ -2188,6 +2192,12 @@ export default function LeaseApplicationForm({
                 </div>
               </div>
             </>
+          ) : mode === "applicant" && data.month_to_month ? (
+            <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
+              Every applicant must pass a background check before the lease is
+              approved. The application fee will be charged separately at
+              checkout.
+            </p>
           ) : backgroundCheckRequired ? (
             <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
               Every applicant must pass a background check before the lease is
@@ -2202,29 +2212,31 @@ export default function LeaseApplicationForm({
             </p>
           )}
 
-          <div
-            style={{
-              background: "#f7f7f7",
-              borderRadius: 8,
-              padding: 14,
-              marginTop: 4,
-              marginBottom: 16,
-              fontSize: 14,
-            }}
-          >
-            <strong>Total Application Fee: $
-              {(
-                (Number(data.application_fee_primary) || 0) +
-                (Number(data.application_fee_per_additional) || 0) *
-                  additionalAdultsCount
-              ).toFixed(2)}
-            </strong>
-            <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
-              ${data.application_fee_primary} (primary applicant) + $
-              {data.application_fee_per_additional} x {additionalAdultsCount}{" "}
-              additional adult(s) age 18+ listed in Occupants above
+          {!(mode === "applicant" && data.month_to_month) && (
+            <div
+              style={{
+                background: "#f7f7f7",
+                borderRadius: 8,
+                padding: 14,
+                marginTop: 4,
+                marginBottom: 16,
+                fontSize: 14,
+              }}
+            >
+              <strong>Total Application Fee: $
+                {(
+                  (Number(data.application_fee_primary) || 0) +
+                  (Number(data.application_fee_per_additional) || 0) *
+                    additionalAdultsCount
+                ).toFixed(2)}
+              </strong>
+              <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+                ${data.application_fee_primary} (primary applicant) + $
+                {data.application_fee_per_additional} x {additionalAdultsCount}{" "}
+                additional adult(s) age 18+ listed in Occupants above
+              </div>
             </div>
-          </div>
+          )}
 
           {mode === "applicant" && backgroundCheckRequired && (
             <label style={styles.checkboxRow}>

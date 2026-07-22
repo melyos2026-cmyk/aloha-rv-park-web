@@ -133,6 +133,30 @@ function ApplyPageInner() {
         (Number(data.application_fee_primary) || 0) +
         (Number(data.application_fee_per_additional) || 0) * additionalCount;
 
+      // Mirrors LeaseApplicationForm's own backgroundCheckRequired logic:
+      // month-to-month always requires one; a fixed-term stay only requires
+      // one once it's longer than the admin's configured threshold.
+      const stayNights =
+        !data.month_to_month && data.lease_start_date && data.lease_end_date
+          ? Math.round(
+              (new Date(data.lease_end_date + "T00:00:00").getTime() -
+                new Date(data.lease_start_date + "T00:00:00").getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          : null;
+      const backgroundCheckThresholdDays =
+        Number(data.background_check_threshold_days) || 15;
+      const backgroundCheckRequired =
+        data.month_to_month ||
+        (stayNights !== null && stayNights > backgroundCheckThresholdDays);
+      // For short stays (no background check), the application never showed
+      // a separate fee/BG-check section — instead the application fee gets
+      // folded into this same Stripe checkout alongside the stay total.
+      const stayAmountForCheckout =
+        !backgroundCheckRequired && stayNights !== null
+          ? Number(data.rent_amount) || 0
+          : 0;
+
       const parkSharePrimary = 10.0;
       const parkSharePerAdditional = 5.0;
       const parkShareTotal =
@@ -255,7 +279,13 @@ function ApplyPageInner() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ applicationId }),
+          body: JSON.stringify({
+            applicationId,
+            stayAmount: stayAmountForCheckout || undefined,
+            stayStartDate: data.lease_start_date || undefined,
+            stayEndDate: data.lease_end_date || undefined,
+            requiresBackgroundCheck: backgroundCheckRequired,
+          }),
         }
       );
       const json = await res.json();
