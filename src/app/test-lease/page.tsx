@@ -47,7 +47,7 @@ export default function TestLeasePage() {
 
         supabase
           .from("rv_lots_public")
-          .select("id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price")
+          .select("id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price, daily_rate, weekly_rate")
           .eq("company_id", data.id)
           .order("lot_name")
           .then(({ data: lotData, error: lotError }) => {

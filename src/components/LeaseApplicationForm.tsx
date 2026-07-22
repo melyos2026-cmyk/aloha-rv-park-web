@@ -661,15 +661,17 @@ export default function LeaseApplicationForm({
                   if (lot) {
                     set("property_address", lot.lot_name);
                     if (data.use_seasonal_pricing) {
-                      const seasonal = getSeasonalRent(
+                      const computed = calculateLeaseRent(
                         lot,
                         data.lease_start_date,
+                        data.lease_end_date,
+                        data.month_to_month,
                         highSeasonStartMonthDay,
                         highSeasonEndMonthDay
                       );
                       set(
                         "rent_amount",
-                        String(seasonal ?? lot.base_price ?? "")
+                        String(computed ?? lot.base_price ?? "")
                       );
                     } else {
                       set("rent_amount", String(lot.base_price ?? ""));
