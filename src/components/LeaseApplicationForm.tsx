@@ -651,10 +651,19 @@ export default function LeaseApplicationForm({
     data.month_to_month ||
     (stayNights !== null && stayNights > backgroundCheckThresholdDays);
 
+  // $2.50 is the actual application/processing fee, always charged.
+  // $75 primary / $50 per-additional-adult is the BACKGROUND CHECK fee —
+  // only charged when a background check actually applies to this stay.
+  const applicationProcessingFee = Number(data.application_processing_fee) || 0;
+  const backgroundCheckPrimaryFee = Number(data.application_fee_primary) || 0;
+  const backgroundCheckPerAdditionalFee =
+    Number(data.application_fee_per_additional) || 0;
+  const backgroundCheckFeeTotal = backgroundCheckRequired
+    ? backgroundCheckPrimaryFee +
+      backgroundCheckPerAdditionalFee * additionalAdultsCount
+    : 0;
   const applicationFeeTotalForModal =
-    (Number(data.application_fee_primary) || 0) +
-    (Number(data.application_fee_per_additional) || 0) * additionalAdultsCount +
-    (Number(data.application_processing_fee) || 0);
+    applicationProcessingFee + backgroundCheckFeeTotal;
   // Mirrors apply/page.tsx's stayAmountForCheckout: short stays (no
   // background check) fold the stay total into the same Stripe checkout
   // as the application fee, since there's no separate fee/BG-check section
@@ -2205,7 +2214,9 @@ export default function LeaseApplicationForm({
           {isMasterAdmin ? (
             <div style={styles.row}>
               <div style={styles.field}>
-                <label style={styles.label}>Primary Applicant Fee ($)</label>
+                <label style={styles.label}>
+                  Background Check Fee - Primary Applicant ($)
+                </label>
                 <input
                   type="number"
                   style={styles.input}
@@ -2216,7 +2227,9 @@ export default function LeaseApplicationForm({
                 />
               </div>
               <div style={styles.field}>
-                <label style={styles.label}>Fee per Additional Adult ($)</label>
+                <label style={styles.label}>
+                  Background Check Fee - Additional Adult ($)
+                </label>
                 <input
                   type="number"
                   style={styles.input}
@@ -2245,21 +2258,57 @@ export default function LeaseApplicationForm({
               </div>
             </div>
           ) : mode === "applicant" && data.month_to_month ? (
-            <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
-              Every applicant must pass a background check before the lease is
-              approved. The application fee will be charged separately at
-              checkout.
-            </p>
+            <>
+              <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
+                Every applicant must pass a background check before the lease
+                is approved. The $
+                {Number(data.application_processing_fee || 0).toFixed(2)}{" "}
+                application fee and the background check fee below will be
+                charged together at checkout.
+              </p>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#991b1b",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                }}
+              >
+                Every adult (18+) planning to live long-term on the lot must
+                be registered and background-checked. Unregistered occupants
+                can result in lease cancellation and forfeiture of all
+                non-refundable fees already paid.
+              </p>
+            </>
           ) : backgroundCheckRequired ? (
-            <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
-              Every applicant must pass a background check before the lease is
-              approved. This fee covers that check and is paid by the
-              applicant.
-            </p>
+            <>
+              <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
+                Every applicant must pass a background check before the lease
+                is approved. The fees below cover the application processing
+                and background check, and are paid by the applicant.
+              </p>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#991b1b",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                }}
+              >
+                Every adult (18+) planning to live long-term on the lot must
+                be registered and background-checked. Unregistered occupants
+                can result in lease cancellation and forfeiture of all
+                non-refundable fees already paid.
+              </p>
+            </>
           ) : (
             <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
-              No background check is required for this stay length. The
-              application fee below will be added to your final invoice for
+              No background check is required for this stay length. Only the
+              application fee below applies, added to your final invoice for
               the stay.
             </p>
           )}
@@ -2275,19 +2324,47 @@ export default function LeaseApplicationForm({
                 fontSize: 14,
               }}
             >
-              <strong>Total Application Fee: $
-                {(
-                  (Number(data.application_fee_primary) || 0) +
-                  (Number(data.application_fee_per_additional) || 0) *
-                    additionalAdultsCount +
-                  (Number(data.application_processing_fee) || 0)
-                ).toFixed(2)}
-              </strong>
-              <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
-                ${data.application_fee_primary} (primary applicant) + $
-                {data.application_fee_per_additional} x {additionalAdultsCount}{" "}
-                additional adult(s) age 18+ listed in Occupants above + $
-                {data.application_processing_fee} processing fee
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  marginBottom: 4,
+                }}
+              >
+                <span>Application Fee</span>
+                <strong>${applicationProcessingFee.toFixed(2)}</strong>
+              </div>
+              {backgroundCheckRequired && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: 4,
+                  }}
+                >
+                  <span>
+                    Background Check (${backgroundCheckPrimaryFee.toFixed(2)}{" "}
+                    primary
+                    {additionalAdultsCount > 0
+                      ? ` + $${backgroundCheckPerAdditionalFee.toFixed(2)} x ${additionalAdultsCount} additional adult${
+                          additionalAdultsCount > 1 ? "s" : ""
+                        })`
+                      : ")"}
+                  </span>
+                  <strong>${backgroundCheckFeeTotal.toFixed(2)}</strong>
+                </div>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  borderTop: "1px solid #ddd",
+                  paddingTop: 6,
+                  marginTop: 4,
+                }}
+              >
+                <strong>Total</strong>
+                <strong>${applicationFeeTotalForModal.toFixed(2)}</strong>
               </div>
             </div>
           )}
@@ -2447,9 +2524,19 @@ export default function LeaseApplicationForm({
                   marginBottom: 12,
                 }}
               >
-                Double-check that you've listed{" "}
-                <strong>everyone who will be living on the lot</strong> —
-                every adult and every child.
+                {backgroundCheckRequired ? (
+                  <>
+                    Double-check that you've listed{" "}
+                    <strong>everyone who will be living on the lot</strong> —
+                    every adult and every child.
+                  </>
+                ) : (
+                  <>
+                    Double-check that you've listed{" "}
+                    <strong>everyone who will be staying on this stay</strong>{" "}
+                    — every adult and every child.
+                  </>
+                )}
               </div>
               <div
                 style={{
@@ -2492,21 +2579,6 @@ export default function LeaseApplicationForm({
                 Charged Today
               </div>
               <div style={{ padding: "14px 16px" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 14,
-                    color: "#111",
-                    marginBottom: stayAmountForModal > 0 ? 8 : 4,
-                  }}
-                >
-                  <span>
-                    Application Fee
-                    {backgroundCheckRequired ? " & Background Check" : ""}
-                  </span>
-                  <strong>${applicationFeeTotalForModal.toFixed(2)}</strong>
-                </div>
                 {stayAmountForModal > 0 && (
                   <div
                     style={{
@@ -2514,7 +2586,7 @@ export default function LeaseApplicationForm({
                       justifyContent: "space-between",
                       fontSize: 14,
                       color: "#111",
-                      marginBottom: 4,
+                      marginBottom: 8,
                     }}
                   >
                     <span>
@@ -2526,21 +2598,89 @@ export default function LeaseApplicationForm({
                     <strong>${stayAmountForModal.toFixed(2)}</strong>
                   </div>
                 )}
+                {backgroundCheckRequired && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>Background Check (Primary Applicant)</span>
+                    <strong>${backgroundCheckPrimaryFee.toFixed(2)}</strong>
+                  </div>
+                )}
+                {backgroundCheckRequired && additionalAdultsCount > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>
+                      {additionalAdultsCount === 1
+                        ? "Second Background Check"
+                        : `Additional Background Checks x${additionalAdultsCount}`}
+                    </span>
+                    <strong>
+                      $
+                      {(
+                        backgroundCheckPerAdditionalFee * additionalAdultsCount
+                      ).toFixed(2)}
+                    </strong>
+                  </div>
+                )}
                 <div
                   style={{
-                    fontSize: 12,
-                    color: "#6b7280",
-                    marginTop: 6,
-                    marginBottom: 12,
-                    lineHeight: 1.4,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 14,
+                    color: "#111",
+                    marginBottom: 4,
                   }}
                 >
-                  {stayAmountForModal > 0
-                    ? "The application fee is separate from your stay charge — both are billed together in one payment."
-                    : backgroundCheckRequired
-                    ? "This fee is separate from your monthly rent, which is billed after your lease is approved."
-                    : "This fee is separate from your rent, which will be billed after your lease is approved."}
+                  <span>Application Fee</span>
+                  <strong>${applicationProcessingFee.toFixed(2)}</strong>
                 </div>
+                {stayAmountForModal === 0 && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#6b7280",
+                      marginTop: 6,
+                      marginBottom: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {backgroundCheckRequired
+                      ? "These fees are separate from your monthly rent, which is billed after your lease is approved."
+                      : "This fee is separate from your rent, which will be billed after your lease is approved."}
+                  </div>
+                )}
+                {backgroundCheckRequired && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#991b1b",
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: 6,
+                      padding: "8px 10px",
+                      marginBottom: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Every adult (18+) planning to live long-term on the lot
+                    must be registered and background-checked. Unregistered
+                    occupants can result in lease cancellation and forfeiture
+                    of all non-refundable fees already paid.
+                  </div>
+                )}
                 <div
                   style={{
                     display: "flex",

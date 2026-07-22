@@ -69,6 +69,8 @@ export async function POST(req: Request) {
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
 
+    const requiresBgCheck = requiresBackgroundCheck !== false;
+
     if (feeAmount > 0) {
       lineItems.push({
         quantity: 1,
@@ -76,9 +78,9 @@ export async function POST(req: Request) {
           currency: "usd",
           unit_amount: Math.round(feeAmount * 100),
           product_data: {
-            name: stayAmountNum > 0
-              ? "Rental Application Fee"
-              : "Rental Application Fee & Background Check",
+            name: requiresBgCheck
+              ? "Rental Application Fee & Background Check"
+              : "Rental Application Fee",
             description: smsFee > 0
               ? `Application fee for ${application.full_name || "applicant"} (includes $${smsFee.toFixed(2)} SMS delivery fee)`
               : `Application fee for ${application.full_name || "applicant"}`,

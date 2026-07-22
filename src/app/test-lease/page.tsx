@@ -92,15 +92,35 @@ export default function TestLeasePage() {
     setResult(null);
     try {
       const additionalCount = Number(data.application_fee_additional_count) || 0;
+
+      const stayNights =
+        !data.month_to_month && data.lease_start_date && data.lease_end_date
+          ? Math.round(
+              (new Date(data.lease_end_date + "T00:00:00").getTime() -
+                new Date(data.lease_start_date + "T00:00:00").getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          : null;
+      const backgroundCheckThresholdDays =
+        Number(data.background_check_threshold_days) || 15;
+      const backgroundCheckRequired =
+        data.month_to_month ||
+        (stayNights !== null && stayNights > backgroundCheckThresholdDays);
+
+      const applicationProcessingFee =
+        Number(data.application_processing_fee) || 0;
+      const backgroundCheckFeeTotal = backgroundCheckRequired
+        ? (Number(data.application_fee_primary) || 0) +
+          (Number(data.application_fee_per_additional) || 0) * additionalCount
+        : 0;
       const applicationFeeTotal =
-        (Number(data.application_fee_primary) || 0) +
-        (Number(data.application_fee_per_additional) || 0) * additionalCount +
-        (Number(data.application_processing_fee) || 0);
+        applicationProcessingFee + backgroundCheckFeeTotal;
 
       const parkSharePrimary = 10.0;
       const parkSharePerAdditional = 5.0;
-      const parkShareTotal =
-        parkSharePrimary + parkSharePerAdditional * additionalCount;
+      const parkShareTotal = backgroundCheckRequired
+        ? parkSharePrimary + parkSharePerAdditional * additionalCount
+        : 0;
 
       const [firstName, ...rest] = data.tenant_names.split(" ");
 

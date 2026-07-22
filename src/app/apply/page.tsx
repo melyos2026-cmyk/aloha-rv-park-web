@@ -129,10 +129,6 @@ function ApplyPageInner() {
     try {
       const additionalCount =
         Number(data.application_fee_additional_count) || 0;
-      const applicationFeeTotal =
-        (Number(data.application_fee_primary) || 0) +
-        (Number(data.application_fee_per_additional) || 0) * additionalCount +
-        (Number(data.application_processing_fee) || 0);
 
       // Mirrors LeaseApplicationForm's own backgroundCheckRequired logic:
       // month-to-month always requires one; a fixed-term stay only requires
@@ -150,6 +146,20 @@ function ApplyPageInner() {
       const backgroundCheckRequired =
         data.month_to_month ||
         (stayNights !== null && stayNights > backgroundCheckThresholdDays);
+
+      // $2.50 application/processing fee is always charged. The $75
+      // primary / $50 per-additional-adult fee is the BACKGROUND CHECK
+      // fee — only charged (and only split with the park) when a
+      // background check actually applies to this stay.
+      const applicationProcessingFee =
+        Number(data.application_processing_fee) || 0;
+      const backgroundCheckFeeTotal = backgroundCheckRequired
+        ? (Number(data.application_fee_primary) || 0) +
+          (Number(data.application_fee_per_additional) || 0) * additionalCount
+        : 0;
+      const applicationFeeTotal =
+        applicationProcessingFee + backgroundCheckFeeTotal;
+
       // For short stays (no background check), the application never showed
       // a separate fee/BG-check section — instead the application fee gets
       // folded into this same Stripe checkout alongside the stay total.
@@ -160,8 +170,9 @@ function ApplyPageInner() {
 
       const parkSharePrimary = 10.0;
       const parkSharePerAdditional = 5.0;
-      const parkShareTotal =
-        parkSharePrimary + parkSharePerAdditional * additionalCount;
+      const parkShareTotal = backgroundCheckRequired
+        ? parkSharePrimary + parkSharePerAdditional * additionalCount
+        : 0;
 
       const applicationId = invitationId || crypto.randomUUID();
 
