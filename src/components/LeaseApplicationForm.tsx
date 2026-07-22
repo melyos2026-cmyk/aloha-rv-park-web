@@ -859,9 +859,23 @@ export default function LeaseApplicationForm({
           <input
             type="checkbox"
             checked={data.month_to_month}
-            onChange={(e) =>
-              set("month_to_month", e.target.checked)
-            }
+            onChange={(e) => {
+              const checked = e.target.checked;
+              set("month_to_month", checked);
+              if (selectedLot && data.use_seasonal_pricing) {
+                const computed = calculateLeaseRent(
+                  selectedLot,
+                  data.lease_start_date,
+                  data.lease_end_date,
+                  checked,
+                  highSeasonStartMonthDay,
+                  highSeasonEndMonthDay
+                );
+                if (computed !== null) {
+                  set("rent_amount", String(computed));
+                }
+              }
+            }}
           />
           Month-to-month (no set end date)
         </label>
