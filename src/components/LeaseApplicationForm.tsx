@@ -1859,6 +1859,10 @@ export default function LeaseApplicationForm({
                       set("parking_sticker_name", e.target.value)
                     }
                   />
+                  <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+                    The parking sticker and private gate clicker are given
+                    out at the office after the application is approved.
+                  </div>
                 </div>
                 <label style={styles.checkboxRow}>
                   <input
@@ -1960,6 +1964,12 @@ export default function LeaseApplicationForm({
                         )})`
                   }.`
                 : "Not provided."}
+              {data.parking_provided && (
+                <div style={{ fontSize: 12, color: "#777", marginTop: 2 }}>
+                  The parking sticker and private gate clicker are given out
+                  at the office after the application is approved.
+                </div>
+              )}
             </div>
             <div>
               <strong>Pets:</strong>{" "}
