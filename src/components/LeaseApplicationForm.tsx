@@ -1,4 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  getLotBlockedRanges,
+  isRangeAvailable,
+  type BlockedRange,
+} from "@/services/lotAvailability";
 
 /**
  * LeaseApplicationForm
@@ -221,10 +226,15 @@ function calculateLeaseRent(
   highSeasonStartMonthDay?: string,
   highSeasonEndMonthDay?: string
 ): number | null {
-  if (monthToMonth || !endDate) {
+  if (!startDate) return null;
+  if (monthToMonth) {
     return getSeasonalRent(lot, startDate, highSeasonStartMonthDay, highSeasonEndMonthDay);
   }
-  if (!startDate) return null;
+  if (!endDate) {
+    // Undecided: applicant hasn't picked month-to-month nor a real end date yet.
+    // Don't fall back to seasonal pricing — no banner should show until they decide.
+    return null;
+  }
   const start = new Date(startDate + "T00:00:00");
   const end = new Date(endDate + "T00:00:00");
   const nights = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
@@ -301,7 +311,7 @@ const emptyForm: LeaseApplicationData = {
   property_address: "",
   space_id: "",
   lease_start_date: "",
-  month_to_month: true,
+  month_to_month: false,
   lease_end_date: "",
   notice_days: "15",
   rent_amount: "",
@@ -497,6 +507,39 @@ export default function LeaseApplicationForm({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!data.space_id) {
+      setBlockedRanges([]);
+      return;
+    }
+    setCheckingAvailability(true);
+    getLotBlockedRanges(data.space_id)
+      .then((ranges) => {
+        if (!cancelled) setBlockedRanges(ranges);
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingAvailability(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.space_id]);
+
+  // tenant_names stays the underlying stored/submitted field (unchanged
+  // elsewhere in the app); these just split the UI into two inputs and
+  // recombine on every change.
+  const initialTenantNames = initialData?.tenant_names ?? "";
+  const [tenantFirstName, setTenantFirstName] = useState(
+    initialTenantNames.split(" ")[0] ?? ""
+  );
+  const [tenantLastName, setTenantLastName] = useState(
+    initialTenantNames.split(" ").slice(1).join(" ") ?? ""
+  );
 
   async function handlePhotoUpload(
     file: File,
@@ -589,11 +632,29 @@ export default function LeaseApplicationForm({
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.tenant_email);
 
+  // Real availability: only checked once the lot AND the start date, plus
+  // either month-to-month or a real end date, are decided — same "decided"
+  // gate as the pricing banner above.
+  const hasDecidedTerm = data.month_to_month || !!data.lease_end_date;
+  const lotAvailabilityConflict =
+    mode === "applicant" &&
+    !!selectedLot &&
+    !!data.lease_start_date &&
+    hasDecidedTerm &&
+    !isRangeAvailable(
+      blockedRanges,
+      new Date(data.lease_start_date + "T00:00:00"),
+      data.month_to_month || !data.lease_end_date
+        ? new Date("2099-12-31T00:00:00")
+        : new Date(data.lease_end_date + "T00:00:00")
+    );
+
   const canSubmit =
     mode === "admin"
       ? true
       : data.landlord_name &&
-        data.tenant_names &&
+        tenantFirstName &&
+        tenantLastName &&
         data.tenant_email &&
         emailValid &&
         data.property_address &&
@@ -607,7 +668,8 @@ export default function LeaseApplicationForm({
         data.tenant_signature_agreed &&
         data.park_rules_acknowledged &&
         data.background_check_consent_given &&
-        !rvTooLong;
+        !rvTooLong &&
+        !lotAvailabilityConflict;
 
   return (
     <div style={styles.page}>
@@ -636,19 +698,42 @@ export default function LeaseApplicationForm({
         <div style={styles.sectionTitle}>Parties &amp; Property</div>
         <div style={styles.row}>
           <div style={styles.field}>
-            <label style={styles.label}>Tenant Name(s)</label>
+            <label style={styles.label}>First Name</label>
             <input
               style={styles.input}
-              placeholder="e.g. John Smith, Mary Smith"
-              value={data.tenant_names}
-              onChange={(e) => set("tenant_names", e.target.value)}
+              placeholder="John"
+              value={tenantFirstName}
+              onChange={(e) => {
+                const first = e.target.value;
+                setTenantFirstName(first);
+                set("tenant_names", `${first} ${tenantLastName}`.trim());
+              }}
             />
-            {mode === "applicant" && attemptedSubmit && !data.tenant_names && (
+            {mode === "applicant" && attemptedSubmit && !tenantFirstName && (
               <div style={styles.requiredNote}>Field required</div>
             )}
           </div>
           <div style={styles.field}>
-            <label style={styles.label}>Lot</label>
+            <label style={styles.label}>Last Name</label>
+            <input
+              style={styles.input}
+              placeholder="Smith"
+              value={tenantLastName}
+              onChange={(e) => {
+                const last = e.target.value;
+                setTenantLastName(last);
+                set("tenant_names", `${tenantFirstName} ${last}`.trim());
+              }}
+            />
+            {mode === "applicant" && attemptedSubmit && !tenantLastName && (
+              <div style={styles.requiredNote}>Field required</div>
+            )}
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>
+              Lot
+              {!data.space_id && <span style={{ color: "#c00" }}> *</span>}
+            </label>
             {availableLots ? (
               <select
                 style={styles.input}
@@ -669,10 +754,11 @@ export default function LeaseApplicationForm({
                         highSeasonStartMonthDay,
                         highSeasonEndMonthDay
                       );
-                      set(
-                        "rent_amount",
-                        String(computed ?? lot.base_price ?? "")
-                      );
+                      // Leave rent_amount empty (not lot.base_price) until the
+                      // applicant has actually decided month-to-month vs. a
+                      // real end date — otherwise the pricing banner shows
+                      // prematurely with a fallback number.
+                      set("rent_amount", computed !== null ? String(computed) : "");
                     } else {
                       set("rent_amount", String(lot.base_price ?? ""));
                     }
@@ -830,6 +916,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.lease_start_date}
               min={new Date().toISOString().split("T")[0]}
+              disabled={mode === "applicant" && !data.space_id}
               onChange={(e) => {
                 const newDate = e.target.value;
                 set("lease_start_date", newDate);
@@ -842,14 +929,16 @@ export default function LeaseApplicationForm({
                     highSeasonStartMonthDay,
                     highSeasonEndMonthDay
                   );
-                  if (computed !== null) {
-                    set("rent_amount", String(computed));
-                  }
+                  set("rent_amount", computed !== null ? String(computed) : "");
                 }
               }}
             />
-            {mode === "applicant" && attemptedSubmit && !data.lease_start_date && (
-              <div style={styles.requiredNote}>Field required</div>
+            {mode === "applicant" && !data.space_id ? (
+              <div style={styles.requiredNote}>Please select a Lot</div>
+            ) : (
+              mode === "applicant" && attemptedSubmit && !data.lease_start_date && (
+                <div style={styles.requiredNote}>Field required</div>
+              )
             )}
           </div>
         </div>
@@ -871,9 +960,7 @@ export default function LeaseApplicationForm({
                   highSeasonStartMonthDay,
                   highSeasonEndMonthDay
                 );
-                if (computed !== null) {
-                  set("rent_amount", String(computed));
-                }
+                set("rent_amount", computed !== null ? String(computed) : "");
               }
             }}
           />
@@ -901,9 +988,7 @@ export default function LeaseApplicationForm({
                       highSeasonStartMonthDay,
                       highSeasonEndMonthDay
                     );
-                    if (computed !== null) {
-                      set("rent_amount", String(computed));
-                    }
+                    set("rent_amount", computed !== null ? String(computed) : "");
                   }
                 }}
               />
@@ -914,6 +999,24 @@ export default function LeaseApplicationForm({
                   <div style={styles.requiredNote}>Field required</div>
                 )}
             </div>
+          </div>
+        )}
+
+        {mode === "applicant" && checkingAvailability && (
+          <div style={{ fontSize: 12, color: "#777", marginBottom: 12 }}>
+            Checking lot availability...
+          </div>
+        )}
+        {lotAvailabilityConflict && (
+          <div
+            style={{
+              ...styles.requiredNote,
+              marginBottom: 14,
+              fontSize: 13,
+            }}
+          >
+            This lot is already booked for part of the dates you selected.
+            Please choose a different lot or adjust your dates.
           </div>
         )}
 
