@@ -103,6 +103,7 @@ export interface LeaseApplicationData {
   application_fee_per_additional: string;
   application_fee_additional_count: string;
   background_check_consent_given: boolean;
+  background_check_threshold_days: string; // admin-set: stays longer than this require a background check
 }
 
 export interface ParkRule {
@@ -364,6 +365,7 @@ const emptyForm: LeaseApplicationData = {
   application_fee_per_additional: "50.00",
   application_fee_additional_count: "0",
   background_check_consent_given: false,
+  background_check_threshold_days: "15",
 };
 
 export interface CompanyInfo {
@@ -637,6 +639,16 @@ export default function LeaseApplicationForm({
   // either month-to-month or a real end date, are decided — same "decided"
   // gate as the pricing banner above.
   const hasDecidedTerm = data.month_to_month || !!data.lease_end_date;
+
+  const backgroundCheckThresholdDays =
+    Number(data.background_check_threshold_days) || 15;
+  // Month-to-month is indefinite, so it always requires a background check.
+  // A fixed-term stay only requires one once it's longer than the admin's
+  // configured threshold.
+  const backgroundCheckRequired =
+    data.month_to_month ||
+    (stayNights !== null && stayNights > backgroundCheckThresholdDays);
+
   const lotAvailabilityConflict =
     mode === "applicant" &&
     !!selectedLot &&
@@ -668,7 +680,7 @@ export default function LeaseApplicationForm({
         data.tenant_signature_name &&
         data.tenant_signature_agreed &&
         data.park_rules_acknowledged &&
-        data.background_check_consent_given &&
+        (!backgroundCheckRequired || data.background_check_consent_given) &&
         !rvTooLong &&
         !lotAvailabilityConflict;
 
@@ -2124,88 +2136,120 @@ export default function LeaseApplicationForm({
       </div>
 
       {/* Application Fee & Background Check */}
-      <div style={styles.card}>
-        <div style={styles.sectionTitle}>Application Fee &amp; Background Check</div>
+      {(mode === "admin" || hasDecidedTerm) && (
+        <div style={styles.card}>
+          <div style={styles.sectionTitle}>Application Fee &amp; Background Check</div>
 
-        {isMasterAdmin ? (
-          <div style={styles.row}>
-            <div style={styles.field}>
-              <label style={styles.label}>Primary Applicant Fee ($)</label>
-              <input
-                type="number"
-                style={styles.input}
-                value={data.application_fee_primary}
-                onChange={(e) =>
-                  set("application_fee_primary", e.target.value)
-                }
-              />
-            </div>
-            <div style={styles.field}>
-              <label style={styles.label}>Fee per Additional Adult ($)</label>
-              <input
-                type="number"
-                style={styles.input}
-                value={data.application_fee_per_additional}
-                onChange={(e) =>
-                  set("application_fee_per_additional", e.target.value)
-                }
-              />
-            </div>
-          </div>
-        ) : (
-          <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
-            Every applicant must pass a background check before the lease is
-            approved. This fee covers that check and is paid by the
-            applicant.
-          </p>
-        )}
-
-        <div
-          style={{
-            background: "#f7f7f7",
-            borderRadius: 8,
-            padding: 14,
-            marginTop: 4,
-            marginBottom: 16,
-            fontSize: 14,
-          }}
-        >
-          <strong>Total Application Fee: $
-            {(
-              (Number(data.application_fee_primary) || 0) +
-              (Number(data.application_fee_per_additional) || 0) *
-                additionalAdultsCount
-            ).toFixed(2)}
-          </strong>
-          <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
-            ${data.application_fee_primary} (primary applicant) + $
-            {data.application_fee_per_additional} x {additionalAdultsCount}{" "}
-            additional adult(s) age 18+ listed in Occupants above
-          </div>
-        </div>
-
-        {mode === "applicant" && (
-          <label style={styles.checkboxRow}>
-            <input
-              type="checkbox"
-              checked={data.background_check_consent_given}
-              onChange={(e) =>
-                set("background_check_consent_given", e.target.checked)
-              }
-            />
-            I authorize {company.name} to obtain a consumer background report
-            on me (and any additional adult occupants listed above) for
-            purposes of evaluating this rental application, and I
-            acknowledge the application fee is non-refundable once the
-            background check has been initiated.
-          </label>
-        )}
-        {mode === "applicant" &&
-          attemptedSubmit &&
-          !data.background_check_consent_given && (
-            <div style={styles.requiredNote}>Field required</div>
+          {isMasterAdmin ? (
+            <>
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <label style={styles.label}>Primary Applicant Fee ($)</label>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={data.application_fee_primary}
+                    onChange={(e) =>
+                      set("application_fee_primary", e.target.value)
+                    }
+                  />
+                </div>
+                <div style={styles.field}>
+                  <label style={styles.label}>Fee per Additional Adult ($)</label>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={data.application_fee_per_additional}
+                    onChange={(e) =>
+                      set("application_fee_per_additional", e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <label style={styles.label}>
+                    Background Check Required After (days)
+                  </label>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={data.background_check_threshold_days}
+                    onChange={(e) =>
+                      set("background_check_threshold_days", e.target.value)
+                    }
+                  />
+                  <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+                    Stays longer than this many days require a background
+                    check. Shorter stays are only charged the application
+                    fee, added to the final invoice for the stay.
+                    Month-to-month always requires one.
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : backgroundCheckRequired ? (
+            <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
+              Every applicant must pass a background check before the lease is
+              approved. This fee covers that check and is paid by the
+              applicant.
+            </p>
+          ) : (
+            <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
+              No background check is required for this stay length. The
+              application fee below will be added to your final invoice for
+              the stay.
+            </p>
           )}
-      </div>
+
+          <div
+            style={{
+              background: "#f7f7f7",
+              borderRadius: 8,
+              padding: 14,
+              marginTop: 4,
+              marginBottom: 16,
+              fontSize: 14,
+            }}
+          >
+            <strong>Total Application Fee: $
+              {(
+                (Number(data.application_fee_primary) || 0) +
+                (Number(data.application_fee_per_additional) || 0) *
+                  additionalAdultsCount
+              ).toFixed(2)}
+            </strong>
+            <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+              ${data.application_fee_primary} (primary applicant) + $
+              {data.application_fee_per_additional} x {additionalAdultsCount}{" "}
+              additional adult(s) age 18+ listed in Occupants above
+            </div>
+          </div>
+
+          {mode === "applicant" && backgroundCheckRequired && (
+            <label style={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={data.background_check_consent_given}
+                onChange={(e) =>
+                  set("background_check_consent_given", e.target.checked)
+                }
+              />
+              I authorize {company.name} to obtain a consumer background report
+              on me (and any additional adult occupants listed above) for
+              purposes of evaluating this rental application, and I
+              acknowledge the application fee is non-refundable once the
+              background check has been initiated.
+            </label>
+          )}
+          {mode === "applicant" &&
+            backgroundCheckRequired &&
+            attemptedSubmit &&
+            !data.background_check_consent_given && (
+              <div style={styles.requiredNote}>Field required</div>
+            )}
+        </div>
+      )}
 
       {/* Signature - applicant only */}
       {mode === "applicant" && (
