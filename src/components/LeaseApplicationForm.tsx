@@ -742,6 +742,7 @@ export default function LeaseApplicationForm({
         data.tenant_signature_agreed &&
         data.park_rules_acknowledged &&
         (!backgroundCheckRequired || data.background_check_consent_given) &&
+        !!data.rv_length_ft &&
         !rvTooLong &&
         !lotAvailabilityConflict;
 
@@ -1592,6 +1593,8 @@ export default function LeaseApplicationForm({
                   )}
                   {age !== null &&
                     age >= 18 &&
+                    mode === "applicant" &&
+                    attemptedSubmit &&
                     (!occ.license_number || !occ.license_photo_url) && (
                       <div style={{ fontSize: 12, color: "#c00", marginTop: 4 }}>
                         License # and photo are required for adult occupants.
@@ -1760,6 +1763,11 @@ export default function LeaseApplicationForm({
               value={data.rv_length_ft}
               onChange={(e) => set("rv_length_ft", e.target.value)}
             />
+            {mode === "applicant" &&
+              attemptedSubmit &&
+              !data.rv_length_ft && (
+                <div style={styles.requiredNote}>Field required</div>
+              )}
           </div>
           <div style={styles.field}>
             <label style={styles.label}>VIN / License Tag</label>
