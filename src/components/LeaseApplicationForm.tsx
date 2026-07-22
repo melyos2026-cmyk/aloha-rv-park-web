@@ -1806,15 +1806,22 @@ export default function LeaseApplicationForm({
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, marginTop: 16 }}>
           Utilities
         </div>
-        <div style={styles.field}>
-          <label style={styles.label}>Utilities Included by Landlord</label>
-          <input
-            style={styles.input}
-            placeholder="e.g. water, trash, electric charge trigger applies"
-            value={data.utilities_included}
-            onChange={(e) => set("utilities_included", e.target.value)}
-          />
-        </div>
+        {mode === "admin" ? (
+          <div style={styles.field}>
+            <label style={styles.label}>Utilities Included by Landlord</label>
+            <input
+              style={styles.input}
+              placeholder="e.g. water, trash, electric charge trigger applies"
+              value={data.utilities_included}
+              onChange={(e) => set("utilities_included", e.target.value)}
+            />
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#333" }}>
+            <strong>Utilities Included:</strong>{" "}
+            {data.utilities_included || "None specified."}
+          </div>
+        )}
       </div>
 
       {/* 11-13. Parking, Pets, Smoking */}
@@ -2023,14 +2030,22 @@ export default function LeaseApplicationForm({
       {/* Additional Provisions */}
       <div style={styles.card}>
         <div style={styles.sectionTitle}>Additional Terms</div>
-        <div style={styles.field}>
-          <label style={styles.label}>Additional Provisions</label>
-          <textarea
-            style={styles.textarea}
-            value={data.additional_provisions}
-            onChange={(e) => set("additional_provisions", e.target.value)}
-          />
-        </div>
+        {mode === "admin" ? (
+          <div style={styles.field}>
+            <label style={styles.label}>Additional Provisions</label>
+            <textarea
+              style={styles.textarea}
+              value={data.additional_provisions}
+              onChange={(e) => set("additional_provisions", e.target.value)}
+            />
+          </div>
+        ) : data.additional_provisions ? (
+          <div style={{ fontSize: 13, color: "#333", whiteSpace: "pre-wrap" }}>
+            {data.additional_provisions}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#777" }}>None.</div>
+        )}
       </div>
 
       {/* RV Removal Upon Termination */}
