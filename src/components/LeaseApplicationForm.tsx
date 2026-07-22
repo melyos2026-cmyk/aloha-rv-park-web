@@ -733,7 +733,9 @@ export default function LeaseApplicationForm({
           <div style={styles.field}>
             <label style={styles.label}>
               Lot
-              {!data.space_id && <span style={{ color: "#c00" }}> *</span>}
+              {!data.space_id && triedLeaseStartClick && (
+                <span style={{ color: "#c00" }}> *</span>
+              )}
             </label>
             {availableLots ? (
               <select
