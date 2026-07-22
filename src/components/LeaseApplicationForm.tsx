@@ -2261,10 +2261,7 @@ export default function LeaseApplicationForm({
             <>
               <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
                 Every applicant must pass a background check before the lease
-                is approved. The $
-                {Number(data.application_processing_fee || 0).toFixed(2)}{" "}
-                application fee and the background check fee below will be
-                charged together at checkout.
+                is approved.
               </p>
               <p
                 style={{
@@ -2658,8 +2655,8 @@ export default function LeaseApplicationForm({
                     }}
                   >
                     {backgroundCheckRequired
-                      ? "These fees are separate from your monthly rent, which is billed after your lease is approved."
-                      : "This fee is separate from your rent, which will be billed after your lease is approved."}
+                      ? "These are one-time fees, separate from your monthly rent, which is billed after your lease is approved."
+                      : "This is a one-time fee, separate from your rent, which will be billed after your lease is approved."}
                   </div>
                 )}
                 {backgroundCheckRequired && (
