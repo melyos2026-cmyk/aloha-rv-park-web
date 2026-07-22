@@ -94,7 +94,8 @@ export default function TestLeasePage() {
       const additionalCount = Number(data.application_fee_additional_count) || 0;
       const applicationFeeTotal =
         (Number(data.application_fee_primary) || 0) +
-        (Number(data.application_fee_per_additional) || 0) * additionalCount;
+        (Number(data.application_fee_per_additional) || 0) * additionalCount +
+        (Number(data.application_processing_fee) || 0);
 
       const parkSharePrimary = 10.0;
       const parkSharePerAdditional = 5.0;

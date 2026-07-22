@@ -131,7 +131,8 @@ function ApplyPageInner() {
         Number(data.application_fee_additional_count) || 0;
       const applicationFeeTotal =
         (Number(data.application_fee_primary) || 0) +
-        (Number(data.application_fee_per_additional) || 0) * additionalCount;
+        (Number(data.application_fee_per_additional) || 0) * additionalCount +
+        (Number(data.application_processing_fee) || 0);
 
       // Mirrors LeaseApplicationForm's own backgroundCheckRequired logic:
       // month-to-month always requires one; a fixed-term stay only requires

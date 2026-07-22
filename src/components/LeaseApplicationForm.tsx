@@ -102,6 +102,7 @@ export interface LeaseApplicationData {
   application_fee_primary: string;
   application_fee_per_additional: string;
   application_fee_additional_count: string;
+  application_processing_fee: string; // flat fee for processing the application itself, on top of the primary/additional fees, always charged
   background_check_consent_given: boolean;
   background_check_threshold_days: string; // admin-set: stays longer than this require a background check
 }
@@ -364,6 +365,7 @@ const emptyForm: LeaseApplicationData = {
   application_fee_primary: "75.00",
   application_fee_per_additional: "50.00",
   application_fee_additional_count: "0",
+  application_processing_fee: "2.50",
   background_check_consent_given: false,
   background_check_threshold_days: "15",
 };
@@ -651,7 +653,8 @@ export default function LeaseApplicationForm({
 
   const applicationFeeTotalForModal =
     (Number(data.application_fee_primary) || 0) +
-    (Number(data.application_fee_per_additional) || 0) * additionalAdultsCount;
+    (Number(data.application_fee_per_additional) || 0) * additionalAdultsCount +
+    (Number(data.application_processing_fee) || 0);
   // Mirrors apply/page.tsx's stayAmountForCheckout: short stays (no
   // background check) fold the stay total into the same Stripe checkout
   // as the application fee, since there's no separate fee/BG-check section
@@ -682,6 +685,12 @@ export default function LeaseApplicationForm({
   const signatureMatchesName =
     !data.tenant_signature_name ||
     normalizeName(data.tenant_signature_name) === normalizeName(fullTenantName);
+  // Don't nag while they're still correctly typing toward the full name —
+  // only flag it once what's typed so far could no longer become a match
+  // (a wrong character was actually entered, or they've overshot the length).
+  const signatureHasTypo =
+    !!data.tenant_signature_name &&
+    !normalizeName(fullTenantName).startsWith(normalizeName(data.tenant_signature_name));
 
   const canSubmit =
     mode === "admin"
@@ -1207,16 +1216,19 @@ export default function LeaseApplicationForm({
           </div>
         )}
 
-        <div
-          style={{
-            fontSize: 12,
-            color: "#999",
-            marginTop: 10,
-          }}
-        >
-          Note: Rent is not charged today. Only the application fee below is
-          due now. Rent begins once your application is approved.
-        </div>
+        {backgroundCheckRequired && (
+          <div
+            style={{
+              fontSize: 12,
+              color: "#999",
+              marginTop: 10,
+            }}
+          >
+            Note: Rent is not charged today. Only the application fee &amp;
+            background check are due now. Rent begins once your application
+            is approved.
+          </div>
+        )}
       </div>
 
       {/* 5-7. Fees & Deposits */}
@@ -2166,54 +2178,72 @@ export default function LeaseApplicationForm({
               : "Application Fee & Background Check"}
           </div>
 
+          {mode === "admin" && (
+            <div style={styles.row}>
+              <div style={styles.field}>
+                <label style={styles.label}>
+                  Background Check Required After (days)
+                </label>
+                <input
+                  type="number"
+                  style={styles.input}
+                  value={data.background_check_threshold_days}
+                  onChange={(e) =>
+                    set("background_check_threshold_days", e.target.value)
+                  }
+                />
+                <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+                  Stays longer than this many days require a background
+                  check. Shorter stays are only charged the application
+                  fee, added to the final invoice for the stay.
+                  Month-to-month always requires one.
+                </div>
+              </div>
+            </div>
+          )}
+
           {isMasterAdmin ? (
-            <>
-              <div style={styles.row}>
-                <div style={styles.field}>
-                  <label style={styles.label}>Primary Applicant Fee ($)</label>
-                  <input
-                    type="number"
-                    style={styles.input}
-                    value={data.application_fee_primary}
-                    onChange={(e) =>
-                      set("application_fee_primary", e.target.value)
-                    }
-                  />
-                </div>
-                <div style={styles.field}>
-                  <label style={styles.label}>Fee per Additional Adult ($)</label>
-                  <input
-                    type="number"
-                    style={styles.input}
-                    value={data.application_fee_per_additional}
-                    onChange={(e) =>
-                      set("application_fee_per_additional", e.target.value)
-                    }
-                  />
+            <div style={styles.row}>
+              <div style={styles.field}>
+                <label style={styles.label}>Primary Applicant Fee ($)</label>
+                <input
+                  type="number"
+                  style={styles.input}
+                  value={data.application_fee_primary}
+                  onChange={(e) =>
+                    set("application_fee_primary", e.target.value)
+                  }
+                />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Fee per Additional Adult ($)</label>
+                <input
+                  type="number"
+                  style={styles.input}
+                  value={data.application_fee_per_additional}
+                  onChange={(e) =>
+                    set("application_fee_per_additional", e.target.value)
+                  }
+                />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>
+                  Application Processing Fee ($)
+                </label>
+                <input
+                  type="number"
+                  style={styles.input}
+                  value={data.application_processing_fee}
+                  onChange={(e) =>
+                    set("application_processing_fee", e.target.value)
+                  }
+                />
+                <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
+                  MelyOS's own fee for processing the application (set by
+                  MelyOS admin only).
                 </div>
               </div>
-              <div style={styles.row}>
-                <div style={styles.field}>
-                  <label style={styles.label}>
-                    Background Check Required After (days)
-                  </label>
-                  <input
-                    type="number"
-                    style={styles.input}
-                    value={data.background_check_threshold_days}
-                    onChange={(e) =>
-                      set("background_check_threshold_days", e.target.value)
-                    }
-                  />
-                  <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
-                    Stays longer than this many days require a background
-                    check. Shorter stays are only charged the application
-                    fee, added to the final invoice for the stay.
-                    Month-to-month always requires one.
-                  </div>
-                </div>
-              </div>
-            </>
+            </div>
           ) : mode === "applicant" && data.month_to_month ? (
             <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
               Every applicant must pass a background check before the lease is
@@ -2249,13 +2279,15 @@ export default function LeaseApplicationForm({
                 {(
                   (Number(data.application_fee_primary) || 0) +
                   (Number(data.application_fee_per_additional) || 0) *
-                    additionalAdultsCount
+                    additionalAdultsCount +
+                  (Number(data.application_processing_fee) || 0)
                 ).toFixed(2)}
               </strong>
               <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>
                 ${data.application_fee_primary} (primary applicant) + $
                 {data.application_fee_per_additional} x {additionalAdultsCount}{" "}
-                additional adult(s) age 18+ listed in Occupants above
+                additional adult(s) age 18+ listed in Occupants above + $
+                {data.application_processing_fee} processing fee
               </div>
             </div>
           )}
@@ -2294,7 +2326,7 @@ export default function LeaseApplicationForm({
             <input
               style={{
                 ...styles.input,
-                borderColor: !signatureMatchesName ? "#c00" : "#ccc",
+                borderColor: signatureHasTypo ? "#c00" : "#ccc",
               }}
               value={data.tenant_signature_name}
               onChange={(e) => set("tenant_signature_name", e.target.value)}
@@ -2303,12 +2335,21 @@ export default function LeaseApplicationForm({
             {attemptedSubmit && !data.tenant_signature_name && (
               <div style={styles.requiredNote}>Field required</div>
             )}
-            {!!data.tenant_signature_name && !signatureMatchesName && (
+            {signatureHasTypo && (
               <div style={styles.requiredNote}>
                 The signature must exactly match the applicant name on file:
                 "{fullTenantName}"
               </div>
             )}
+            {!signatureHasTypo &&
+              attemptedSubmit &&
+              !!data.tenant_signature_name &&
+              !signatureMatchesName && (
+                <div style={styles.requiredNote}>
+                  The signature must exactly match the applicant name on
+                  file: "{fullTenantName}"
+                </div>
+              )}
           </div>
           {data.tenant_signature_name && (
             <div
