@@ -59,7 +59,9 @@ function ApplyPageInner() {
 
     supabase
       .from("park_settings")
-      .select("rent_due_day_policy, rent_due_day_fixed, high_season_start_month_day, high_season_end_month_day")
+      .select(
+        "rent_due_day_policy, rent_due_day_fixed, high_season_start_month_day, high_season_end_month_day, lease_defaults"
+      )
       .eq("company_id", company.id)
       .single()
       .then(({ data: settingsData, error: settingsError }) => {
@@ -72,9 +74,20 @@ function ApplyPageInner() {
           setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
           setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
           setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
+          // Brand-new applicant (no invite) starts pre-filled with the
+          // park's saved Fees & Deposits / Utilities / Parking-Pets-Smoking /
+          // Additional Terms / RV Removal / Park Rules defaults, instead of
+          // blank. Invited applicants get this merged in separately below,
+          // underneath whatever the invitation itself already specifies.
+          if (!inviteToken && settingsData.lease_defaults) {
+            setInitialData((prev) => ({
+              ...settingsData.lease_defaults,
+              ...prev,
+            }));
+          }
         }
       });
-  }, [company, companyLoading, companyError]);
+  }, [company, companyLoading, companyError, inviteToken]);
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -94,7 +107,8 @@ function ApplyPageInner() {
         }
 
         setInvitationId(data.id);
-        setInitialData({
+        setInitialData((prev) => ({
+          ...prev,
           tenant_names: data.full_name ?? data.tenant_names ?? "",
           tenant_email: data.email ?? "",
           tenant_phone: data.phone ?? "",
@@ -103,7 +117,7 @@ function ApplyPageInner() {
           rent_amount: data.monthly_rent != null ? String(data.monthly_rent) : "",
           security_deposit_amount:
             data.security_deposit != null ? String(data.security_deposit) : "",
-        });
+        }));
         setInvitationLoaded(true);
       });
   }, [inviteToken]);
