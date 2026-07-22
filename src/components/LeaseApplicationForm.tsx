@@ -507,6 +507,7 @@ export default function LeaseApplicationForm({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
+  const [triedLeaseStartClick, setTriedLeaseStartClick] = useState(false);
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
 
@@ -911,29 +912,41 @@ export default function LeaseApplicationForm({
         <div style={styles.row}>
           <div style={styles.field}>
             <label style={styles.label}>Lease Start Date</label>
-            <input
-              type="date"
-              style={styles.input}
-              value={data.lease_start_date}
-              min={new Date().toISOString().split("T")[0]}
-              disabled={mode === "applicant" && !data.space_id}
-              onChange={(e) => {
-                const newDate = e.target.value;
-                set("lease_start_date", newDate);
-                if (selectedLot && data.use_seasonal_pricing) {
-                  const computed = calculateLeaseRent(
-                    selectedLot,
-                    newDate,
-                    data.lease_end_date,
-                    data.month_to_month,
-                    highSeasonStartMonthDay,
-                    highSeasonEndMonthDay
-                  );
-                  set("rent_amount", computed !== null ? String(computed) : "");
-                }
-              }}
-            />
-            {mode === "applicant" && !data.space_id ? (
+            <div style={{ position: "relative" }}>
+              <input
+                type="date"
+                style={styles.input}
+                value={data.lease_start_date}
+                min={new Date().toISOString().split("T")[0]}
+                disabled={mode === "applicant" && !data.space_id}
+                onChange={(e) => {
+                  const newDate = e.target.value;
+                  set("lease_start_date", newDate);
+                  if (selectedLot && data.use_seasonal_pricing) {
+                    const computed = calculateLeaseRent(
+                      selectedLot,
+                      newDate,
+                      data.lease_end_date,
+                      data.month_to_month,
+                      highSeasonStartMonthDay,
+                      highSeasonEndMonthDay
+                    );
+                    set("rent_amount", computed !== null ? String(computed) : "");
+                  }
+                }}
+              />
+              {mode === "applicant" && !data.space_id && (
+                // Disabled inputs swallow click events in most browsers, so a
+                // click on the field itself never reaches React. This
+                // transparent overlay sits on top just to catch that first
+                // click/tap and reveal the hint below.
+                <div
+                  onClick={() => setTriedLeaseStartClick(true)}
+                  style={{ position: "absolute", inset: 0, cursor: "not-allowed" }}
+                />
+              )}
+            </div>
+            {mode === "applicant" && !data.space_id && triedLeaseStartClick ? (
               <div style={styles.requiredNote}>Please select a Lot</div>
             ) : (
               mode === "applicant" && attemptedSubmit && !data.lease_start_date && (
