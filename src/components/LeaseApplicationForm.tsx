@@ -213,6 +213,31 @@ function getSeasonalRent(
   return inHighSeason ? lot.high_season_price : lot.low_season_price;
 }
 
+function calculateLeaseRent(
+  lot: LotOption,
+  startDate: string,
+  endDate: string,
+  monthToMonth: boolean,
+  highSeasonStartMonthDay?: string,
+  highSeasonEndMonthDay?: string
+): number | null {
+  if (monthToMonth || !endDate) {
+    return getSeasonalRent(lot, startDate, highSeasonStartMonthDay, highSeasonEndMonthDay);
+  }
+  if (!startDate) return null;
+  const start = new Date(startDate + "T00:00:00");
+  const end = new Date(endDate + "T00:00:00");
+  const nights = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (nights < 7) {
+    return lot.daily_rate != null ? lot.daily_rate * nights : null;
+  }
+  if (nights < 30) {
+    const weeks = Math.ceil(nights / 7);
+    return lot.weekly_rate != null ? lot.weekly_rate * weeks : null;
+  }
+  return getSeasonalRent(lot, startDate, highSeasonStartMonthDay, highSeasonEndMonthDay);
+}
+
 const emptyOccupants: OccupantInfo[] = [
   { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
   { name: "", date_of_birth: "", license_number: "", license_photo_url: "", email: "" },
@@ -346,6 +371,8 @@ export interface LotOption {
   amp_service: string | null;
   high_season_price: number | null;
   low_season_price: number | null;
+  daily_rate?: number | null;
+  weekly_rate?: number | null;
 }
 
 interface Props {
@@ -789,14 +816,16 @@ export default function LeaseApplicationForm({
                 const newDate = e.target.value;
                 set("lease_start_date", newDate);
                 if (selectedLot && data.use_seasonal_pricing) {
-                  const seasonal = getSeasonalRent(
+                  const computed = calculateLeaseRent(
                     selectedLot,
                     newDate,
+                    data.lease_end_date,
+                    data.month_to_month,
                     highSeasonStartMonthDay,
                     highSeasonEndMonthDay
                   );
-                  if (seasonal !== null) {
-                    set("rent_amount", String(seasonal));
+                  if (computed !== null) {
+                    set("rent_amount", String(computed));
                   }
                 }
               }}
@@ -828,7 +857,23 @@ export default function LeaseApplicationForm({
                 style={styles.input}
                 value={data.lease_end_date}
                 min={data.lease_start_date || new Date().toISOString().split("T")[0]}
-                onChange={(e) => set("lease_end_date", e.target.value)}
+                onChange={(e) => {
+                  const newEnd = e.target.value;
+                  set("lease_end_date", newEnd);
+                  if (selectedLot && data.use_seasonal_pricing) {
+                    const computed = calculateLeaseRent(
+                      selectedLot,
+                      data.lease_start_date,
+                      newEnd,
+                      data.month_to_month,
+                      highSeasonStartMonthDay,
+                      highSeasonEndMonthDay
+                    );
+                    if (computed !== null) {
+                      set("rent_amount", String(computed));
+                    }
+                  }
+                }}
               />
               {mode === "applicant" &&
                 attemptedSubmit &&
