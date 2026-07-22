@@ -547,6 +547,22 @@ export default function LeaseApplicationForm({
     Number(data.rent_amount) || 0
   );
 
+  const stayNights =
+    !data.month_to_month && data.lease_start_date && data.lease_end_date
+      ? Math.round(
+          (new Date(data.lease_end_date + "T00:00:00").getTime() -
+            new Date(data.lease_start_date + "T00:00:00").getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      : null;
+  const isShortStay = stayNights !== null && stayNights > 0 && stayNights < 30;
+  const shortStayRateLabel =
+    stayNights !== null && stayNights < 7
+      ? `${stayNights} night(s) at $${selectedLot?.daily_rate ?? "—"}/night`
+      : stayNights !== null
+      ? `${Math.ceil(stayNights / 7)} week(s) at $${selectedLot?.weekly_rate ?? "—"}/week`
+      : "";
+
   const currentSeasonLabel =
     data.use_seasonal_pricing &&
     selectedLot &&
@@ -956,6 +972,22 @@ export default function LeaseApplicationForm({
               />
             </div>
           </>
+        ) : isShortStay ? (
+          <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}>
+            <div>
+              <strong>Total Due for Stay:</strong> ${data.rent_amount || "TBD"}
+              {shortStayRateLabel && ` (${shortStayRateLabel})`}
+            </div>
+            <div>
+              <strong>Notice Period:</strong> {data.notice_days || "TBD"} days
+            </div>
+            {data.rent_payment_instructions && (
+              <div>
+                <strong>Payment Instructions:</strong>{" "}
+                {data.rent_payment_instructions}
+              </div>
+            )}
+          </div>
         ) : (
           <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}>
             <div>
@@ -978,7 +1010,7 @@ export default function LeaseApplicationForm({
           </div>
         )}
 
-        {proration && (
+        {proration && !isShortStay && (
           <div
             style={{
               background: "#f0f9ff",
