@@ -244,8 +244,15 @@ function calculateLeaseRent(
     return lot.daily_rate != null ? lot.daily_rate * nights : null;
   }
   if (nights < 30) {
-    const weeks = Math.ceil(nights / 7);
-    return lot.weekly_rate != null ? lot.weekly_rate * weeks : null;
+    // Prorate: full weeks at the weekly rate, plus any leftover days at the
+    // daily rate — NOT rounded up to a whole extra week. Rounding up meant
+    // 7 nights ($350, 1 week) jumped to 8 nights ($700, 2 weeks) for a
+    // single extra day, which is wrong.
+    if (lot.weekly_rate == null) return null;
+    const fullWeeks = Math.floor(nights / 7);
+    const extraDays = nights % 7;
+    const dailyRateForExtra = lot.daily_rate ?? lot.weekly_rate / 7;
+    return lot.weekly_rate * fullWeeks + dailyRateForExtra * extraDays;
   }
   return getSeasonalRent(lot, startDate, highSeasonStartMonthDay, highSeasonEndMonthDay);
 }
@@ -608,7 +615,21 @@ export default function LeaseApplicationForm({
     stayNights !== null && stayNights < 7
       ? `${stayNights} night(s) at $${selectedLot?.daily_rate ?? "—"}/night`
       : stayNights !== null
-      ? `${Math.ceil(stayNights / 7)} week(s) at $${selectedLot?.weekly_rate ?? "—"}/week`
+      ? (() => {
+          const fullWeeks = Math.floor(stayNights / 7);
+          const extraDays = stayNights % 7;
+          const weekPart = `${fullWeeks} week(s) at $${
+            selectedLot?.weekly_rate ?? "—"
+          }/week`;
+          return extraDays > 0
+            ? `${weekPart} + ${extraDays} day(s) at $${
+                selectedLot?.daily_rate ??
+                (selectedLot?.weekly_rate != null
+                  ? (selectedLot.weekly_rate / 7).toFixed(2)
+                  : "—")
+              }/night`
+            : weekPart;
+        })()
       : "";
 
   const currentSeasonLabel =
