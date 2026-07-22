@@ -67,7 +67,8 @@ export interface LeaseApplicationData {
   rv_length_ft: string;
   rv_vin_or_tag: string;
 
-  utilities_included: string;
+  utilities_included: string; // long-term / month-to-month wording
+  utilities_included_short_stay: string; // short-stay wording
 
   hazardous_materials_clause: string;
 
@@ -345,6 +346,7 @@ const emptyForm: LeaseApplicationData = {
   rv_length_ft: "",
   rv_vin_or_tag: "",
   utilities_included: "",
+  utilities_included_short_stay: "",
   hazardous_materials_clause:
     "Tenant may keep and use propane, gasoline, or other fuel that is factory-installed or normally used to operate the RV and its appliances (e.g., propane tanks connected to the RV's own system). Tenant agrees not to store any additional loose or spare fuel containers, gas cylinders, gasoline, kerosene, fireworks, or other flammable or explosive materials on the lot beyond what is necessary for the ordinary operation of the RV.",
   parking_provided: false,
@@ -1807,19 +1809,40 @@ export default function LeaseApplicationForm({
           Utilities
         </div>
         {mode === "admin" ? (
-          <div style={styles.field}>
-            <label style={styles.label}>Utilities Included by Landlord</label>
-            <input
-              style={styles.input}
-              placeholder="e.g. water, trash, electric charge trigger applies"
-              value={data.utilities_included}
-              onChange={(e) => set("utilities_included", e.target.value)}
-            />
-          </div>
+          <>
+            <div style={styles.field}>
+              <label style={styles.label}>
+                Utilities Included (Month-to-Month / Long-Term)
+              </label>
+              <input
+                style={styles.input}
+                placeholder="e.g. water, trash, sewer included; 1,000 kWh/month included, $0.11/kWh after"
+                value={data.utilities_included}
+                onChange={(e) => set("utilities_included", e.target.value)}
+              />
+            </div>
+            <div style={styles.field}>
+              <label style={styles.label}>
+                Utilities Included (Short-Term Stays)
+              </label>
+              <input
+                style={styles.input}
+                placeholder="e.g. water, electricity, sewer, and trash all included"
+                value={data.utilities_included_short_stay}
+                onChange={(e) =>
+                  set("utilities_included_short_stay", e.target.value)
+                }
+              />
+            </div>
+          </>
         ) : (
           <div style={{ fontSize: 13, color: "#333" }}>
             <strong>Utilities Included:</strong>{" "}
-            {data.utilities_included || "None specified."}
+            {(backgroundCheckRequired
+              ? data.utilities_included
+              : data.utilities_included_short_stay) ||
+              data.utilities_included ||
+              "None specified."}
           </div>
         )}
       </div>
