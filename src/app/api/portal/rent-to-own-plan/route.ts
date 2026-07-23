@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
   const { data: plan, error } = await supabaseAdmin
     .from("rent_to_own_plans")
-    .select("id, lot_id, total_price, monthly_principal, status, started_at")
+    .select("id, lot_id, total_price, monthly_principal, starting_paid_amount, status, started_at")
     .eq("resident_id", residentId)
     .is("deleted_at", null)
     .in("status", ["active", "completed"])
@@ -62,12 +62,14 @@ export async function GET(req: NextRequest) {
     paidSoFar = (items || []).reduce((sum, i) => sum + Number(i.amount || 0), 0);
   }
 
+  const totalPaid = Number(plan.starting_paid_amount || 0) + paidSoFar;
+
   return NextResponse.json({
     plan: {
       ...plan,
       lot_name: lotName,
-      paid_so_far: paidSoFar,
-      remaining: Math.max(0, Number(plan.total_price) - paidSoFar),
+      paid_so_far: totalPaid,
+      remaining: Math.max(0, Number(plan.total_price) - totalPaid),
     },
   });
 }
