@@ -443,6 +443,9 @@ export default function ResidentDashboard() {
                 {" — "}
                 <strong>${rentToOwnPlan.remaining.toFixed(2)} remaining</strong>
               </div>
+              <div style={{ ...label, marginBottom: 6 }}>
+                {Math.max(0, Math.ceil(rentToOwnPlan.remaining / rentToOwnPlan.monthly_principal))} payment(s) left
+              </div>
               <div style={{ width: "100%", background: "#e5e7eb", borderRadius: 999, height: 10 }}>
                 <div
                   style={{
