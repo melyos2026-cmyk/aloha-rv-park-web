@@ -281,7 +281,7 @@ const emptyVehicles: VehicleInfo[] = [
   { vehicle_make: "", vehicle_model: "", vehicle_year: "", color: "", license_plate: "", license_state: "" },
 ];
 
-const defaultParkRules: ParkRule[] = [
+export const defaultParkRules: ParkRule[] = [
   {
     id: "quiet_hours",
     title: "Quiet Hours",

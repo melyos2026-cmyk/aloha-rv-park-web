@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import LeaseApplicationForm, {
   LeaseApplicationData,
   LotOption,
+  defaultParkRules,
 } from "@/components/LeaseApplicationForm";
 import { supabase } from "@/lib/supabase";
 import { useCompany } from "@/lib/CompanyContext";
@@ -85,8 +86,15 @@ function ApplyPageInner() {
           // blank. Invited applicants get this merged in separately below,
           // underneath whatever the invitation itself already specifies.
           if (!inviteToken && settingsData.lease_defaults) {
+            const defaults = { ...settingsData.lease_defaults };
+            // An empty/never-customized park_rules shouldn't wipe out the
+            // sensible generic defaults (Quiet Hours, Speed Limit, etc.) —
+            // only override once the admin has actually saved custom rules.
+            if (!defaults.park_rules || defaults.park_rules.length === 0) {
+              defaults.park_rules = defaultParkRules;
+            }
             setInitialData((prev) => ({
-              ...settingsData.lease_defaults,
+              ...defaults,
               ...prev,
             }));
           }
