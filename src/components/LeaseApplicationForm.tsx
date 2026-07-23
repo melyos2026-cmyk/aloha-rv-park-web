@@ -1807,6 +1807,8 @@ export default function LeaseApplicationForm({
           </div>
         )}
 
+        {(mode === "admin" || hasDecidedTerm) && (
+        <>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, marginTop: 16 }}>
           Utilities
         </div>
@@ -1846,6 +1848,8 @@ export default function LeaseApplicationForm({
               data.utilities_included ||
               "None specified."}
           </div>
+        )}
+        </>
         )}
       </div>
 
