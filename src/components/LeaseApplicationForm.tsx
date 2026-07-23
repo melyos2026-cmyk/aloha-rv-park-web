@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import {
   getLotBlockedRanges,
   isRangeAvailable,
+  getExcludedIntervals,
   type BlockedRange,
 } from "@/services/lotAvailability";
 
@@ -710,6 +713,20 @@ export default function LeaseApplicationForm({
         : new Date(data.lease_end_date + "T00:00:00")
     );
 
+  // Blocked date ranges for the currently selected lot, for the visual
+  // calendar (react-datepicker's excludeDateIntervals) — grays out and
+  // disables already-reserved dates so applicants can't even pick a
+  // conflicting range, instead of only finding out after submitting.
+  const excludedDateIntervals = getExcludedIntervals(blockedRanges);
+  const parseDateString = (s: string) =>
+    s ? new Date(s + "T00:00:00") : null;
+  const formatDateString = (d: Date | null) =>
+    d
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+          d.getDate()
+        ).padStart(2, "0")}`
+      : "";
+
   // The typed signature must match the primary applicant's name exactly
   // (case/extra-whitespace insensitive) — no partial or nickname matches.
   const fullTenantName = `${tenantFirstName} ${tenantLastName}`.trim();
@@ -991,14 +1008,10 @@ export default function LeaseApplicationForm({
           <div style={styles.field}>
             <label style={styles.label}>Lease Start Date</label>
             <div style={{ position: "relative" }}>
-              <input
-                type="date"
-                style={styles.input}
-                value={data.lease_start_date}
-                min={new Date().toISOString().split("T")[0]}
-                disabled={mode === "applicant" && !data.space_id}
-                onChange={(e) => {
-                  const newDate = e.target.value;
+              <DatePicker
+                selected={parseDateString(data.lease_start_date)}
+                onChange={(date: Date | null) => {
+                  const newDate = formatDateString(date);
                   set("lease_start_date", newDate);
                   if (selectedLot && data.use_seasonal_pricing) {
                     const computed = calculateLeaseRent(
@@ -1012,6 +1025,15 @@ export default function LeaseApplicationForm({
                     set("rent_amount", computed !== null ? String(computed) : "");
                   }
                 }}
+                minDate={new Date()}
+                excludeDateIntervals={
+                  mode === "applicant" ? excludedDateIntervals : []
+                }
+                disabled={mode === "applicant" && !data.space_id}
+                dateFormat="MM/dd/yyyy"
+                placeholderText="Select a date"
+                customInput={<input style={{ ...styles.input, width: "100%", boxSizing: "border-box" }} />}
+                wrapperClassName="lease-datepicker-wrapper"
               />
               {mode === "applicant" && !data.space_id && (
                 // Disabled inputs swallow click events in most browsers, so a
@@ -1030,6 +1052,11 @@ export default function LeaseApplicationForm({
               mode === "applicant" && attemptedSubmit && !data.lease_start_date && (
                 <div style={styles.requiredNote}>Field required</div>
               )
+            )}
+            {mode === "applicant" && data.space_id && (
+              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                Already-reserved dates for this lot are grayed out.
+              </div>
             )}
           </div>
         </div>
@@ -1062,13 +1089,10 @@ export default function LeaseApplicationForm({
           <div style={styles.row}>
             <div style={styles.field}>
               <label style={styles.label}>Lease End / Checkout Date</label>
-              <input
-                type="date"
-                style={styles.input}
-                value={data.lease_end_date}
-                min={data.lease_start_date || new Date().toISOString().split("T")[0]}
-                onChange={(e) => {
-                  const newEnd = e.target.value;
+              <DatePicker
+                selected={parseDateString(data.lease_end_date)}
+                onChange={(date: Date | null) => {
+                  const newEnd = formatDateString(date);
                   set("lease_end_date", newEnd);
                   if (selectedLot && data.use_seasonal_pricing) {
                     const computed = calculateLeaseRent(
@@ -1082,6 +1106,14 @@ export default function LeaseApplicationForm({
                     set("rent_amount", computed !== null ? String(computed) : "");
                   }
                 }}
+                minDate={parseDateString(data.lease_start_date) ?? new Date()}
+                excludeDateIntervals={
+                  mode === "applicant" ? excludedDateIntervals : []
+                }
+                dateFormat="MM/dd/yyyy"
+                placeholderText="Select a date"
+                customInput={<input style={{ ...styles.input, width: "100%", boxSizing: "border-box" }} />}
+                wrapperClassName="lease-datepicker-wrapper"
               />
               {mode === "applicant" &&
                 attemptedSubmit &&
