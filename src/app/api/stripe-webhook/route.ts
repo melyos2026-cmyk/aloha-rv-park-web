@@ -302,14 +302,16 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
       ? session.payment_intent
       : session.payment_intent?.id ?? null;
 
-  const { error } = await supabase
+  const { data: updatedOrder, error } = await supabase
     .from("lot_orders")
     .update({
       status: "paid",
       stripe_session_id: session.id,
       stripe_payment_intent: paymentIntentId,
     })
-    .eq("id", lotOrderId);
+    .eq("id", lotOrderId)
+    .select("customer_name, lot_id")
+    .single();
 
   if (error) {
     console.log("Error updating lot_orders after manual reservation payment:", error.message);
@@ -317,4 +319,23 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
   }
 
   console.log(`Manual reservation payment confirmed for lot_order ${lotOrderId}.`);
+
+  // Notify the admin — they created this reservation as "pending" and have
+  // no other way of knowing exactly when the guest actually completes payment.
+  if (updatedOrder?.lot_id) {
+    const { data: lot } = await supabase
+      .from("rv_lots")
+      .select("company_id")
+      .eq("lot_name", updatedOrder.lot_id)
+      .single();
+
+    if (lot?.company_id) {
+      await supabase.from("resident_update_notifications").insert({
+        company_id: lot.company_id,
+        resident_name: updatedOrder.customer_name,
+        update_type: "reservation_paid",
+        message: `${updatedOrder.customer_name}'s reservation payment for lot ${updatedOrder.lot_id} was confirmed.`,
+      });
+    }
+  }
 }
