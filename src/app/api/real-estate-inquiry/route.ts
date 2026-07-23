@@ -43,6 +43,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
+    // Surface it in the admin's 🔔 Notifications bell too, not just email.
+    await supabaseAdmin.from("resident_update_notifications").insert({
+      company_id: companyId,
+      resident_name: fullName,
+      update_type: "real_estate_inquiry",
+      message: `New appointment request${listingTitle ? ` for "${listingTitle}"` : ""} from ${fullName} (${email}${phone ? `, ${phone}` : ""}).`,
+    });
+
     // Notify the company's own contact email (falls back to Mely's if unset).
     const { data: company } = await supabaseAdmin
       .from("companies")
