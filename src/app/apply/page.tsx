@@ -35,6 +35,11 @@ function ApplyPageInner() {
   const [initialData, setInitialData] = useState<Partial<LeaseApplicationData> | undefined>(undefined);
   const [invitationLoaded, setInvitationLoaded] = useState(!inviteToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
+  // LeaseApplicationForm only reads `initialData` on its very first render
+  // (useState lazy init) — since park_settings/lease_defaults arrives async,
+  // the form can mount before it's ready and never pick it up. settingsLoaded
+  // gates a one-time remount (via the `key` prop below) once it's actually in.
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   useEffect(() => {
     if (companyLoading) return;
@@ -86,6 +91,7 @@ function ApplyPageInner() {
             }));
           }
         }
+        setSettingsLoaded(true);
       });
   }, [company, companyLoading, companyError, inviteToken]);
 
@@ -365,6 +371,7 @@ function ApplyPageInner() {
       )}
 
       <LeaseApplicationForm
+        key={settingsLoaded ? "ready" : "loading"}
         mode="applicant"
         submitting={submitting}
        company={{
