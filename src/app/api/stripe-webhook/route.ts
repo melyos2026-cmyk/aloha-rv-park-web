@@ -36,9 +36,12 @@ export async function POST(req: Request) {
     const residentId = session.metadata?.resident_id;
     const paymentIdsRaw = session.metadata?.payment_ids || "";
     const paymentIds = paymentIdsRaw.split(",").filter(Boolean);
+    const invoiceIdsRaw = session.metadata?.invoice_ids || "";
+    const invoiceIds = invoiceIdsRaw.split(",").filter(Boolean);
 
     console.log("Payment completed for resident:", residentId);
     console.log("Marking payment IDs as Paid:", paymentIds);
+    console.log("Marking invoice IDs as Paid:", invoiceIds);
 
     let chargesPaid: { label: string; amount: number }[] = [];
 
@@ -71,6 +74,32 @@ export async function POST(req: Request) {
         console.log("resident_payments updated successfully.");
       }
     }
+
+    if (invoiceIds.length > 0) {
+      const { data: paidInvoices } = await supabase
+        .from("resident_invoices")
+        .select("id, total_amount, invoice_month")
+        .in("id", invoiceIds);
+
+      chargesPaid = chargesPaid.concat(
+        (paidInvoices || []).map((inv) => ({
+          label: `Invoice — ${inv.invoice_month}`,
+          amount: Number(inv.total_amount || 0),
+        }))
+      );
+
+      const { error: invoiceUpdateError } = await supabase
+        .from("resident_invoices")
+        .update({ status: "Paid" })
+        .in("id", invoiceIds);
+
+      if (invoiceUpdateError) {
+        console.log("Error updating resident_invoices:", invoiceUpdateError.message);
+      } else {
+        console.log("resident_invoices updated successfully.");
+      }
+    }
+
 
     if (residentId) {
       try {

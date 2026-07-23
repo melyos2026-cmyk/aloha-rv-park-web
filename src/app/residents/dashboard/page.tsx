@@ -16,6 +16,7 @@ export default function ResidentDashboard() {
   const [message, setMessage] = useState("Loading...");
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
   const router = useRouter();
@@ -45,12 +46,13 @@ export default function ResidentDashboard() {
   const [vehPlate, setVehPlate] = useState("");
   const [vehState, setVehState] = useState("");
 
-  const outstandingBalance = payments.reduce((sum, payment) => {
-    if (payment.status === "Pending" || payment.status === "Late" || payment.status === "Partial") {
-      return sum + Number(payment.total_due || payment.amount || 0);
-    }
-    return sum;
-  }, 0);
+  const outstandingBalance =
+    payments.reduce((sum, payment) => {
+      if (payment.status === "Pending" || payment.status === "Late" || payment.status === "Partial") {
+        return sum + Number(payment.total_due || payment.amount || 0);
+      }
+      return sum;
+    }, 0) + pendingInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
 
   useEffect(() => {
     loadResidentDashboard();
@@ -113,6 +115,14 @@ export default function ResidentDashboard() {
       .in("status", ["Pending", "Late", "Partial"])
       .order("due_date", { ascending: true });
     setPayments(pays || []);
+
+    const { data: invs } = await supabase
+      .from("resident_invoices")
+      .select("*")
+      .eq("resident_id", residentId)
+      .eq("status", "Pending")
+      .order("due_date", { ascending: true });
+    setPendingInvoices(invs || []);
 
     const { data: anns } = await supabase
       .from("announcements")
@@ -460,7 +470,7 @@ export default function ResidentDashboard() {
           )}
 
           {/* Outstanding charges list */}
-          {payments.length > 0 && (
+          {(payments.length > 0 || pendingInvoices.length > 0) && (
             <div style={card}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Outstanding Charges</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -473,6 +483,18 @@ export default function ResidentDashboard() {
                     <div style={{ textAlign: "right" }}>
                       <p style={{ fontWeight: 900 }}>${Number(p.total_due || p.amount || 0).toFixed(2)}</p>
                       <p style={{ color: "var(--gray)", fontSize: 12 }}>{p.status}</p>
+                    </div>
+                  </div>
+                ))}
+                {pendingInvoices.map(inv => (
+                  <div key={inv.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, display: "flex", justifyContent: "space-between" }}>
+                    <div>
+                      <p style={{ fontWeight: 700 }}>Monthly Invoice — {inv.invoice_month}</p>
+                      <p style={{ color: "var(--gray)", fontSize: 12 }}>Rent + any recurring charges</p>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <p style={{ fontWeight: 900 }}>${Number(inv.total_amount || 0).toFixed(2)}</p>
+                      <p style={{ color: "var(--gray)", fontSize: 12 }}>{inv.status}</p>
                     </div>
                   </div>
                 ))}
