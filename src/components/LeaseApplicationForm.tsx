@@ -1265,6 +1265,7 @@ export default function LeaseApplicationForm({
       </div>
 
       {/* 5-7. Fees & Deposits */}
+      {(mode === "admin" || data.month_to_month) && (
       <div style={styles.card}>
         <div style={styles.sectionTitle}>Fees &amp; Deposits</div>
 
@@ -1400,6 +1401,7 @@ export default function LeaseApplicationForm({
           </div>
         )}
       </div>
+      )}
 
       {/* 8-10. Occupants, Furnishings, Utilities */}
       <div style={styles.card}>
