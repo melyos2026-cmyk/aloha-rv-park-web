@@ -17,6 +17,7 @@ export default function ResidentDashboard() {
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
+  const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
   const router = useRouter();
 
   const [editingInfo, setEditingInfo] = useState(false);
@@ -73,6 +74,11 @@ export default function ResidentDashboard() {
       return;
     }
     setResident(residentData);
+
+    fetch(`/api/portal/rent-to-own-plan?residentId=${residentId}`)
+      .then((res) => res.json())
+      .then((result) => setRentToOwnPlan(result.plan || null))
+      .catch(() => setRentToOwnPlan(null));
 
     const { data: electricData } = await supabase
       .from("resident_electric_readings")
@@ -423,6 +429,32 @@ export default function ResidentDashboard() {
               </button>
             </div>
           </div>
+
+          {rentToOwnPlan && (
+            <div style={{ ...card, marginTop: 16 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>
+                🏡 Rent-to-Own Plan {rentToOwnPlan.lot_name ? `— Lot ${rentToOwnPlan.lot_name}` : ""}
+              </h2>
+              <p style={{ ...label, marginBottom: 12 }}>
+                ${Number(rentToOwnPlan.monthly_principal).toFixed(2)}/month toward your total purchase price
+              </p>
+              <div style={{ fontSize: 14, marginBottom: 6 }}>
+                ${rentToOwnPlan.paid_so_far.toFixed(2)} paid of ${Number(rentToOwnPlan.total_price).toLocaleString()}
+                {" — "}
+                <strong>${rentToOwnPlan.remaining.toFixed(2)} remaining</strong>
+              </div>
+              <div style={{ width: "100%", background: "#e5e7eb", borderRadius: 999, height: 10 }}>
+                <div
+                  style={{
+                    width: `${Math.min(100, Math.round((rentToOwnPlan.paid_so_far / rentToOwnPlan.total_price) * 100))}%`,
+                    background: "#16a34a",
+                    height: 10,
+                    borderRadius: 999,
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Outstanding charges list */}
           {payments.length > 0 && (
