@@ -412,6 +412,11 @@ interface Props {
   highSeasonEndMonthDay?: string; // e.g. '04-30', wraps across year-end if end < start
   initialData?: Partial<LeaseApplicationData>;
   isRentToOwn?: boolean; // shows the no-sublet / rent-to-own acknowledgment section
+  rentToOwnTerms?: {
+    totalPrice: number | null;
+    monthlyPayment: number | null;
+    numPayments: number | null;
+  };
   onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
   submitting?: boolean;
@@ -512,6 +517,7 @@ export default function LeaseApplicationForm({
   highSeasonEndMonthDay,
   initialData,
   isRentToOwn,
+  rentToOwnTerms,
   onSubmit,
   onUploadFile,
   submitting,
@@ -674,10 +680,13 @@ export default function LeaseApplicationForm({
   const backgroundCheckThresholdDays =
     Number(data.background_check_threshold_days) || 15;
   // Month-to-month is indefinite, so it always requires a background check.
+  // Rent-to-own is a long-term ownership-track commitment, so it always
+  // requires one too, regardless of the configured day threshold.
   // A fixed-term stay only requires one once it's longer than the admin's
   // configured threshold.
   const backgroundCheckRequired =
     data.month_to_month ||
+    isRentToOwn ||
     (stayNights !== null && stayNights > backgroundCheckThresholdDays);
 
   // $2.50 is the actual application/processing fee, always charged.
@@ -2313,9 +2322,23 @@ export default function LeaseApplicationForm({
             }}
           >
             <p style={{ marginBottom: 10 }}>
-              This application is for a <strong>Rent-to-Own</strong> agreement. A portion of your
-              monthly payment is applied toward the total purchase price of the home, in addition
-              to your regular lot rent, as set out in your Rent-to-Own agreement once approved.
+              This application is for a <strong>Rent-to-Own</strong> agreement with the following
+              terms, as agreed with park management:
+            </p>
+            <ul style={{ marginBottom: 10, paddingLeft: 20 }}>
+              {rentToOwnTerms?.totalPrice != null && (
+                <li>Total purchase price: <strong>${Number(rentToOwnTerms.totalPrice).toLocaleString()}</strong></li>
+              )}
+              {rentToOwnTerms?.monthlyPayment != null && (
+                <li>Monthly payment toward the purchase price: <strong>${Number(rentToOwnTerms.monthlyPayment).toLocaleString()}</strong></li>
+              )}
+              {rentToOwnTerms?.numPayments != null && (
+                <li>Number of payments: <strong>{rentToOwnTerms.numPayments}</strong></li>
+              )}
+            </ul>
+            <p style={{ marginBottom: 10 }}>
+              This is in addition to your regular lot rent, as set out in your Rent-to-Own
+              agreement once approved.
             </p>
             <p style={{ marginBottom: 10 }}>
               <strong>This unit is for owner-occupancy by the applicant(s) only.</strong>{" "}
