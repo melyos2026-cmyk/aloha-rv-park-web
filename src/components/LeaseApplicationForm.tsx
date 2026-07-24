@@ -411,6 +411,7 @@ interface Props {
   highSeasonStartMonthDay?: string; // e.g. '10-01', from park_settings
   highSeasonEndMonthDay?: string; // e.g. '04-30', wraps across year-end if end < start
   initialData?: Partial<LeaseApplicationData>;
+  isRentToOwn?: boolean; // shows the no-sublet / rent-to-own acknowledgment section
   onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
   submitting?: boolean;
@@ -510,6 +511,7 @@ export default function LeaseApplicationForm({
   highSeasonStartMonthDay,
   highSeasonEndMonthDay,
   initialData,
+  isRentToOwn,
   onSubmit,
   onUploadFile,
   submitting,
@@ -526,6 +528,7 @@ export default function LeaseApplicationForm({
   const [triedLeaseStartClick, setTriedLeaseStartClick] = useState(false);
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [rentToOwnAcknowledged, setRentToOwnAcknowledged] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -763,7 +766,8 @@ export default function LeaseApplicationForm({
         (!backgroundCheckRequired || data.background_check_consent_given) &&
         !!data.rv_length_ft &&
         !rvTooLong &&
-        !lotAvailabilityConflict;
+        !lotAvailabilityConflict &&
+        (!isRentToOwn || rentToOwnAcknowledged);
 
   return (
     <div style={styles.page}>
@@ -2292,6 +2296,53 @@ export default function LeaseApplicationForm({
             <div style={styles.requiredNote}>Field required</div>
           )}
       </div>
+
+      {isRentToOwn && (
+        <div style={styles.card}>
+          <div style={styles.sectionTitle}>Rent-to-Own Terms</div>
+          <div
+            style={{
+              background: "#faf5ff",
+              border: "1px solid #e9d5ff",
+              borderRadius: 8,
+              padding: 16,
+              fontSize: 13.5,
+              lineHeight: 1.6,
+              color: "#333",
+              marginBottom: 12,
+            }}
+          >
+            <p style={{ marginBottom: 10 }}>
+              This application is for a <strong>Rent-to-Own</strong> agreement. A portion of your
+              monthly payment is applied toward the total purchase price of the home, in addition
+              to your regular lot rent, as set out in your Rent-to-Own agreement once approved.
+            </p>
+            <p style={{ marginBottom: 10 }}>
+              <strong>This unit is for owner-occupancy by the applicant(s) only.</strong>{" "}
+              Subletting, subleasing, or otherwise renting this unit to any third party is strictly
+              prohibited for the full duration of the Rent-to-Own agreement.
+            </p>
+            <p>
+              The full payment schedule, total purchase price, and terms will be provided in your
+              Rent-to-Own agreement for signature after this application is approved.
+            </p>
+          </div>
+          {mode === "applicant" && (
+            <label style={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={rentToOwnAcknowledged}
+                onChange={(e) => setRentToOwnAcknowledged(e.target.checked)}
+              />
+              I understand and agree that this unit is for my own occupancy only, and that
+              subletting or renting it to anyone else is not allowed under this agreement.
+            </label>
+          )}
+          {mode === "applicant" && attemptedSubmit && !rentToOwnAcknowledged && (
+            <div style={styles.requiredNote}>Field required</div>
+          )}
+        </div>
+      )}
 
       {/* Application Fee & Background Check */}
       {(mode === "admin" || (hasDecidedTerm && backgroundCheckRequired)) && (

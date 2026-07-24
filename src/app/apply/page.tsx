@@ -33,6 +33,7 @@ function ApplyPageInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [invitationId, setInvitationId] = useState<string | null>(null);
+  const [isRentToOwn, setIsRentToOwn] = useState(false);
   const [initialData, setInitialData] = useState<Partial<LeaseApplicationData> | undefined>(undefined);
   const [invitationLoaded, setInvitationLoaded] = useState(!inviteToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
@@ -121,6 +122,7 @@ function ApplyPageInner() {
         }
 
         setInvitationId(data.id);
+        setIsRentToOwn(!!data.is_rent_to_own);
         setInitialData((prev) => ({
           ...prev,
           tenant_names: data.full_name ?? data.tenant_names ?? "",
@@ -393,6 +395,7 @@ function ApplyPageInner() {
         highSeasonStartMonthDay={highSeasonStart}
         highSeasonEndMonthDay={highSeasonEnd}
         initialData={initialData}
+        isRentToOwn={isRentToOwn}
         onUploadFile={uploadLicensePhoto}
         onSubmit={handleSubmit}
       />
