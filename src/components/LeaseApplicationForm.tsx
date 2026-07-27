@@ -417,7 +417,9 @@ interface Props {
     monthlyPayment: number | null;
     numPayments: number | null;
     deposit: number | null;
+    depositPaid: boolean;
   };
+  applicationId?: string | null;
   onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
   submitting?: boolean;
@@ -519,6 +521,7 @@ export default function LeaseApplicationForm({
   initialData,
   isRentToOwn,
   rentToOwnTerms,
+  applicationId,
   onSubmit,
   onUploadFile,
   submitting,
@@ -536,6 +539,7 @@ export default function LeaseApplicationForm({
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [rentToOwnAcknowledged, setRentToOwnAcknowledged] = useState(false);
+  const [payingDeposit, setPayingDeposit] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -2331,7 +2335,10 @@ export default function LeaseApplicationForm({
                 <li>Total purchase price: <strong>${Number(rentToOwnTerms.totalPrice).toLocaleString()}</strong></li>
               )}
               {rentToOwnTerms?.deposit != null && (
-                <li>Deposit (applied toward the purchase price): <strong>${Number(rentToOwnTerms.deposit).toLocaleString()}</strong></li>
+                <li>
+                  Deposit (applied toward the purchase price): <strong>${Number(rentToOwnTerms.deposit).toLocaleString()}</strong>
+                  {rentToOwnTerms.depositPaid ? " — Paid ✅" : ""}
+                </li>
               )}
               {rentToOwnTerms?.monthlyPayment != null && (
                 <li>Monthly payment toward the purchase price: <strong>${Number(rentToOwnTerms.monthlyPayment).toLocaleString()}</strong></li>
@@ -2340,6 +2347,51 @@ export default function LeaseApplicationForm({
                 <li>Number of payments: <strong>{rentToOwnTerms.numPayments}</strong></li>
               )}
             </ul>
+            {mode === "applicant" &&
+              rentToOwnTerms?.deposit != null &&
+              !rentToOwnTerms.depositPaid &&
+              applicationId && (
+                <button
+                  type="button"
+                  disabled={payingDeposit}
+                  onClick={async () => {
+                    setPayingDeposit(true);
+                    try {
+                      const res = await fetch("/api/create-rent-to-own-deposit-checkout-session", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ applicationId }),
+                      });
+                      const result = await res.json();
+                      if (result.url) {
+                        window.location.href = result.url;
+                      } else {
+                        alert(result.error || "Could not start the deposit payment. Please try again.");
+                        setPayingDeposit(false);
+                      }
+                    } catch {
+                      alert("Could not start the deposit payment. Please try again.");
+                      setPayingDeposit(false);
+                    }
+                  }}
+                  style={{
+                    background: "#7c3aed",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    padding: "10px 20px",
+                    fontWeight: 700,
+                    fontSize: 13.5,
+                    cursor: payingDeposit ? "default" : "pointer",
+                    opacity: payingDeposit ? 0.7 : 1,
+                    marginBottom: 12,
+                  }}
+                >
+                  {payingDeposit
+                    ? "Redirecting to payment..."
+                    : `💳 Pay Deposit Now ($${Number(rentToOwnTerms.deposit).toLocaleString()})`}
+                </button>
+              )}
             <p style={{ marginBottom: 10 }}>
               This is in addition to your regular lot rent, as set out in your Rent-to-Own
               agreement once approved.

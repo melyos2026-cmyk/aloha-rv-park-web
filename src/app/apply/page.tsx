@@ -39,7 +39,8 @@ function ApplyPageInner() {
     monthlyPayment: number | null;
     numPayments: number | null;
     deposit: number | null;
-  }>({ totalPrice: null, monthlyPayment: null, numPayments: null, deposit: null });
+    depositPaid: boolean;
+  }>({ totalPrice: null, monthlyPayment: null, numPayments: null, deposit: null, depositPaid: false });
   const [initialData, setInitialData] = useState<Partial<LeaseApplicationData> | undefined>(undefined);
   const [invitationLoaded, setInvitationLoaded] = useState(!inviteToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
@@ -134,6 +135,7 @@ function ApplyPageInner() {
           monthlyPayment: data.rent_to_own_monthly_payment ?? null,
           numPayments: data.rent_to_own_num_payments ?? null,
           deposit: data.rent_to_own_deposit ?? null,
+          depositPaid: !!data.rent_to_own_deposit_paid,
         });
         setInitialData((prev) => ({
           ...prev,
@@ -409,6 +411,7 @@ function ApplyPageInner() {
         initialData={initialData}
         isRentToOwn={isRentToOwn}
         rentToOwnTerms={rentToOwnTerms}
+        applicationId={invitationId}
         onUploadFile={uploadLicensePhoto}
         onSubmit={handleSubmit}
       />

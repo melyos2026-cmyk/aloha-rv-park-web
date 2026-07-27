@@ -33,6 +33,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    if (session.metadata?.type === "rent_to_own_deposit") {
+      await handleRentToOwnDepositPaid(session);
+      return NextResponse.json({ received: true });
+    }
+
     const residentId = session.metadata?.resident_id;
     const paymentIdsRaw = session.metadata?.payment_ids || "";
     const paymentIds = paymentIdsRaw.split(",").filter(Boolean);
@@ -317,6 +322,28 @@ function calculateAge(dateOfBirth: string): number | null {
   const m = today.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
   return age;
+}
+
+async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
+  const applicationId = session.metadata?.application_id;
+  if (!applicationId) {
+    console.log("Rent-to-own deposit webhook missing application_id metadata");
+    return;
+  }
+
+  const { error } = await supabase
+    .from("resident_applications")
+    .update({
+      rent_to_own_deposit_paid: true,
+      rent_to_own_deposit_method: "Stripe",
+    })
+    .eq("id", applicationId);
+
+  if (error) {
+    console.log("Error marking rent-to-own deposit paid:", error.message);
+  } else {
+    console.log(`Rent-to-own deposit payment confirmed for application ${applicationId}.`);
+  }
 }
 
 async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
