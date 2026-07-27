@@ -350,7 +350,7 @@ const PROPANE_PRODUCT_LABELS: Record<string, string> = {
 };
 
 async function handlePropanePaid(session: Stripe.Checkout.Session) {
-  const { productId, quantity, lotId, park } = session.metadata || {};
+  const { productId, quantity, lotId, park, residentLot } = session.metadata || {};
 
   try {
     const qrToken = crypto.randomBytes(16).toString("hex");
@@ -373,6 +373,7 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
         paid_at: new Date().toISOString(),
         qr_token: qrToken,
         redeemed: false,
+        resident_lot_name: residentLot || null,
       },
       { onConflict: "stripe_session_id" }
     );

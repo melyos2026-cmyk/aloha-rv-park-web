@@ -19,6 +19,7 @@ export default function ResidentDashboard() {
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
+  const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const router = useRouter();
 
   const [editingInfo, setEditingInfo] = useState(false);
@@ -81,6 +82,11 @@ export default function ResidentDashboard() {
       .then((res) => res.json())
       .then((result) => setRentToOwnPlan(result.plan || null))
       .catch(() => setRentToOwnPlan(null));
+
+    fetch(`/api/portal/propane-orders?residentId=${residentId}`)
+      .then((res) => res.json())
+      .then((result) => setPropaneOrders(result.orders || []))
+      .catch(() => setPropaneOrders([]));
 
     const { data: electricData } = await supabase
       .from("resident_electric_readings")
@@ -465,6 +471,51 @@ export default function ResidentDashboard() {
                     borderRadius: 999,
                   }}
                 />
+              </div>
+            </div>
+          )}
+
+          {propaneOrders.length > 0 && (
+            <div style={{ ...card, marginTop: 16 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>⛽ Propane Orders</h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {propaneOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 14, display: "flex", gap: 16, alignItems: "center" }}
+                  >
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(order.qr_token)}`}
+                      alt="Propane pickup QR code"
+                      style={{ width: 100, height: 100, flexShrink: 0 }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: 700, margin: 0 }}>
+                        {order.quantity} {order.unit === "gallon" ? "gallons" : "×"} {order.product_label}
+                      </p>
+                      <p style={{ color: "var(--gray)", fontSize: 13, margin: "2px 0" }}>
+                        ${Number(order.amount_total).toFixed(2)} — paid{" "}
+                        {new Date(order.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </p>
+                      <p style={{ fontSize: 12.5, margin: "4px 0", color: order.redeemed ? "#16a34a" : "#b45309", fontWeight: 700 }}>
+                        {order.redeemed ? "✅ Already picked up" : "🕓 Ready for pickup — show this code to staff"}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          await fetch("/api/portal/dismiss-propane-order", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ orderId: order.id }),
+                          });
+                          setPropaneOrders((prev) => prev.filter((o) => o.id !== order.id));
+                        }}
+                        style={{ fontSize: 12, color: "var(--gray)", background: "none", border: "none", textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                      >
+                        Remove from my portal
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
