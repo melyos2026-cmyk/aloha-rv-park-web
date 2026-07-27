@@ -416,6 +416,7 @@ interface Props {
     totalPrice: number | null;
     monthlyPayment: number | null;
     numPayments: number | null;
+    deposit: number | null;
   };
   onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
@@ -2328,6 +2329,9 @@ export default function LeaseApplicationForm({
             <ul style={{ marginBottom: 10, paddingLeft: 20 }}>
               {rentToOwnTerms?.totalPrice != null && (
                 <li>Total purchase price: <strong>${Number(rentToOwnTerms.totalPrice).toLocaleString()}</strong></li>
+              )}
+              {rentToOwnTerms?.deposit != null && (
+                <li>Deposit (applied toward the purchase price): <strong>${Number(rentToOwnTerms.deposit).toLocaleString()}</strong></li>
               )}
               {rentToOwnTerms?.monthlyPayment != null && (
                 <li>Monthly payment toward the purchase price: <strong>${Number(rentToOwnTerms.monthlyPayment).toLocaleString()}</strong></li>

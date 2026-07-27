@@ -38,7 +38,8 @@ function ApplyPageInner() {
     totalPrice: number | null;
     monthlyPayment: number | null;
     numPayments: number | null;
-  }>({ totalPrice: null, monthlyPayment: null, numPayments: null });
+    deposit: number | null;
+  }>({ totalPrice: null, monthlyPayment: null, numPayments: null, deposit: null });
   const [initialData, setInitialData] = useState<Partial<LeaseApplicationData> | undefined>(undefined);
   const [invitationLoaded, setInvitationLoaded] = useState(!inviteToken);
   const [invitationError, setInvitationError] = useState<string | null>(null);
@@ -132,6 +133,7 @@ function ApplyPageInner() {
           totalPrice: data.rent_to_own_total_price ?? null,
           monthlyPayment: data.rent_to_own_monthly_payment ?? null,
           numPayments: data.rent_to_own_num_payments ?? null,
+          deposit: data.rent_to_own_deposit ?? null,
         });
         setInitialData((prev) => ({
           ...prev,
