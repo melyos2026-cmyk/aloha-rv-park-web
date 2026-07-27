@@ -354,6 +354,8 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
 
   try {
     const qrToken = crypto.randomBytes(16).toString("hex");
+    const customerEmail = session.customer_details?.email || null;
+
     const { error } = await supabase.from("propane_orders").upsert(
       {
         park_id: park || "aloha",
@@ -364,7 +366,7 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
         unit: productId === "motorhome" ? "gallon" : "tank",
         amount_total: (session.amount_total || 0) / 100,
         currency: session.currency || "usd",
-        customer_email: session.customer_details?.email || null,
+        customer_email: customerEmail,
         stripe_session_id: session.id,
         stripe_payment_intent: (session.payment_intent as string) || null,
         status: "paid",
@@ -375,7 +377,41 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
       { onConflict: "stripe_session_id" }
     );
 
-    if (error) console.error("Error saving propane order:", error.message);
+    if (error) {
+      console.error("Error saving propane order:", error.message);
+      return;
+    }
+
+    if (customerEmail && process.env.RESEND_API_KEY) {
+      try {
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(qrToken)}`;
+        const label = PROPANE_PRODUCT_LABELS[productId as string] || productId;
+        const amount = ((session.amount_total || 0) / 100).toFixed(2);
+
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "Aloha RV Park <onboarding@resend.dev>",
+            to: customerEmail,
+            subject: "Your Propane Pickup QR Code",
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 420px; margin: 0 auto;">
+                <h2>⛽ Payment Confirmed</h2>
+                <p>${quantity} ${productId === "motorhome" ? "gallons" : "×"} ${label} — $${amount}</p>
+                <img src="${qrImageUrl}" alt="Propane pickup QR code" style="display:block;margin:16px 0;" />
+                <p style="font-size:13px;color:#555;">Show this code to staff when you pick up your propane. It can only be used once.</p>
+              </div>
+            `,
+          }),
+        });
+      } catch (emailErr) {
+        console.error("Failed to send propane QR email:", emailErr);
+      }
+    }
   } catch (err) {
     console.error("Error saving propane order:", err);
   }

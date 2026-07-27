@@ -12,7 +12,14 @@ const MAX_QTY: Record<string, number> = { "20lb": 20, "30lb": 20, "40lb": 20, fo
 // identically to one made from the map (same pricing, same QR pickup flow).
 export async function POST(req: NextRequest) {
   try {
-    const { productId, quantity, parkId, customerEmail } = await req.json();
+    const { productId, quantity, parkId, customerEmail, lotNumber } = await req.json();
+
+    if (!customerEmail && !lotNumber) {
+      return NextResponse.json(
+        { error: "Please provide an email address, or your lot number if you're a resident." },
+        { status: 400 }
+      );
+    }
 
     const { data: company } = await supabase
       .from("companies")
@@ -71,7 +78,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         productId,
         quantity: String(rawQty),
-        lotId: "",
+        lotId: lotNumber || "",
         park: parkId || "aloha",
       },
       success_url: `${origin}/propane?propane_payment=success&session_id={CHECKOUT_SESSION_ID}`,

@@ -12,6 +12,7 @@ export default function PropanePage() {
   const [quantity, setQuantity] = useState(1);
   const [gallons, setGallons] = useState("");
   const [email, setEmail] = useState("");
+  const [lotNumber, setLotNumber] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingPrices, setLoadingPrices] = useState(true);
   const [error, setError] = useState("");
@@ -84,13 +85,23 @@ export default function PropanePage() {
       setError("Gallon amount too high");
       return;
     }
+    if (!email && !lotNumber) {
+      setError("Please enter your email, or your lot number if you're a resident.");
+      return;
+    }
 
     setLoading(true);
     try {
       const res = await fetch("/api/create-propane-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, quantity: qty, parkId, customerEmail: email || undefined }),
+        body: JSON.stringify({
+          productId,
+          quantity: qty,
+          parkId,
+          customerEmail: email || undefined,
+          lotNumber: lotNumber || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not start checkout");
@@ -185,13 +196,25 @@ export default function PropanePage() {
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--gray)", display: "block", marginBottom: 4 }}>
-              Email (optional, for your receipt)
+              Email (required, so we can send your QR code)
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid var(--border)", fontSize: 14 }}
+            />
+          </div>
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--gray)", display: "block", marginBottom: 4 }}>
+              Lot # (residents only — use this instead of email if you prefer)
+            </label>
+            <input
+              value={lotNumber}
+              onChange={(e) => setLotNumber(e.target.value)}
+              placeholder="e.g. A12"
               style={{ width: "100%", padding: "10px 12px", borderRadius: 6, border: "1px solid var(--border)", fontSize: 14 }}
             />
           </div>
