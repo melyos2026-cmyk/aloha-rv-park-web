@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
+import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
@@ -102,6 +103,16 @@ export async function POST(req: Request) {
         console.log("Error updating resident_invoices:", invoiceUpdateError.message);
       } else {
         console.log("resident_invoices updated successfully.");
+        if (residentId) {
+          const { data: residentRow } = await supabase
+            .from("resident_accounts")
+            .select("company_id")
+            .eq("id", residentId)
+            .maybeSingle();
+          if (residentRow?.company_id) {
+            await checkAndCompleteRentToOwnPlan(residentId, residentRow.company_id);
+          }
+        }
       }
     }
 
