@@ -6,6 +6,7 @@ import { useCompany } from "@/lib/CompanyContext";
 const nav = [
   { label: "Home", href: "/" },
   { label: "Apply", href: "/apply" },
+  { label: "Propane", href: "/propane" },
   { label: "Real Estate", href: "/real-estate" },
   { label: "Events", href: "/events" },
   { label: "Residents Login", href: "/login" },

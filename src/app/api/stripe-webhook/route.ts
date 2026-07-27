@@ -4,6 +4,7 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
+import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
@@ -36,6 +37,11 @@ export async function POST(req: Request) {
 
     if (session.metadata?.type === "rent_to_own_deposit") {
       await handleRentToOwnDepositPaid(session);
+      return NextResponse.json({ received: true });
+    }
+
+    if (session.metadata?.productId) {
+      await handlePropanePaid(session);
       return NextResponse.json({ received: true });
     }
 
@@ -333,6 +339,46 @@ function calculateAge(dateOfBirth: string): number | null {
   const m = today.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
   return age;
+}
+
+const PROPANE_PRODUCT_LABELS: Record<string, string> = {
+  "20lb": "20 LB Tank",
+  "30lb": "30 LB Tank",
+  "40lb": "40 LB Tank",
+  forklift: "Forklift",
+  motorhome: "Motor Home 40LB Tank",
+};
+
+async function handlePropanePaid(session: Stripe.Checkout.Session) {
+  const { productId, quantity, lotId, park } = session.metadata || {};
+
+  try {
+    const qrToken = crypto.randomBytes(16).toString("hex");
+    const { error } = await supabase.from("propane_orders").upsert(
+      {
+        park_id: park || "aloha",
+        lot_id: lotId || null,
+        product_id: productId,
+        product_label: PROPANE_PRODUCT_LABELS[productId as string] || productId,
+        quantity: parseFloat(quantity as string),
+        unit: productId === "motorhome" ? "gallon" : "tank",
+        amount_total: (session.amount_total || 0) / 100,
+        currency: session.currency || "usd",
+        customer_email: session.customer_details?.email || null,
+        stripe_session_id: session.id,
+        stripe_payment_intent: (session.payment_intent as string) || null,
+        status: "paid",
+        paid_at: new Date().toISOString(),
+        qr_token: qrToken,
+        redeemed: false,
+      },
+      { onConflict: "stripe_session_id" }
+    );
+
+    if (error) console.error("Error saving propane order:", error.message);
+  } catch (err) {
+    console.error("Error saving propane order:", err);
+  }
 }
 
 async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
