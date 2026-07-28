@@ -8,6 +8,7 @@ type Product = { product_id: string; label: string; price: number; unit: string;
 export default function PropanePage() {
   const { company } = useCompany();
   const [products, setProducts] = useState<Product[]>([]);
+  const [motorhomePrice, setMotorhomePrice] = useState<number | null>(null);
   const [tax, setTax] = useState({ enabled: false, ratePercent: 0 });
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -31,7 +32,10 @@ export default function PropanePage() {
     fetch(`/api/get-propane-pricing?park_id=${parkId}`)
       .then((res) => res.json())
       .then((result) => {
-        const list = (result.products || []).filter((p: Product) => p.unit !== "gallon");
+        const rawList: Product[] = result.products || [];
+        const gallonProduct = rawList.find((p) => p.unit === "gallon");
+        setMotorhomePrice(gallonProduct ? gallonProduct.price : null);
+        const list = rawList.filter((p) => p.unit !== "gallon");
         setProducts(list);
         if (list.length > 0) setProductId(list[0].product_id);
         setTax(result.tax || { enabled: false, ratePercent: 0 });
@@ -151,8 +155,8 @@ export default function PropanePage() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <p style={{ fontSize: 12.5, color: "var(--gray)", margin: 0 }}>
-            Need a motor home fill-up (by the gallon)? That's paid in person when we service you —
-            call us or just come by.
+            Need a motor home fill-up (by the gallon)? {motorhomePrice ? `$${Number(motorhomePrice).toFixed(2)}/gal, ` : ""}
+            paid in person when we service you — call us or just come by.
           </p>
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--gray)", display: "block", marginBottom: 4 }}>
