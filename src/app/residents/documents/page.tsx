@@ -13,6 +13,14 @@ type Lease = {
   lease_document_url: string | null;
 };
 
+type OtherDocument = {
+  id: string;
+  file_name: string;
+  file_url: string;
+  document_type: string | null;
+  created_at?: string;
+};
+
 function formatDate(dateStr: string | null) {
   if (!dateStr) return "—";
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
@@ -24,6 +32,7 @@ function formatDate(dateStr: string | null) {
 
 export default function DocumentsPage() {
   const [leases, setLeases] = useState<Lease[]>([]);
+  const [otherDocuments, setOtherDocuments] = useState<OtherDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -57,6 +66,14 @@ export default function DocumentsPage() {
     }
 
     setLeases(data || []);
+
+    const { data: docs } = await supabase
+      .from("resident_documents")
+      .select("id, file_name, file_url, document_type, created_at")
+      .eq("resident_id", residentId)
+      .order("created_at", { ascending: false });
+
+    setOtherDocuments(docs || []);
     setLoading(false);
   }
 
@@ -137,6 +154,52 @@ export default function DocumentsPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {otherDocuments.length > 0 && (
+        <div style={{ marginTop: 40 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>Other Documents</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {otherDocuments.map((doc) => (
+              <div
+                key={doc.id}
+                style={{
+                  border: "1.5px solid var(--border)",
+                  borderRadius: 8,
+                  padding: 16,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{doc.file_name}</div>
+                  {doc.document_type && (
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{doc.document_type}</div>
+                  )}
+                </div>
+                <a
+                  href={doc.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    background: "var(--black)",
+                    color: "#fff",
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    textDecoration: "none",
+                  }}
+                >
+                  📄 View
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
