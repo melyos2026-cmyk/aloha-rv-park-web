@@ -20,6 +20,7 @@ export default function ResidentDashboard() {
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
+  const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
   const router = useRouter();
 
   const [editingInfo, setEditingInfo] = useState(false);
@@ -87,6 +88,16 @@ export default function ResidentDashboard() {
       .then((res) => res.json())
       .then((result) => setPropaneOrders(result.orders || []))
       .catch(() => setPropaneOrders([]));
+
+    const { data: feeSettings } = await supabase
+      .from("company_fee_settings")
+      .select("accept_online_payments")
+      .eq("company_id", residentData.company_id)
+      .maybeSingle();
+    // Default to true (allow online payments) when this hasn't been
+    // explicitly configured, so we never silently hide an already-working
+    // Pay Now button for a company that just hasn't touched Fee Settings.
+    setAcceptOnlinePayments(feeSettings ? !!feeSettings.accept_online_payments : true);
 
     const { data: electricData } = await supabase
       .from("resident_electric_readings")
@@ -437,12 +448,14 @@ export default function ResidentDashboard() {
             <div style={cardAccent}>
               <p style={label}>Outstanding Balance</p>
               <p style={{ fontSize: 30, fontWeight: 900, color: "#b91c1c" }}>${outstandingBalance.toFixed(2)}</p>
+              {acceptOnlinePayments && (
               <button
                 onClick={handlePayNow}
                 style={{ marginTop: 12, background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
               >
                 Pay Now
               </button>
+              )}
             </div>
           </div>
 
@@ -560,12 +573,14 @@ export default function ResidentDashboard() {
                 <span style={{ fontWeight: 900 }}>Total Due</span>
                 <span style={{ fontWeight: 900 }}>${outstandingBalance.toFixed(2)}</span>
               </div>
+              {acceptOnlinePayments && (
               <button
                 onClick={handlePayNow}
                 style={{ marginTop: 16, width: "100%", background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: 14, fontWeight: 700, cursor: "pointer" }}
               >
                 Pay Online
               </button>
+              )}
             </div>
           )}
 
