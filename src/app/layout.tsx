@@ -22,7 +22,7 @@ async function getHostCompany() {
 
   const { data } = await supabase
     .from("companies")
-    .select("company_name, address, contact_phone, seo_description, business_type, logo_url")
+    .select("company_name, address, contact_phone, seo_description, business_type, logo_url, primary_color, secondary_color")
     .eq("domain", hostname)
     .maybeSingle();
 
@@ -61,6 +61,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
+        {(company?.primary_color || company?.secondary_color) && (
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `:root {
+                ${company?.primary_color ? `--red: ${company.primary_color}; --red-dark: ${company.primary_color};` : ""}
+                ${company?.secondary_color ? `--blue-accent: ${company.secondary_color};` : ""}
+              }`,
+            }}
+          />
+        )}
       </head>
       <body>
         <CompanyProvider>
