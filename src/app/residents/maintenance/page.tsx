@@ -106,6 +106,17 @@ export default function MaintenancePage() {
       return;
     }
 
+    fetch("/api/notify-maintenance-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        companyId: residentData.company_id,
+        residentId,
+        subject: subject.trim(),
+        priority,
+      }),
+    }).catch(() => {});
+
     if (photoFile && requestData) {
       const safeFileName = photoFile.name
         .replace(/[^a-zA-Z0-9.-]/g, "-")
