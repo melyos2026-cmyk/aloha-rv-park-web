@@ -88,12 +88,14 @@ function ApplyPageInner() {
           setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
           setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
           setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
-          // Brand-new applicant (no invite) starts pre-filled with the
-          // park's saved Fees & Deposits / Utilities / Parking-Pets-Smoking /
-          // Additional Terms / RV Removal / Park Rules defaults, instead of
-          // blank. Invited applicants get this merged in separately below,
-          // underneath whatever the invitation itself already specifies.
-          if (!inviteToken && settingsData.lease_defaults) {
+          // Every applicant — invited or not — starts pre-filled with the
+          // park's saved Fees & Deposits / Late Fee / Utilities /
+          // Parking-Pets-Smoking / Additional Terms / RV Removal / Park
+          // Rules defaults, instead of blank. Safe regardless of which
+          // effect resolves first: this spreads defaults first, then prev
+          // (whatever the invitation-specific effect already set) on top,
+          // so invitation-specific values always win on conflicting keys.
+          if (settingsData.lease_defaults) {
             const defaults = { ...settingsData.lease_defaults };
             // An empty/never-customized park_rules shouldn't wipe out the
             // sensible generic defaults (Quiet Hours, Speed Limit, etc.) —
