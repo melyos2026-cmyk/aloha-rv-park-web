@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const { data: product } = await supabase
       .from("propane_pricing")
-      .select("label, price, unit")
+      .select("label, price, unit, taxable")
       .eq("company_id", company.id)
       .eq("product_id", productId)
       .single();
@@ -41,6 +41,12 @@ export async function POST(req: NextRequest) {
     if (!product) {
       return NextResponse.json({ error: "Producto inválido" }, { status: 400 });
     }
+
+    const { data: taxSettings } = await supabase
+      .from("company_tax_settings")
+      .select("enable_tax, manual_tax_rate_percent")
+      .eq("company_id", company.id)
+      .maybeSingle();
 
     const isGallon = product.unit === "gallon";
     const rawQty = isGallon ? parseFloat(quantity) : parseInt(quantity, 10);
@@ -62,31 +68,51 @@ export async function POST(req: NextRequest) {
     const subtotalCents = lineItemAmount * lineItemQty;
     const processingFeeCents = Math.round(subtotalCents * 0.04);
 
+    // Sales tax — per-company rate (works for any state, not hardcoded),
+    // only charged when this specific product is marked taxable.
+    const taxEnabled = !!taxSettings?.enable_tax && product.taxable;
+    const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
+    const taxCents = taxEnabled ? Math.round(subtotalCents * (taxRatePercent / 100)) : 0;
+
+    const lineItems: any[] = [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: product.label,
+            description: isGallon ? `${rawQty} gallons × $${product.price}` : `Quantity: ${rawQty}`,
+          },
+          unit_amount: lineItemAmount,
+        },
+        quantity: lineItemQty,
+      },
+    ];
+
+    if (taxCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: "usd",
+          product_data: { name: `Sales Tax (${taxRatePercent}%)` },
+          unit_amount: taxCents,
+        },
+        quantity: 1,
+      });
+    }
+
+    lineItems.push({
+      price_data: {
+        currency: "usd",
+        product_data: { name: "Card Processing Fee (4%)" },
+        unit_amount: processingFeeCents,
+      },
+      quantity: 1,
+    });
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: customerEmail || undefined,
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: product.label,
-              description: isGallon ? `${rawQty} gallons × $${product.price}` : `Quantity: ${rawQty}`,
-            },
-            unit_amount: lineItemAmount,
-          },
-          quantity: lineItemQty,
-        },
-        {
-          price_data: {
-            currency: "usd",
-            product_data: { name: "Card Processing Fee (4%)" },
-            unit_amount: processingFeeCents,
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       metadata: {
         productId,
         quantity: String(rawQty),

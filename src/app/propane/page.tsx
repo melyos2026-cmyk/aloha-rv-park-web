@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 
-type Product = { product_id: string; label: string; price: number; unit: string };
+type Product = { product_id: string; label: string; price: number; unit: string; taxable: boolean };
 
 export default function PropanePage() {
   const { company } = useCompany();
   const [products, setProducts] = useState<Product[]>([]);
+  const [tax, setTax] = useState({ enabled: false, ratePercent: 0 });
   const [productId, setProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [gallons, setGallons] = useState("");
@@ -33,6 +34,7 @@ export default function PropanePage() {
         const list = result.products || [];
         setProducts(list);
         if (list.length > 0) setProductId(list[0].product_id);
+        setTax(result.tax || { enabled: false, ratePercent: 0 });
         setLoadingPrices(false);
       })
       .catch(() => setLoadingPrices(false));
@@ -69,8 +71,10 @@ export default function PropanePage() {
       ? (parseFloat(gallons) || 0) * Number(selected.price)
       : Number(selected.price) * quantity
     : 0;
+  const taxApplies = tax.enabled && selected?.taxable;
+  const salesTax = taxApplies ? subtotal * (tax.ratePercent / 100) : 0;
   const processingFee = subtotal * 0.04;
-  const total = subtotal + processingFee;
+  const total = subtotal + salesTax + processingFee;
 
   async function handleCheckout() {
     setError("");
@@ -228,6 +232,12 @@ export default function PropanePage() {
             <span>Subtotal</span>
             <span>${subtotal.toFixed(2)}</span>
           </div>
+          {taxApplies && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
+              <span>Sales Tax ({tax.ratePercent}%)</span>
+              <span>${salesTax.toFixed(2)}</span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
             <span>Card Processing Fee (4%)</span>
             <span>${processingFee.toFixed(2)}</span>

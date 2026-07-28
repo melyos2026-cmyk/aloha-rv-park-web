@@ -17,12 +17,24 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("propane_pricing")
-    .select("product_id, label, price, unit")
+    .select("product_id, label, price, unit, taxable")
     .eq("company_id", company.id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ products: data ?? [] });
+  const { data: taxSettings } = await supabase
+    .from("company_tax_settings")
+    .select("enable_tax, manual_tax_rate_percent")
+    .eq("company_id", company.id)
+    .maybeSingle();
+
+  return NextResponse.json({
+    products: data ?? [],
+    tax: {
+      enabled: !!taxSettings?.enable_tax,
+      ratePercent: Number(taxSettings?.manual_tax_rate_percent || 0),
+    },
+  });
 }
