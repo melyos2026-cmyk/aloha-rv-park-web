@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 
@@ -15,6 +15,21 @@ const nav = [
 export default function Header() {
   const [open, setOpen] = useState(false);
   const { company } = useCompany();
+  const [customPages, setCustomPages] = useState<{ page_name: string; title: string | null; slug: string }[]>([]);
+
+  useEffect(() => {
+    if (!company?.id) return;
+    fetch(`/api/get-website-pages?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((result) => setCustomPages(result.pages || []))
+      .catch(() => {});
+  }, [company?.id]);
+
+  const fullNav = [
+    ...nav.slice(0, -1),
+    ...customPages.map((p) => ({ label: p.title || p.page_name, href: `/pages/${p.slug}` })),
+    nav[nav.length - 1],
+  ];
 
   const companyName = company?.company_name || "Aloha RV Park";
   const logoUrl = company?.logo_url || "/aloha-logo.png";
@@ -45,7 +60,7 @@ export default function Header() {
 
           {/* Desktop Nav */}
           <nav style={{ display: "flex", gap: 32, alignItems: "center" }} className="desktop-nav">
-            {nav.map(n => (
+            {fullNav.map(n => (
               <Link key={n.href} href={n.href} style={{ fontSize: 14, fontWeight: 600, color: "var(--black)", letterSpacing: "0.03em", textTransform: "uppercase", transition: "color 0.2s" }}
                 onMouseEnter={e => (e.currentTarget.style.color = "var(--red)")}
                 onMouseLeave={e => (e.currentTarget.style.color = "var(--black)")}>
@@ -66,7 +81,7 @@ export default function Header() {
         {/* Mobile Nav */}
         {open && (
           <div style={{ background: "var(--white)", borderTop: "1px solid var(--border)", padding: "16px 24px" }} className="mobile-nav">
-            {nav.map(n => (
+            {fullNav.map(n => (
               <Link key={n.href} href={n.href} onClick={() => setOpen(false)}
                 style={{ display: "block", padding: "12px 0", fontSize: 15, fontWeight: 600, borderBottom: "1px solid var(--border)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 {n.label}
