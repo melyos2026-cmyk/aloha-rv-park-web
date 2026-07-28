@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import AutopaySection from "@/components/AutopaySection";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -21,6 +22,10 @@ export default function ResidentDashboard() {
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
+  const [autopayAvailable, setAutopayAvailable] = useState(false);
+  const [autopayEnabled, setAutopayEnabled] = useState(false);
+  const [autopayCardLast4, setAutopayCardLast4] = useState<string | null>(null);
+  const [residentId, setResidentId] = useState<string | null>(null);
   const router = useRouter();
 
   const [editingInfo, setEditingInfo] = useState(false);
@@ -73,6 +78,10 @@ export default function ResidentDashboard() {
       .eq("id", residentId)
       .single();
 
+    setResidentId(residentId);
+    setAutopayEnabled(!!residentData?.autopay_enabled);
+    setAutopayCardLast4(residentData?.autopay_card_last4 || null);
+
     if (residentError || !residentData) {
       setMessage("Resident not found.");
       return;
@@ -91,13 +100,14 @@ export default function ResidentDashboard() {
 
     const { data: feeSettings } = await supabase
       .from("company_fee_settings")
-      .select("accept_online_payments")
+      .select("accept_online_payments, autopay_available")
       .eq("company_id", residentData.company_id)
       .maybeSingle();
     // Default to true (allow online payments) when this hasn't been
     // explicitly configured, so we never silently hide an already-working
     // Pay Now button for a company that just hasn't touched Fee Settings.
     setAcceptOnlinePayments(feeSettings ? !!feeSettings.accept_online_payments : true);
+    setAutopayAvailable(!!feeSettings?.autopay_available);
 
     const { data: electricData } = await supabase
       .from("resident_electric_readings")
@@ -536,6 +546,18 @@ export default function ResidentDashboard() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {autopayAvailable && residentId && (
+            <div style={{ ...card, marginTop: 16 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>💳 Autopay</h2>
+              <AutopaySection
+                residentId={residentId}
+                autopayEnabled={autopayEnabled}
+                cardLast4={autopayCardLast4}
+                onChange={loadResidentDashboard}
+              />
             </div>
           )}
 
