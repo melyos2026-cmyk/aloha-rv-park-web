@@ -46,46 +46,13 @@ export async function POST(req: Request) {
     }
 
     const residentId = session.metadata?.resident_id;
-    const paymentIdsRaw = session.metadata?.payment_ids || "";
-    const paymentIds = paymentIdsRaw.split(",").filter(Boolean);
     const invoiceIdsRaw = session.metadata?.invoice_ids || "";
     const invoiceIds = invoiceIdsRaw.split(",").filter(Boolean);
 
     console.log("Payment completed for resident:", residentId);
-    console.log("Marking payment IDs as Paid:", paymentIds);
     console.log("Marking invoice IDs as Paid:", invoiceIds);
 
     let chargesPaid: { label: string; amount: number }[] = [];
-
-    if (paymentIds.length > 0) {
-      const { data: paidCharges } = await supabase
-        .from("resident_payments")
-        .select("*")
-        .in("id", paymentIds);
-
-      chargesPaid = (paidCharges || []).map((p) => ({
-        label:
-          p.charge_type === "Custom" && p.custom_charge_name
-            ? p.custom_charge_name
-            : p.charge_type || "Charge",
-        amount: Number(p.total_due || p.amount || 0),
-      }));
-
-      const { error } = await supabase
-        .from("resident_payments")
-        .update({
-          status: "Paid",
-          payment_date: new Date().toISOString(),
-          payment_method: "Stripe",
-        })
-        .in("id", paymentIds);
-
-      if (error) {
-        console.log("Error updating resident_payments:", error.message);
-      } else {
-        console.log("resident_payments updated successfully.");
-      }
-    }
 
     if (invoiceIds.length > 0) {
       const { data: paidInvoices } = await supabase

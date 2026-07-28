@@ -4,6 +4,8 @@ import { supabase } from "@/lib/supabase";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
+// resident_payments (the legacy billing table) has been fully unified into
+// resident_invoices — this route now only ever charges pending invoices.
 export async function POST(req: Request) {
   try {
     const { residentId } = await req.json();
@@ -12,20 +14,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing resident ID" }, { status: 400 });
     }
 
-    const { data: payments, error } = await supabase
-      .from("resident_payments")
-      .select("*")
-      .eq("resident_id", residentId)
-      .in("status", ["Pending", "Late", "Partial"]);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    // Also include pending monthly invoices (rent + recurring charges like
-    // Rent-to-Own Principal) — a separate, newer billing table from
-    // resident_payments above, previously only ever marked Paid manually by
-    // an admin. Both get paid + marked Paid together in one Stripe charge.
     const { data: invoices, error: invoicesError } = await supabase
       .from("resident_invoices")
       .select("*")
@@ -36,22 +24,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: invoicesError.message }, { status: 400 });
     }
 
-    const paymentsTotal = (payments || []).reduce((sum, payment) => {
-      return sum + Number(payment.total_due || payment.amount || 0);
-    }, 0);
-
-    const invoicesTotal = (invoices || []).reduce(
+    const totalAmount = (invoices || []).reduce(
       (sum, invoice) => sum + Number(invoice.total_amount || 0),
       0
     );
-
-    const totalAmount = paymentsTotal + invoicesTotal;
 
     if (totalAmount <= 0) {
       return NextResponse.json({ error: "No pending balance found." }, { status: 400 });
     }
 
-    const paymentIds = (payments || []).map((payment) => payment.id);
     const invoiceIds = (invoices || []).map((invoice) => invoice.id);
 
     const siteUrl =
@@ -75,7 +56,6 @@ export async function POST(req: Request) {
       ],
       metadata: {
         resident_id: residentId,
-        payment_ids: paymentIds.join(","),
         invoice_ids: invoiceIds.join(","),
       },
       success_url: `${siteUrl}/residents/payment-review?session_id={CHECKOUT_SESSION_ID}`,
