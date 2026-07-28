@@ -498,7 +498,13 @@ export default function ResidentDashboard() {
                         {new Date(order.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                       </p>
                       <p style={{ fontSize: 12.5, margin: "4px 0", color: order.redeemed ? "#16a34a" : "#b45309", fontWeight: 700 }}>
-                        {order.redeemed ? "✅ Already picked up" : "🕓 Ready for pickup — show this code to staff"}
+                        {(() => {
+                          const maxRedemptions = order.unit === "tank" ? Math.max(1, Math.floor(order.quantity)) : 1;
+                          const count = order.redeemed_count || 0;
+                          if (order.redeemed) return "✅ Fully picked up";
+                          if (count > 0) return `🕓 Picked up ${count}/${maxRedemptions} — show this code to staff for the rest`;
+                          return "🕓 Ready for pickup — show this code to staff";
+                        })()}
                       </p>
                       <button
                         onClick={async () => {

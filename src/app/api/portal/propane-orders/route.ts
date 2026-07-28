@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   let query = supabase
     .from("propane_orders")
     .select(
-      "id, product_label, quantity, unit, amount_total, paid_at, qr_token, redeemed, redeemed_at, dismissed_by_resident"
+      "id, product_label, quantity, unit, amount_total, paid_at, qr_token, redeemed, redeemed_at, redeemed_count, dismissed_by_resident"
     )
     .eq("dismissed_by_resident", false)
     .order("paid_at", { ascending: false });

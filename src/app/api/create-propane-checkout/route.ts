@@ -58,6 +58,10 @@ export async function POST(req: NextRequest) {
     const lineItemAmount = isGallon ? Math.round(unitAmount * rawQty) : unitAmount;
     const lineItemQty = isGallon ? 1 : rawQty;
 
+    // 4% card processing fee — separate charge, not a tax.
+    const subtotalCents = lineItemAmount * lineItemQty;
+    const processingFeeCents = Math.round(subtotalCents * 0.04);
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -74,11 +78,20 @@ export async function POST(req: NextRequest) {
           },
           quantity: lineItemQty,
         },
+        {
+          price_data: {
+            currency: "usd",
+            product_data: { name: "Card Processing Fee (4%)" },
+            unit_amount: processingFeeCents,
+          },
+          quantity: 1,
+        },
       ],
       metadata: {
         productId,
         quantity: String(rawQty),
-        lotId: lotNumber || "",
+        lotId: "",
+        residentLot: lotNumber || "",
         park: parkId || "aloha",
       },
       success_url: `${origin}/propane?propane_payment=success&session_id={CHECKOUT_SESSION_ID}`,

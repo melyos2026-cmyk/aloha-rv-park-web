@@ -64,11 +64,13 @@ export default function PropanePage() {
 
   const selected = products.find((p) => p.product_id === productId);
   const isVariable = selected?.unit === "gallon";
-  const total = selected
+  const subtotal = selected
     ? isVariable
       ? (parseFloat(gallons) || 0) * Number(selected.price)
       : Number(selected.price) * quantity
     : 0;
+  const processingFee = subtotal * 0.04;
+  const total = subtotal + processingFee;
 
   async function handleCheckout() {
     setError("");
@@ -134,7 +136,10 @@ export default function PropanePage() {
             style={{ width: 220, height: 220, margin: "0 auto 16px auto", display: "block" }}
           />
           <p style={{ fontSize: 12.5, color: "var(--gray)" }}>
-            Show this code to staff when you pick up your propane. It can only be used once.
+            {receipt.unit === "gallon"
+              ? "Show this code to staff for your fill-up. It can only be used once."
+              : `Show this code to staff each time you pick up a tank — this code works once per tank purchased${receipt.quantity > 1 ? ` (${receipt.quantity} total, multiple visits OK)` : ""}.`}{" "}
+            No refunds — unpicked-up tanks are not refundable.
           </p>
         </div>
       ) : loadingPrices ? (
@@ -219,6 +224,14 @@ export default function PropanePage() {
             />
           </div>
 
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
+            <span>Subtotal</span>
+            <span>${subtotal.toFixed(2)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
+            <span>Card Processing Fee (4%)</span>
+            <span>${processingFee.toFixed(2)}</span>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, fontSize: 16, fontWeight: 700 }}>
             <span>Total</span>
             <span style={{ color: "var(--red)" }}>${total.toFixed(2)}</span>

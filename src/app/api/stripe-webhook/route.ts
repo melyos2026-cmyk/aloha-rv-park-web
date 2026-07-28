@@ -404,7 +404,11 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
                 <h2>⛽ Payment Confirmed</h2>
                 <p>${quantity} ${productId === "motorhome" ? "gallons" : "×"} ${label} — $${amount}</p>
                 <img src="${qrImageUrl}" alt="Propane pickup QR code" style="display:block;margin:16px 0;" />
-                <p style="font-size:13px;color:#555;">Show this code to staff when you pick up your propane. It can only be used once.</p>
+                <p style="font-size:13px;color:#555;">${
+                  productId === "motorhome"
+                    ? "Show this code to staff for your fill-up. It can only be used once."
+                    : `Show this code to staff each time you pick up a tank — this code works once per tank purchased (${quantity} total, multiple visits OK).`
+                } No refunds — unpicked-up tanks are not refundable.</p>
               </div>
             `,
           }),
