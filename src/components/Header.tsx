@@ -9,6 +9,7 @@ const nav = [
   { label: "Propane", href: "/propane" },
   { label: "Real Estate", href: "/real-estate" },
   { label: "Events", href: "/events" },
+  { label: "Marketplace", href: "/marketplace" },
   { label: "Residents Login", href: "/login" },
 ];
 
