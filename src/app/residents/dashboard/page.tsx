@@ -52,6 +52,14 @@ export default function ResidentDashboard() {
   const [vehColor, setVehColor] = useState("");
   const [vehPlate, setVehPlate] = useState("");
   const [vehState, setVehState] = useState("");
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+
+  const [rvMake, setRvMake] = useState("");
+  const [rvModel, setRvModel] = useState("");
+  const [rvYear, setRvYear] = useState("");
+  const [rvLengthFt, setRvLengthFt] = useState("");
+  const [rvVinOrTag, setRvVinOrTag] = useState("");
+  const [savingRvInfo, setSavingRvInfo] = useState(false);
 
   const outstandingBalance =
     payments.reduce((sum, payment) => {
@@ -81,6 +89,11 @@ export default function ResidentDashboard() {
     setResidentId(residentId);
     setAutopayEnabled(!!residentData?.autopay_enabled);
     setAutopayCardLast4(residentData?.autopay_card_last4 || null);
+    setRvMake(residentData?.rv_make || "");
+    setRvModel(residentData?.rv_model || "");
+    setRvYear(residentData?.rv_year || "");
+    setRvLengthFt(residentData?.rv_length_ft ? String(residentData.rv_length_ft) : "");
+    setRvVinOrTag(residentData?.rv_vin_or_tag || "");
 
     if (residentError || !residentData) {
       setMessage("Resident not found.");
@@ -327,6 +340,35 @@ export default function ResidentDashboard() {
       return;
     }
 
+    if (editingVehicleId) {
+      const { error } = await supabase
+        .from("resident_vehicles")
+        .update({
+          vehicle_make: vehMake.trim(),
+          vehicle_model: vehModel.trim(),
+          vehicle_year: vehYear.trim(),
+          color: vehColor.trim(),
+          license_plate: vehPlate.trim(),
+          license_state: vehState.trim(),
+        })
+        .eq("id", editingVehicleId);
+
+      if (error) {
+        alert("Could not update vehicle: " + error.message);
+        return;
+      }
+
+      setEditingVehicleId(null);
+      setVehMake("");
+      setVehModel("");
+      setVehYear("");
+      setVehColor("");
+      setVehPlate("");
+      setVehState("");
+      loadResidentDashboard();
+      return;
+    }
+
     const { error } = await supabase.from("resident_vehicles").insert({
       company_id: resident.company_id,
       resident_id: resident.id,
@@ -356,6 +398,39 @@ export default function ResidentDashboard() {
     setVehState("");
     setAddingVehicle(false);
     loadResidentDashboard();
+  }
+
+  async function deleteVehicle(vehicleId: string) {
+    const confirmed = confirm("Remove this vehicle?");
+    if (!confirmed) return;
+
+    const { error } = await supabase.from("resident_vehicles").delete().eq("id", vehicleId);
+    if (error) {
+      alert("Could not remove vehicle: " + error.message);
+      return;
+    }
+    loadResidentDashboard();
+  }
+
+  async function saveRvInfo() {
+    setSavingRvInfo(true);
+    const { error } = await supabase
+      .from("resident_accounts")
+      .update({
+        rv_make: rvMake.trim() || null,
+        rv_model: rvModel.trim() || null,
+        rv_year: rvYear.trim() || null,
+        rv_length_ft: rvLengthFt ? Number(rvLengthFt) : null,
+        rv_vin_or_tag: rvVinOrTag.trim() || null,
+      })
+      .eq("id", resident.id);
+
+    if (error) {
+      alert("Could not save RV info: " + error.message);
+    } else {
+      alert("RV info saved.");
+    }
+    setSavingRvInfo(false);
   }
 
   if (!resident) {
@@ -741,7 +816,11 @@ export default function ResidentDashboard() {
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18 }}>Vehicles</h2>
-              <button onClick={() => setAddingVehicle(!addingVehicle)} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={() => {
+                setEditingVehicleId(null);
+                setVehMake(""); setVehModel(""); setVehYear(""); setVehColor(""); setVehPlate(""); setVehState("");
+                setAddingVehicle(!addingVehicle);
+              }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                 {addingVehicle ? "Cancel" : "+ Add"}
               </button>
             </div>
@@ -756,7 +835,7 @@ export default function ResidentDashboard() {
                   <input placeholder="License Plate" value={vehPlate} onChange={e => setVehPlate(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="License State" value={vehState} onChange={e => setVehState(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                 </div>
-                <button onClick={addVehicle} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save Vehicle</button>
+                <button onClick={addVehicle} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{editingVehicleId ? "Update Vehicle" : "Save Vehicle"}</button>
               </div>
             )}
 
@@ -765,9 +844,50 @@ export default function ResidentDashboard() {
                 <p style={{ fontWeight: 700 }}>{v.vehicle_year} {v.vehicle_make} {v.vehicle_model}</p>
                 <p style={{ fontSize: 13 }}>{v.color}</p>
                 <p style={{ color: "var(--gray)", fontSize: 13 }}>Plate: {v.license_plate} {v.license_state}</p>
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button
+                    onClick={() => {
+                      setEditingVehicleId(v.id);
+                      setVehMake(v.vehicle_make || "");
+                      setVehModel(v.vehicle_model || "");
+                      setVehYear(v.vehicle_year || "");
+                      setVehColor(v.color || "");
+                      setVehPlate(v.license_plate || "");
+                      setVehState(v.license_state || "");
+                      setAddingVehicle(true);
+                    }}
+                    style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteVehicle(v.id)}
+                    style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             ))}
             {vehicles.length === 0 && <p style={{ color: "var(--gray)" }}>No vehicles listed.</p>}
+          </div>
+
+          <div style={{ ...card, marginTop: 16 }}>
+            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>🚐 RV Info</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <input placeholder="RV Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+              <input placeholder="RV Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+              <input placeholder="RV Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+              <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+              <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
+            </div>
+            <button
+              onClick={saveRvInfo}
+              disabled={savingRvInfo}
+              style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: savingRvInfo ? "default" : "pointer", opacity: savingRvInfo ? 0.7 : 1 }}
+            >
+              {savingRvInfo ? "Saving..." : "Save RV Info"}
+            </button>
           </div>
 
         </div>
