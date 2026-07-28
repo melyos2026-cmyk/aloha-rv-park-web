@@ -45,8 +45,8 @@ export default function Header() {
 
       {/* Header */}
       <header style={{ background: "var(--white)", borderBottom: "2px solid var(--black)", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 70 }}>
-          
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 90 }}>
+
           {/* Logo */}
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src={logoUrl} alt={`${companyName} Logo`} style={{ height: 70, width: "auto" }} />
@@ -58,8 +58,20 @@ export default function Header() {
             </div>
           </Link>
 
-          {/* Desktop Nav */}
-          <nav style={{ display: "flex", gap: 32, alignItems: "center" }} className="desktop-nav">
+          {/* Call Us (desktop) */}
+          <a href={phoneHref} style={{ background: "var(--mint)", color: "var(--red-dark)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }} className="desktop-nav">
+            📞 CALL US
+          </a>
+
+          {/* Mobile Menu Button */}
+          <button onClick={() => setOpen(!open)} style={{ display: "none", background: "none", border: "none", fontSize: 24 }} className="mobile-menu-btn">
+            {open ? "✕" : "☰"}
+          </button>
+        </div>
+
+        {/* Nav bar — its own row, below the logo, sitting right above the page content */}
+        <div style={{ borderTop: "1px solid var(--border)", background: "var(--white)" }} className="desktop-nav">
+          <nav style={{ maxWidth: 1200, margin: "0 auto", padding: "14px 24px", display: "flex", gap: 32, alignItems: "center", justifyContent: "center" }}>
             {fullNav.map(n => (
               <Link key={n.href} href={n.href} style={{ fontSize: 14, fontWeight: 600, color: "var(--black)", letterSpacing: "0.03em", textTransform: "uppercase", transition: "color 0.2s" }}
                 onMouseEnter={e => (e.currentTarget.style.color = "var(--red)")}
@@ -67,15 +79,7 @@ export default function Header() {
                 {n.label}
               </Link>
             ))}
-            <a href={phoneHref} style={{ background: "var(--mint)", color: "var(--red-dark)", padding: "10px 20px", borderRadius: 4, fontSize: 13, fontWeight: 700, letterSpacing: "0.05em" }}>
-              📞 CALL US
-            </a>
           </nav>
-
-          {/* Mobile Menu Button */}
-          <button onClick={() => setOpen(!open)} style={{ display: "none", background: "none", border: "none", fontSize: 24 }} className="mobile-menu-btn">
-            {open ? "✕" : "☰"}
-          </button>
         </div>
 
         {/* Mobile Nav */}
