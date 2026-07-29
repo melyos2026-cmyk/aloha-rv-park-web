@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // GET /api/get-propane-pricing?park_id=aloha
 export async function GET(req: NextRequest) {
   const parkId = req.nextUrl.searchParams.get("park_id") || "aloha";
