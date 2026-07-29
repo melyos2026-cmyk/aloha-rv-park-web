@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const CATEGORIES = ["Furniture", "Appliances", "RV Parts", "Vehicles", "Electronics", "Household", "Other"];
+const CATEGORIES = ["Vehicles", "Property Rentals", "Apparel", "Classifieds", "Electronics", "Entertainment", "Family", "Free Stuff", "Garden & Outdoor", "Hobbies", "Home Goods", "Home Improvement", "Home Sales", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Other"];
 
 type Listing = {
   id: string;
@@ -41,6 +41,7 @@ export default function MarketplacePage() {
   const [saving, setSaving] = useState(false);
 
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [activePhoto, setActivePhoto] = useState(0);
 
   useEffect(() => {
     const id = localStorage.getItem("resident_id");
@@ -187,10 +188,35 @@ export default function MarketplacePage() {
         </button>
 
         {photos.length > 0 ? (
-          <div style={{ display: "grid", gridTemplateColumns: photos.length > 1 ? "1fr 1fr" : "1fr", gap: 8, marginBottom: 20 }}>
-            {photos.map((p, i) => (
-              <img key={i} src={p.photo_url} alt={selectedListing.title} style={{ width: "100%", height: 260, objectFit: "cover", borderRadius: 8 }} />
-            ))}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ width: "100%", aspectRatio: "4 / 3", borderRadius: 8, overflow: "hidden", background: "var(--gray-light)" }}>
+              <img
+                src={photos[Math.min(activePhoto, photos.length - 1)].photo_url}
+                alt={selectedListing.title}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            </div>
+            {photos.length > 1 && (
+              <div style={{ display: "flex", gap: 6, marginTop: 8, overflowX: "auto" }}>
+                {photos.map((p, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setActivePhoto(i)}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      flexShrink: 0,
+                      borderRadius: 6,
+                      overflow: "hidden",
+                      cursor: "pointer",
+                      border: i === activePhoto ? "2px solid var(--red)" : "2px solid transparent",
+                    }}
+                  >
+                    <img src={p.photo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ height: 200, background: "var(--gray-light)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)", marginBottom: 20 }}>
@@ -265,8 +291,41 @@ export default function MarketplacePage() {
               </select>
             </div>
             <div>
-              <label style={{ fontSize: 13, color: "var(--gray)", display: "block", marginBottom: 6 }}>Photos</label>
-              <input type="file" accept="image/*" multiple onChange={(e) => setPhotoFiles(Array.from(e.target.files || []))} />
+              <label style={{ fontSize: 13, color: "var(--gray)", display: "block", marginBottom: 6 }}>
+                Photos (up to 10)
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 10) {
+                    alert("You can upload up to 10 photos. Only the first 10 will be used.");
+                  }
+                  setPhotoFiles(files.slice(0, 10));
+                }}
+              />
+              {photoFiles.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginTop: 10 }}>
+                  {photoFiles.map((file, i) => (
+                    <div key={i} style={{ position: "relative", aspectRatio: "1 / 1", borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)" }}>
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Preview ${i + 1}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setPhotoFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: 12, lineHeight: 1, cursor: "pointer" }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
@@ -302,7 +361,7 @@ export default function MarketplacePage() {
           {visibleListings.map((l) => {
             const cover = (l.marketplace_listing_photos || []).sort((a, b) => a.sort_order - b.sort_order)[0];
             return (
-              <div key={l.id} style={card} onClick={() => setSelectedListing(l)}>
+              <div key={l.id} style={card} onClick={() => { setSelectedListing(l); setActivePhoto(0); }}>
                 {cover ? (
                   <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
                 ) : (
