@@ -450,7 +450,7 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
       stripe_payment_intent: paymentIntentId,
     })
     .eq("id", lotOrderId)
-    .select("customer_name, lot_id")
+    .select("customer_name, lot_id, arrival_date, departure_date")
     .single();
 
   if (error) {
@@ -476,6 +476,47 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
         update_type: "reservation_paid",
         message: `${updatedOrder.customer_name}'s reservation payment for lot ${updatedOrder.lot_id} was confirmed.`,
       });
+
+      // Safety net against a race condition: availability is only checked
+      // once, when this checkout session was first created — if another
+      // booking for overlapping dates on the same lot completed payment in
+      // the meantime, both would now show as "paid". Re-check here and
+      // flag it instead of letting a double-booking go unnoticed.
+      if (updatedOrder.arrival_date && updatedOrder.departure_date) {
+        const { data: otherOrders } = await supabase
+          .from("lot_orders")
+          .select("id, arrival_date, departure_date")
+          .eq("lot_id", updatedOrder.lot_id)
+          .eq("status", "paid")
+          .neq("id", lotOrderId);
+
+        const newArrival = new Date(updatedOrder.arrival_date + "T00:00:00");
+        const newDeparture = new Date(updatedOrder.departure_date + "T00:00:00");
+        const conflicting = (otherOrders || []).filter((o: any) => {
+          if (!o.arrival_date || !o.departure_date) return false;
+          const oStart = new Date(o.arrival_date + "T00:00:00");
+          const oEnd = new Date(o.departure_date + "T00:00:00");
+          return newArrival < oEnd && newDeparture > oStart;
+        });
+
+        if (conflicting.length > 0) {
+          console.error(
+            `DOUBLE-BOOKING DETECTED on lot ${updatedOrder.lot_id}: lot_order ${lotOrderId} overlaps with`,
+            conflicting.map((o: any) => o.id)
+          );
+          await supabase.from("lot_orders").update({ has_conflict: true }).eq("id", lotOrderId);
+          await supabase
+            .from("lot_orders")
+            .update({ has_conflict: true })
+            .in("id", conflicting.map((o: any) => o.id));
+          await supabase.from("resident_update_notifications").insert({
+            company_id: lot.company_id,
+            resident_name: null,
+            update_type: "double_booking_alert",
+            message: `⚠️ Possible double-booking on Lot ${updatedOrder.lot_id}: two paid reservations overlap for ${updatedOrder.arrival_date} to ${updatedOrder.departure_date}. Review and contact both customers.`,
+          });
+        }
+      }
     }
   }
 }

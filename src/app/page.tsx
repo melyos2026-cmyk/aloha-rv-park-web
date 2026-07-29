@@ -77,7 +77,7 @@ export default function Home() {
           <div style={{ textAlign: "center", marginBottom: 48 }}>
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Available Now</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Lot Map</h2>
-            <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green lot to book your spot</p>
+            <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green or orange lot to check availability and book your spot</p>
           </div>
           <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
             <iframe
