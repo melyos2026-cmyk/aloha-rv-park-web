@@ -21,7 +21,7 @@ export default function EventsPage() {
 
       {/* Activities */}
       <section style={{ padding: "60px 24px", background: "var(--cream)" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ maxWidth: 1300, margin: "0 auto" }}>
           <div style={{ background: "var(--white)", border: "2px solid var(--black)", borderRadius: 8, padding: 48, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
             <h2 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12 }}>Monthly Events Calendar</h2>
