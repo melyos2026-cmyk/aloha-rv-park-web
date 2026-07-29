@@ -45,6 +45,19 @@ export default function MarketplacePage() {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [activePhoto, setActivePhoto] = useState(0);
   const [lastVisit, setLastVisit] = useState<string | null>(null);
+  const [shareConfirm, setShareConfirm] = useState<string | null>(null);
+
+  function shareListing(e: React.MouseEvent, listingId: string) {
+    e.stopPropagation();
+    const url = `${window.location.origin}/marketplace?listing=${listingId}`;
+    if (navigator.share) {
+      navigator.share({ url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url);
+      setShareConfirm(listingId);
+      setTimeout(() => setShareConfirm(null), 2000);
+    }
+  }
 
   useEffect(() => {
     const id = localStorage.getItem("resident_id");
@@ -279,7 +292,15 @@ export default function MarketplacePage() {
           </div>
         )}
 
-        <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>{selectedListing.title}</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>{selectedListing.title}</h1>
+          <button
+            onClick={(e) => shareListing(e, selectedListing.id)}
+            style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            {shareConfirm === selectedListing.id ? "✅ Copied" : "🔗 Share"}
+          </button>
+        </div>
         <p style={{ fontSize: 24, fontWeight: 900, color: "var(--red)", marginBottom: 12 }}>
           {selectedListing.price != null ? `$${Number(selectedListing.price).toLocaleString()}` : "Free / Make an offer"}
         </p>
@@ -315,19 +336,19 @@ export default function MarketplacePage() {
         )}
 
         {isMine && (
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {selectedListing.status === "active" && (
-              <button onClick={() => markSold(selectedListing.id)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={() => markSold(selectedListing.id)} style={{ background: "var(--black)", color: "#fff", border: "1.5px solid var(--black)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Mark as Sold
               </button>
             )}
-            <button onClick={() => repostListing(selectedListing.id)} style={{ background: "#2563eb", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
-              🔁 Repost (30 more days)
+            <button onClick={() => repostListing(selectedListing.id)} style={{ background: "#fff", color: "var(--black)", border: "1.5px solid var(--black)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+              🔁 Repost
             </button>
-            <button onClick={() => { startEdit(selectedListing); setSelectedListing(null); }} style={{ background: "#000", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={() => { startEdit(selectedListing); setSelectedListing(null); }} style={{ background: "#fff", color: "var(--black)", border: "1.5px solid var(--black)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
               Edit
             </button>
-            <button onClick={() => deleteListing(selectedListing.id)} style={{ background: "none", border: "1.5px solid #dc2626", color: "#dc2626", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={() => deleteListing(selectedListing.id)} style={{ background: "none", border: "1.5px solid var(--border)", color: "var(--gray)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
               Delete
             </button>
           </div>
@@ -342,14 +363,23 @@ export default function MarketplacePage() {
     const left = daysLeft(l.expires_at);
     return (
       <div key={l.id} style={{ ...card, position: "relative" }} onClick={() => { setSelectedListing(l); setActivePhoto(0); }}>
-        {!mine && (
+        <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 6, zIndex: 1 }}>
           <button
-            onClick={(e) => { e.stopPropagation(); toggleSaved(l.id); }}
-            style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer", zIndex: 1 }}
+            onClick={(e) => shareListing(e, l.id)}
+            style={{ background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 13, cursor: "pointer" }}
+            title="Share"
           >
-            {savedIds.includes(l.id) ? "❤️" : "🤍"}
+            {shareConfirm === l.id ? "✅" : "🔗"}
           </button>
-        )}
+          {!mine && (
+            <button
+              onClick={(e) => { e.stopPropagation(); toggleSaved(l.id); }}
+              style={{ background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer" }}
+            >
+              {savedIds.includes(l.id) ? "❤️" : "🤍"}
+            </button>
+          )}
+        </div>
         {cover ? (
           <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
         ) : (

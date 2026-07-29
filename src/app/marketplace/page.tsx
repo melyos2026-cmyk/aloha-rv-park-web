@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useCompany } from "@/lib/CompanyContext";
 import { supabase } from "@/lib/supabase";
 
@@ -19,14 +20,28 @@ type Listing = {
 
 const card = { background: "#fff", border: "1.5px solid var(--border)", borderRadius: 8, overflow: "hidden", cursor: "pointer" as const };
 
-export default function PublicMarketplacePage() {
+function PublicMarketplaceContent() {
   const { company } = useCompany();
+  const searchParams = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Listing | null>(null);
   const [activePhoto, setActivePhoto] = useState(0);
+  const [shareConfirm, setShareConfirm] = useState<string | null>(null);
+
+  function shareListing(e: React.MouseEvent, listingId: string) {
+    e.stopPropagation();
+    const url = `${window.location.origin}/marketplace?listing=${listingId}`;
+    if (navigator.share) {
+      navigator.share({ url }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url);
+      setShareConfirm(listingId);
+      setTimeout(() => setShareConfirm(null), 2000);
+    }
+  }
 
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
@@ -48,6 +63,11 @@ export default function PublicMarketplacePage() {
       .then(({ data }) => {
         setListings(data || []);
         setLoading(false);
+        const listingId = searchParams.get("listing");
+        if (listingId && data) {
+          const match = data.find((l) => l.id === listingId);
+          if (match) setSelected(match);
+        }
       });
   }, [company?.id]);
 
@@ -128,7 +148,15 @@ export default function PublicMarketplacePage() {
           </div>
         )}
 
-        <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>{selected.title}</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>{selected.title}</h1>
+          <button
+            onClick={(e) => shareListing(e, selected.id)}
+            style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            {shareConfirm === selected.id ? "✅ Copied" : "🔗 Share"}
+          </button>
+        </div>
         <p style={{ fontSize: 24, fontWeight: 900, color: "var(--red)", marginBottom: 12 }}>
           {selected.price != null ? `$${Number(selected.price).toLocaleString()}` : "Free / Make an offer"}
         </p>
@@ -195,7 +223,14 @@ export default function PublicMarketplacePage() {
           {visibleListings.map((l) => {
             const cover = (l.marketplace_listing_photos || []).sort((a, b) => a.sort_order - b.sort_order)[0];
             return (
-              <div key={l.id} style={card} onClick={() => { setSelected(l); setActivePhoto(0); }}>
+              <div key={l.id} style={{ ...card, position: "relative" }} onClick={() => { setSelected(l); setActivePhoto(0); }}>
+                <button
+                  onClick={(e) => shareListing(e, l.id)}
+                  style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 13, cursor: "pointer", zIndex: 1 }}
+                  title="Share"
+                >
+                  {shareConfirm === l.id ? "✅" : "🔗"}
+                </button>
                 {cover ? (
                   <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
                 ) : (
@@ -215,5 +250,13 @@ export default function PublicMarketplacePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PublicMarketplacePage() {
+  return (
+    <Suspense fallback={null}>
+      <PublicMarketplaceContent />
+    </Suspense>
   );
 }
