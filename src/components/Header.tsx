@@ -58,7 +58,7 @@ export default function Header() {
                 const street = commaIndex === -1 ? company.address : company.address.slice(0, commaIndex + 1);
                 const cityStateZip = commaIndex === -1 ? "" : company.address.slice(commaIndex + 1).trim();
                 return (
-                  <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.05em", textTransform: "uppercase", display: "flex", flexWrap: "wrap", columnGap: 40 }}>
+                  <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.05em", textTransform: "uppercase", display: "flex", flexDirection: "column" }}>
                     <span>{street}</span>
                     {cityStateZip && <span>{cityStateZip}</span>}
                   </div>

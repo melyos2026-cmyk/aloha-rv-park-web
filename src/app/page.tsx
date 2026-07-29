@@ -15,7 +15,7 @@ export default function Home() {
     <>
       {/* Hero Banner */}
       <section style={{
-        backgroundImage: `linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)), url(${heroImage})`,
+        backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url(${heroImage})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         color: "var(--white)",
