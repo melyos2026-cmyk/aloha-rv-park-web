@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     lineItems.push({
       price_data: {
         currency: "usd",
-        product_data: { name: "Card Processing Fee (4%)" },
+        product_data: { name: "Card Processing Fee" },
         unit_amount: processingFeeCents,
       },
       quantity: 1,

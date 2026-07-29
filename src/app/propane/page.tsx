@@ -255,7 +255,7 @@ export default function PropanePage() {
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
-            <span>Card Processing Fee (4%)</span>
+            <span>Card Processing Fee</span>
             <span>${processingFee.toFixed(2)}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, fontSize: 16, fontWeight: 700 }}>
