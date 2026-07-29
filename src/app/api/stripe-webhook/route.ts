@@ -317,7 +317,8 @@ const PROPANE_PRODUCT_LABELS: Record<string, string> = {
 };
 
 async function handlePropanePaid(session: Stripe.Checkout.Session) {
-  const { productId, quantity, lotId, park, residentLot } = session.metadata || {};
+  const { productId, quantity, lotId, park, residentLot, subtotalCents, taxCents, feeCents } =
+    session.metadata || {};
 
   try {
     const qrToken = crypto.randomBytes(16).toString("hex");
@@ -332,6 +333,9 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
         quantity: parseFloat(quantity as string),
         unit: productId === "motorhome" ? "gallon" : "tank",
         amount_total: (session.amount_total || 0) / 100,
+        subtotal_amount: subtotalCents != null ? Number(subtotalCents) / 100 : null,
+        tax_amount: taxCents != null ? Number(taxCents) / 100 : null,
+        fee_amount: feeCents != null ? Number(feeCents) / 100 : null,
         currency: session.currency || "usd",
         customer_email: customerEmail,
         stripe_session_id: session.id,
