@@ -30,6 +30,21 @@ function formatDate(dateStr: string | null) {
   });
 }
 
+const DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  general: "General",
+  lease: "Lease Agreement",
+  id: "ID",
+  insurance: "Insurance",
+  registration: "Registration",
+};
+
+function documentTypeLabel(documentType: string) {
+  return (
+    DOCUMENT_TYPE_LABELS[documentType] ||
+    documentType.charAt(0).toUpperCase() + documentType.slice(1)
+  );
+}
+
 export default function DocumentsPage() {
   const [leases, setLeases] = useState<Lease[]>([]);
   const [otherDocuments, setOtherDocuments] = useState<OtherDocument[]>([]);
@@ -178,7 +193,7 @@ export default function DocumentsPage() {
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{doc.file_name}</div>
                   {doc.document_type && (
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{doc.document_type}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{documentTypeLabel(doc.document_type)}</div>
                   )}
                 </div>
                 <a

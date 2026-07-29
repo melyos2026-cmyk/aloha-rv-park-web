@@ -1,9 +1,8 @@
 "use client";
-import { useState } from "react";
 import { useCompany } from "@/lib/CompanyContext";
+import PdfCalendarViewer from "@/components/PdfCalendarViewer";
 
 export default function EventsPage() {
-  const [dragging, setDragging] = useState(false);
   const { company } = useCompany();
   const contactEmail = company?.contact_email || "info@aloharvparkfl.com";
   const contactPhone = company?.contact_phone || "(689) 252-0567";
@@ -30,15 +29,36 @@ export default function EventsPage() {
               Download our monthly events calendar to see everything planned for this month at the Rec Hall.
             </p>
 
-            <div style={{
-              border: "2px dashed var(--border)", borderRadius: 8,
-              padding: "60px 24px", marginBottom: 24,
-              background: "var(--cream)"
-            }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
-              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>No calendar uploaded yet</div>
-              <div style={{ fontSize: 13, color: "var(--gray)" }}>Check back soon or contact the office for this month's schedule.</div>
-            </div>
+            {company?.events_calendar_pdf_url ? (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16, background: "var(--cream)" }}>
+                  <PdfCalendarViewer pdfUrl={company.events_calendar_pdf_url} />
+                </div>
+                <a
+                  href={company.events_calendar_pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-block", marginTop: 16,
+                    background: "var(--black)", color: "#fff",
+                    padding: "12px 24px", borderRadius: 6, fontWeight: 700, fontSize: 14,
+                    textDecoration: "none"
+                  }}
+                >
+                  📄 Download PDF
+                </a>
+              </div>
+            ) : (
+              <div style={{
+                border: "2px dashed var(--border)", borderRadius: 8,
+                padding: "60px 24px", marginBottom: 24,
+                background: "var(--cream)"
+              }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>No calendar uploaded yet</div>
+                <div style={{ fontSize: 13, color: "var(--gray)" }}>Check back soon or contact the office for this month's schedule.</div>
+              </div>
+            )}
           </div>
         </div>
       </section>

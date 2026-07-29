@@ -1,12 +1,21 @@
 "use client";
 import Link from "next/link";
+import { useCompany } from "@/lib/CompanyContext";
 
 export default function Home() {
+  const { company } = useCompany();
+  const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
+  const rates: [string, string][] = [
+    ["Daily", company?.rate_daily || "$40/night"],
+    ["Weekly", company?.rate_weekly || "$225/week"],
+    ["Monthly (Off-Peak)", company?.rate_monthly_offpeak || "$750/mo"],
+    ["Monthly (Peak)", company?.rate_monthly_peak || "$850/mo"],
+  ];
   return (
     <>
       {/* Hero Banner */}
       <section style={{
-        backgroundImage: "linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)), url(/aloha-rv-park-header.jpg)",
+        backgroundImage: `linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0.65)), url(${heroImage})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         color: "var(--white)",
@@ -53,7 +62,7 @@ export default function Home() {
       {/* Rates Bar */}
       <section style={{ background: "var(--blue-light)", color: "var(--blue-accent)", padding: "20px 24px" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "center", gap: "clamp(24px, 5vw, 80px)", flexWrap: "wrap" }}>
-          {[["Daily","$40/night"],["Weekly","$225/week"],["Monthly (Peak)","$750/mo"],["Monthly (Off-Peak)","$850/mo"]].map(([l,v]) => (
+          {rates.map(([l,v]) => (
             <div key={l} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", opacity: 0.8 }}>{l}</div>
               <div style={{ fontSize: 22, fontFamily: "Playfair Display, serif", fontWeight: 700 }}>{v}</div>

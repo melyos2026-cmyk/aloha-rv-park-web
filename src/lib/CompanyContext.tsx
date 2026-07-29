@@ -13,6 +13,12 @@ export interface Company {
   contact_phone: string | null;
   ai_assistant_info: string | null;
   park_id: string | null;
+  hero_image_url: string | null;
+  rate_daily: string | null;
+  rate_weekly: string | null;
+  rate_monthly_offpeak: string | null;
+  rate_monthly_peak: string | null;
+  events_calendar_pdf_url: string | null;
 }
 
 interface CompanyContextValue {
@@ -42,7 +48,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     supabase
       .from("companies")
-      .select("id, company_name, address, logo_url, domain, contact_email, contact_phone, ai_assistant_info, park_id")
+      .select("id, company_name, address, logo_url, domain, contact_email, contact_phone, ai_assistant_info, park_id, hero_image_url, rate_daily, rate_weekly, rate_monthly_offpeak, rate_monthly_peak, events_calendar_pdf_url")
       .eq("domain", hostname)
       .maybeSingle()
       .then(({ data, error: err }) => {

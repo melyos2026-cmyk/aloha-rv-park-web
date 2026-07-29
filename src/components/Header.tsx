@@ -53,9 +53,17 @@ export default function Header() {
             <img src={logoUrl} alt={`${companyName} Logo`} style={{ height: 70, width: "auto" }} />
             <div>
               <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 18, color: "var(--black)", lineHeight: 1 }}>{companyName.toUpperCase()}</div>
-              {company?.address && (
-                <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.05em", textTransform: "uppercase" }}>{company.address}</div>
-              )}
+              {company?.address && (() => {
+                const commaIndex = company.address.indexOf(",");
+                const street = commaIndex === -1 ? company.address : company.address.slice(0, commaIndex + 1);
+                const cityStateZip = commaIndex === -1 ? "" : company.address.slice(commaIndex + 1).trim();
+                return (
+                  <div style={{ fontSize: 10, color: "var(--gray)", letterSpacing: "0.05em", textTransform: "uppercase", display: "flex", flexWrap: "wrap", columnGap: 40 }}>
+                    <span>{street}</span>
+                    {cityStateZip && <span>{cityStateZip}</span>}
+                  </div>
+                );
+              })()}
             </div>
           </Link>
 
