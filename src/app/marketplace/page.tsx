@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 import { supabase } from "@/lib/supabase";
 
-const CATEGORIES = ["Vehicles", "Property Rentals", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous"];
+const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous"];
 
 type Listing = {
   id: string;
