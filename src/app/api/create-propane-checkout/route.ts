@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const { data: product } = await supabase
       .from("propane_pricing")
-      .select("label, price, unit, taxable")
+      .select("label, price, unit, taxable, tax_mode")
       .eq("company_id", company.id)
       .eq("product_id", productId)
       .single();
@@ -68,9 +68,18 @@ export async function POST(req: NextRequest) {
     const subtotalCents = lineItemAmount * lineItemQty;
     const processingFeeCents = Math.round(subtotalCents * 0.04);
 
-    // Sales tax — per-company rate (works for any state, not hardcoded),
-    // only charged when this specific product is marked taxable.
-    const taxEnabled = !!taxSettings?.enable_tax && product.taxable;
+    // Sales tax — per-company rate (works for any state, not hardcoded).
+    // tax_mode overrides the product's default "taxable" rule when set:
+    // "excluded" forces tax to be added on top, "included" means the listed
+    // price already has tax baked in (no separate line), blank/null falls
+    // back to the taxable checkbox.
+    const effectiveTaxApplies =
+      product.tax_mode === "excluded"
+        ? true
+        : product.tax_mode === "included"
+        ? false
+        : !!product.taxable;
+    const taxEnabled = !!taxSettings?.enable_tax && effectiveTaxApplies;
     const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
     const taxCents = taxEnabled ? Math.round(subtotalCents * (taxRatePercent / 100)) : 0;
 

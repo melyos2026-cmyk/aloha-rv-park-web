@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 
-type Product = { product_id: string; label: string; price: number; unit: string; taxable: boolean };
+type Product = { product_id: string; label: string; price: number; unit: string; taxable: boolean; tax_mode: "included" | "excluded" | null };
 
 export default function PropanePage() {
   const { company } = useCompany();
@@ -75,7 +75,15 @@ export default function PropanePage() {
       ? (parseFloat(gallons) || 0) * Number(selected.price)
       : Number(selected.price) * quantity
     : 0;
-  const taxApplies = tax.enabled && selected?.taxable;
+  const taxApplies =
+    tax.enabled &&
+    !!selected &&
+    (selected.tax_mode === "excluded"
+      ? true
+      : selected.tax_mode === "included"
+      ? false
+      : !!selected.taxable);
+  const taxIncludedInPrice = tax.enabled && selected?.tax_mode === "included";
   const salesTax = taxApplies ? subtotal * (tax.ratePercent / 100) : 0;
   const processingFee = subtotal * 0.04;
   const total = subtotal + salesTax + processingFee;
@@ -237,7 +245,7 @@ export default function PropanePage() {
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
-            <span>Subtotal</span>
+            <span>Subtotal{taxIncludedInPrice ? " (tax included)" : ""}</span>
             <span>${subtotal.toFixed(2)}</span>
           </div>
           {taxApplies && (

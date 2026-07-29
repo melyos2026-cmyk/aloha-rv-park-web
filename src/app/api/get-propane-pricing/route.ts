@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("propane_pricing")
-    .select("product_id, label, price, unit, taxable")
+    .select("product_id, label, price, unit, taxable, tax_mode")
     .eq("company_id", company.id);
 
   if (error) {
