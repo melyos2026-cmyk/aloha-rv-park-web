@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-const CATEGORIES = ["Vehicles", "Property Rentals", "Apparel", "Classifieds", "Electronics", "Entertainment", "Family", "Free Stuff", "Garage Sale", "Garden & Outdoor", "Hobbies", "Home Goods", "Home Improvement", "Home Sales", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Other"];
+const CATEGORIES = ["Vehicles", "Property Rentals", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous"];
 
 type Listing = {
   id: string;
@@ -15,6 +15,7 @@ type Listing = {
   category: string;
   status: string;
   created_at: string;
+  expires_at?: string | null;
   resident_accounts?: { full_name: string; rv_lots?: { lot_name: string } | null };
   marketplace_listing_photos?: { photo_url: string; sort_order: number }[];
 };
@@ -26,8 +27,9 @@ export default function MarketplacePage() {
   const [residentId, setResidentId] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"browse" | "mine">("browse");
+  const [tab, setTab] = useState<"browse" | "mine" | "saved">("browse");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [search, setSearch] = useState("");
 
@@ -75,7 +77,42 @@ export default function MarketplacePage() {
       .order("created_at", { ascending: false });
 
     setListings(data || []);
+
+    const { data: saved } = await supabase
+      .from("marketplace_saved_listings")
+      .select("listing_id")
+      .eq("resident_id", residentIdParam);
+    setSavedIds((saved || []).map((s) => s.listing_id));
+
     setLoading(false);
+  }
+
+  async function toggleSaved(listingId: string) {
+    if (!residentId) return;
+    if (savedIds.includes(listingId)) {
+      await supabase.from("marketplace_saved_listings").delete().eq("resident_id", residentId).eq("listing_id", listingId);
+      setSavedIds((prev) => prev.filter((id) => id !== listingId));
+    } else {
+      await supabase.from("marketplace_saved_listings").insert({ resident_id: residentId, listing_id: listingId });
+      setSavedIds((prev) => [...prev, listingId]);
+    }
+  }
+
+  async function repostListing(listingId: string) {
+    const newExpiry = new Date();
+    newExpiry.setDate(newExpiry.getDate() + 30);
+    await supabase
+      .from("marketplace_listings")
+      .update({ expires_at: newExpiry.toISOString(), status: "active" })
+      .eq("id", listingId);
+    setSelectedListing(null);
+    if (residentId) load(residentId);
+  }
+
+  function daysLeft(expiresAt?: string | null) {
+    if (!expiresAt) return null;
+    const diff = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return diff;
   }
 
   function resetForm() {
@@ -118,6 +155,9 @@ export default function MarketplacePage() {
         })
         .eq("id", editingId);
     } else {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
       const { data: newListing, error } = await supabase
         .from("marketplace_listings")
         .insert({
@@ -128,6 +168,7 @@ export default function MarketplacePage() {
           price: price ? Number(price) : null,
           category,
           status: "active",
+          expires_at: expiresAt.toISOString(),
         })
         .select("id")
         .single();
@@ -174,7 +215,12 @@ export default function MarketplacePage() {
   }
 
   const visibleListings = listings
-    .filter((l) => (tab === "mine" ? l.resident_id === residentId : l.status === "active"))
+    .filter((l) => {
+      if (tab === "mine") return l.resident_id === residentId;
+      const notExpired = !l.expires_at || daysLeft(l.expires_at)! > 0;
+      if (tab === "saved") return savedIds.includes(l.id) && notExpired;
+      return l.status === "active" && notExpired;
+    })
     .filter((l) => categoryFilter === "All" || l.category === categoryFilter)
     .filter((l) => !search.trim() || l.title.toLowerCase().includes(search.trim().toLowerCase()));
 
@@ -232,6 +278,13 @@ export default function MarketplacePage() {
           <span style={{ display: "inline-block", background: "#f3f4f6", color: "#6b7280", fontWeight: 700, fontSize: 12, padding: "4px 12px", borderRadius: 999, marginBottom: 12 }}>SOLD</span>
         )}
         <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>Category: {selectedListing.category}</p>
+        {isMine && selectedListing.expires_at && (
+          <p style={{ fontSize: 13, color: (daysLeft(selectedListing.expires_at) ?? 0) <= 5 ? "#dc2626" : "var(--gray)", marginBottom: 4 }}>
+            {(daysLeft(selectedListing.expires_at) ?? 0) > 0
+              ? `Expires in ${daysLeft(selectedListing.expires_at)} day${daysLeft(selectedListing.expires_at) === 1 ? "" : "s"} — repost to keep it active`
+              : "This listing has expired"}
+          </p>
+        )}
         <p style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{selectedListing.description}</p>
 
         <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
@@ -243,13 +296,25 @@ export default function MarketplacePage() {
           <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 6 }}>Contact them in person at the park, or through the office.</p>
         </div>
 
+        {!isMine && (
+          <button
+            onClick={() => toggleSaved(selectedListing.id)}
+            style={{ background: "none", border: "1.5px solid var(--border)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}
+          >
+            {savedIds.includes(selectedListing.id) ? "❤️ Saved" : "🤍 Save"}
+          </button>
+        )}
+
         {isMine && (
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {selectedListing.status === "active" && (
               <button onClick={() => markSold(selectedListing.id)} style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
                 Mark as Sold
               </button>
             )}
+            <button onClick={() => repostListing(selectedListing.id)} style={{ background: "#2563eb", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
+              🔁 Repost (30 more days)
+            </button>
             <button onClick={() => { startEdit(selectedListing); setSelectedListing(null); }} style={{ background: "#000", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>
               Edit
             </button>
@@ -340,6 +405,7 @@ export default function MarketplacePage() {
       <div style={{ display: "flex", gap: 20, marginBottom: 16, borderBottom: "1.5px solid var(--border)" }}>
         <button onClick={() => setTab("browse")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "browse" ? "2px solid var(--red)" : "none", color: tab === "browse" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>Browse</button>
         <button onClick={() => setTab("mine")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "mine" ? "2px solid var(--red)" : "none", color: tab === "mine" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>My Listings</button>
+        <button onClick={() => setTab("saved")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "saved" ? "2px solid var(--red)" : "none", color: tab === "saved" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>Saved</button>
       </div>
 
       {tab === "browse" && (
@@ -360,8 +426,18 @@ export default function MarketplacePage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
           {visibleListings.map((l) => {
             const cover = (l.marketplace_listing_photos || []).sort((a, b) => a.sort_order - b.sort_order)[0];
+            const mine = l.resident_id === residentId;
+            const left = daysLeft(l.expires_at);
             return (
-              <div key={l.id} style={card} onClick={() => { setSelectedListing(l); setActivePhoto(0); }}>
+              <div key={l.id} style={{ ...card, position: "relative" }} onClick={() => { setSelectedListing(l); setActivePhoto(0); }}>
+                {!mine && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleSaved(l.id); }}
+                    style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer", zIndex: 1 }}
+                  >
+                    {savedIds.includes(l.id) ? "❤️" : "🤍"}
+                  </button>
+                )}
                 {cover ? (
                   <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
                 ) : (
@@ -376,6 +452,11 @@ export default function MarketplacePage() {
                   </p>
                   {l.status === "sold" && (
                     <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>SOLD</span>
+                  )}
+                  {mine && tab === "mine" && left != null && (
+                    <p style={{ fontSize: 11, color: left <= 5 ? "#dc2626" : "var(--gray)", marginTop: 2 }}>
+                      {left > 0 ? `Expires in ${left}d` : "Expired"}
+                    </p>
                   )}
                 </div>
               </div>
