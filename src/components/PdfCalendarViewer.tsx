@@ -69,7 +69,7 @@ export default function PdfCalendarViewer({ pdfUrl }: { pdfUrl: string }) {
     <div>
       {loading && <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 12 }}>Loading calendar…</p>}
       {error && <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
-      <div ref={containerRef} style={{ maxWidth: 700, margin: "0 auto" }} />
+      <div ref={containerRef} style={{ maxWidth: 1000, margin: "0 auto" }} />
     </div>
   );
 }
