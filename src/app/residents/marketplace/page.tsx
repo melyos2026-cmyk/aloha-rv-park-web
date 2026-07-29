@@ -44,6 +44,7 @@ export default function MarketplacePage() {
 
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [activePhoto, setActivePhoto] = useState(0);
+  const [lastVisit, setLastVisit] = useState<string | null>(null);
 
   useEffect(() => {
     const id = localStorage.getItem("resident_id");
@@ -52,7 +53,9 @@ export default function MarketplacePage() {
       return;
     }
     setResidentId(id);
+    setLastVisit(localStorage.getItem(`marketplace_last_visit_${id}`));
     load(id);
+    localStorage.setItem(`marketplace_last_visit_${id}`, new Date().toISOString());
   }, []);
 
   async function load(residentIdParam: string) {
@@ -224,6 +227,12 @@ export default function MarketplacePage() {
     .filter((l) => categoryFilter === "All" || l.category === categoryFilter)
     .filter((l) => !search.trim() || l.title.toLowerCase().includes(search.trim().toLowerCase()));
 
+  const newForYou = lastVisit
+    ? listings.filter(
+        (l) => l.resident_id !== residentId && l.status === "active" && new Date(l.created_at) > new Date(lastVisit)
+      )
+    : [];
+
   if (selectedListing) {
     const photos = (selectedListing.marketplace_listing_photos || []).sort((a, b) => a.sort_order - b.sort_order);
     const isMine = selectedListing.resident_id === residentId;
@@ -327,6 +336,45 @@ export default function MarketplacePage() {
     );
   }
 
+  function renderListingCard(l: Listing) {
+    const cover = (l.marketplace_listing_photos || []).sort((a, b) => a.sort_order - b.sort_order)[0];
+    const mine = l.resident_id === residentId;
+    const left = daysLeft(l.expires_at);
+    return (
+      <div key={l.id} style={{ ...card, position: "relative" }} onClick={() => { setSelectedListing(l); setActivePhoto(0); }}>
+        {!mine && (
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleSaved(l.id); }}
+            style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer", zIndex: 1 }}
+          >
+            {savedIds.includes(l.id) ? "❤️" : "🤍"}
+          </button>
+        )}
+        {cover ? (
+          <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
+        ) : (
+          <div style={{ width: "100%", height: 150, background: "var(--gray-light)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)", fontSize: 12 }}>
+            No photo
+          </div>
+        )}
+        <div style={{ padding: 10 }}>
+          <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{l.title}</p>
+          <p style={{ fontWeight: 900, fontSize: 15, color: "var(--red)" }}>
+            {l.price != null ? `$${Number(l.price).toLocaleString()}` : "Free / OBO"}
+          </p>
+          {l.status === "sold" && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>SOLD</span>
+          )}
+          {mine && tab === "mine" && left != null && (
+            <p style={{ fontSize: 11, color: left <= 5 ? "#dc2626" : "var(--gray)", marginTop: 2 }}>
+              {left > 0 ? `Expires in ${left}d` : "Expired"}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
       <button onClick={() => router.push("/residents/dashboard")} style={{ background: "none", border: "none", fontSize: 14, color: "var(--gray)", cursor: "pointer", marginBottom: 20 }}>
@@ -418,50 +466,22 @@ export default function MarketplacePage() {
         </div>
       )}
 
+      {tab === "browse" && newForYou.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <h2 style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>🆕 New For You</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
+            {newForYou.map((l) => renderListingCard(l))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <p style={{ color: "var(--gray)" }}>Loading...</p>
       ) : visibleListings.length === 0 ? (
         <p style={{ color: "var(--gray)" }}>{tab === "mine" ? "You haven't posted anything yet." : "No listings yet."}</p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
-          {visibleListings.map((l) => {
-            const cover = (l.marketplace_listing_photos || []).sort((a, b) => a.sort_order - b.sort_order)[0];
-            const mine = l.resident_id === residentId;
-            const left = daysLeft(l.expires_at);
-            return (
-              <div key={l.id} style={{ ...card, position: "relative" }} onClick={() => { setSelectedListing(l); setActivePhoto(0); }}>
-                {!mine && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleSaved(l.id); }}
-                    style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 14, cursor: "pointer", zIndex: 1 }}
-                  >
-                    {savedIds.includes(l.id) ? "❤️" : "🤍"}
-                  </button>
-                )}
-                {cover ? (
-                  <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
-                ) : (
-                  <div style={{ width: "100%", height: 150, background: "var(--gray-light)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)", fontSize: 12 }}>
-                    No photo
-                  </div>
-                )}
-                <div style={{ padding: 10 }}>
-                  <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{l.title}</p>
-                  <p style={{ fontWeight: 900, fontSize: 15, color: "var(--red)" }}>
-                    {l.price != null ? `$${Number(l.price).toLocaleString()}` : "Free / OBO"}
-                  </p>
-                  {l.status === "sold" && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>SOLD</span>
-                  )}
-                  {mine && tab === "mine" && left != null && (
-                    <p style={{ fontSize: 11, color: left <= 5 ? "#dc2626" : "var(--gray)", marginTop: 2 }}>
-                      {left > 0 ? `Expires in ${left}d` : "Expired"}
-                    </p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {visibleListings.map((l) => renderListingCard(l))}
         </div>
       )}
     </div>
