@@ -1,7 +1,10 @@
-// Generates a proper PDF payment receipt for a lease application fee —
-// runs server-side (Node/serverless), so it outputs an ArrayBuffer rather
-// than a browser Blob like the client-side lease PDF generator does.
-export function generateApplicationFeeReceiptPdf(params: {
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
+// Generates a proper PDF payment receipt for a lease application fee.
+// Uses pdf-lib instead of jsPDF — pdf-lib has zero DOM/canvas dependency,
+// so it's reliable in a pure Node serverless function (jsPDF is built for
+// the browser and can behave unpredictably server-side).
+export async function generateApplicationFeeReceiptPdf(params: {
   companyName: string;
   companyAddress: string | null;
   applicantName: string;
@@ -10,44 +13,45 @@ export function generateApplicationFeeReceiptPdf(params: {
   receiptNumber: string;
   transactionId: string;
   paymentDate: Date;
-}): Buffer {
-  const { jsPDF } = require("jspdf");
-  const doc = new jsPDF({ unit: "pt", format: "letter" });
+}): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]); // US Letter, points
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
   const marginX = 54;
   const pageWidth = 612;
   const contentWidth = pageWidth - marginX * 2;
-  let y = 60;
+  let y = 792 - 60;
+  const gray = rgb(0.47, 0.47, 0.47);
+  const black = rgb(0.07, 0.07, 0.07);
+  const lineColor = rgb(0.8, 0.8, 0.8);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text(params.companyName, marginX, y);
-  y += 20;
+  page.drawText(params.companyName, { x: marginX, y, size: 16, font: fontBold, color: black });
+  y -= 20;
 
   if (params.companyAddress) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.text(params.companyAddress, marginX, y);
-    y += 24;
+    page.drawText(params.companyAddress, { x: marginX, y, size: 10, font, color: gray });
+    y -= 24;
   } else {
-    y += 10;
+    y -= 10;
   }
 
-  doc.setDrawColor(200, 200, 200);
-  doc.line(marginX, y, marginX + contentWidth, y);
-  y += 30;
+  page.drawLine({
+    start: { x: marginX, y },
+    end: { x: marginX + contentWidth, y },
+    thickness: 1,
+    color: lineColor,
+  });
+  y -= 30;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
-  doc.text("Payment Receipt", marginX, y);
-  y += 30;
+  page.drawText("Payment Receipt", { x: marginX, y, size: 18, font: fontBold, color: black });
+  y -= 30;
 
   const row = (label: string, value: string) => {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text(label, marginX, y);
-    doc.setFont("helvetica", "normal");
-    doc.text(value, marginX + 160, y);
-    y += 20;
+    page.drawText(label, { x: marginX, y, size: 10, font: fontBold, color: black });
+    page.drawText(value, { x: marginX + 160, y, size: 10, font, color: black });
+    y -= 20;
   };
 
   row("Billed To:", params.applicantName);
@@ -57,23 +61,33 @@ export function generateApplicationFeeReceiptPdf(params: {
   row("Transaction ID:", params.transactionId);
   row("Payment Method:", "Credit/Debit Card (Stripe)");
 
-  y += 10;
-  doc.setDrawColor(200, 200, 200);
-  doc.line(marginX, y, marginX + contentWidth, y);
-  y += 30;
+  y -= 10;
+  page.drawLine({
+    start: { x: marginX, y },
+    end: { x: marginX + contentWidth, y },
+    thickness: 1,
+    color: lineColor,
+  });
+  y -= 30;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("Amount Paid:", marginX, y);
-  doc.setFontSize(16);
-  doc.text(`$${params.amountPaid.toFixed(2)}`, marginX + 160, y);
-  y += 40;
+  page.drawText("Amount Paid:", { x: marginX, y, size: 14, font: fontBold, color: black });
+  page.drawText(`$${params.amountPaid.toFixed(2)}`, {
+    x: marginX + 160,
+    y,
+    size: 16,
+    font: fontBold,
+    color: black,
+  });
+  y -= 40;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(120, 120, 120);
-  doc.text("This fee is non-refundable. Thank you for your application.", marginX, y);
+  page.drawText("This fee is non-refundable. Thank you for your application.", {
+    x: marginX,
+    y,
+    size: 9,
+    font,
+    color: gray,
+  });
 
-  const arrayBuffer = doc.output("arraybuffer");
-  return Buffer.from(arrayBuffer);
+  const bytes = await doc.save();
+  return Buffer.from(bytes);
 }

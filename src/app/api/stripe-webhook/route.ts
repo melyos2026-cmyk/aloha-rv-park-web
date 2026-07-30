@@ -194,7 +194,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         .maybeSingle();
 
       const amountPaid = (session.amount_total || 0) / 100;
-      const receiptPdf = generateApplicationFeeReceiptPdf({
+      const receiptPdf = await generateApplicationFeeReceiptPdf({
         companyName: company?.company_name || "MelyOS",
         companyAddress: company?.address || null,
         applicantName: application.full_name || "Applicant",

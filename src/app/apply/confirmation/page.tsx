@@ -89,8 +89,9 @@ export default async function ApplicationConfirmationPage({
         </p>
         <ol style={{ paddingLeft: 20, margin: 0 }}>
           <li style={{ marginBottom: 8 }}>
-            Check your email — you'll receive a secure link from our background check partner
-            (Checkr) to complete your background check. Please do this as soon as possible.
+            Check your email — you'll receive a secure link from MelyOS LLC's background check
+            partner, Checkr, to complete your background check. Please do this as soon as
+            possible.
           </li>
           <li style={{ marginBottom: 8 }}>
             The park will review your application once results are in.
