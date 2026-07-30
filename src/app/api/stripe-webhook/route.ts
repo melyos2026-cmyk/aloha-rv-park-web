@@ -180,6 +180,23 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         : ` No background check required for this stay (short stay${stayAmount > 0 ? `, $${stayAmount.toFixed(2)} stay charge included` : ""}).`)
   );
 
+  // Each park sets their own notification email under Business Profile
+  // (companies.contact_email) — this used to be a single hardcoded env var
+  // shared across every company, which doesn't work once there's more than
+  // one client on the platform. Falls back to the env var only if the park
+  // hasn't set one yet.
+  let adminNotifyEmail = process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com";
+  if (application?.company_id) {
+    const { data: notifyCompany } = await supabase
+      .from("companies")
+      .select("contact_email")
+      .eq("id", application.company_id)
+      .maybeSingle();
+    if (notifyCompany?.contact_email) {
+      adminNotifyEmail = notifyCompany.contact_email;
+    }
+  }
+
   // Send the applicant an actual PDF receipt (company name, amount,
   // description, receipt/transaction numbers) — the confirmation page
   // promises "a receipt has been sent to your email", so this needs to be
@@ -246,7 +263,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           },
           body: JSON.stringify({
             from: "MelyOS <onboarding@resend.dev>",
-            to: process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com",
+            to: adminNotifyEmail,
             subject: `Short-stay application fee${stayAmount > 0 ? " + stay charge" : ""} paid for ${application?.full_name || "applicant"} — no background check needed`,
             html: `<p>${application?.full_name || "An applicant"} just paid their application fee${
               stayAmount > 0 ? ` and $${stayAmount.toFixed(2)} stay charge` : ""
@@ -329,7 +346,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         },
         body: JSON.stringify({
           from: "MelyOS <onboarding@resend.dev>",
-          to: process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com",
+          to: adminNotifyEmail,
          subject: checkrInvited
             ? `Background check application sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
             : `Application fee paid — background check FAILED to send for ${application?.full_name || "applicant"}, check manually`,
