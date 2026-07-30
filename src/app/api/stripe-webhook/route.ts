@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       try {
         const { data: resident } = await supabase
           .from("resident_accounts")
-          .select("full_name, email")
+          .select("full_name, email, company_id")
           .eq("id", residentId)
           .single();
 
@@ -126,6 +126,21 @@ export async function POST(req: Request) {
           });
         } else {
           console.log("No email found for resident, skipping receipt.");
+        }
+
+        if (resident?.company_id) {
+          const amountPaid = (session.amount_total || 0) / 100;
+          const chargesLabel =
+            chargesPaid.length > 0
+              ? chargesPaid.map((c) => c.label).join(", ")
+              : "rent/invoice";
+          await supabase.from("resident_update_notifications").insert({
+            company_id: resident.company_id,
+            resident_id: residentId,
+            resident_name: resident.full_name || null,
+            update_type: "rent_payment",
+            message: `${resident.full_name || "A resident"} paid $${amountPaid.toFixed(2)} (${chargesLabel}).`,
+          });
         }
       } catch (emailErr) {
         console.error("Failed to send receipt email:", emailErr);
@@ -568,18 +583,29 @@ async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
     return;
   }
 
-  const { error } = await supabase
+  const { data: application, error } = await supabase
     .from("resident_applications")
     .update({
       rent_to_own_deposit_paid: true,
       rent_to_own_deposit_method: "Stripe",
     })
-    .eq("id", applicationId);
+    .eq("id", applicationId)
+    .select("full_name, company_id, rent_to_own_deposit_amount")
+    .single();
 
   if (error) {
     console.log("Error marking rent-to-own deposit paid:", error.message);
   } else {
     console.log(`Rent-to-own deposit payment confirmed for application ${applicationId}.`);
+    if (application?.company_id) {
+      const amountPaid = (session.amount_total || 0) / 100;
+      await supabase.from("resident_update_notifications").insert({
+        company_id: application.company_id,
+        resident_name: application.full_name || null,
+        update_type: "rent_to_own_deposit_paid",
+        message: `${application.full_name || "An applicant"} paid their Rent-to-Own deposit — $${amountPaid.toFixed(2)}.`,
+      });
+    }
   }
 }
 
