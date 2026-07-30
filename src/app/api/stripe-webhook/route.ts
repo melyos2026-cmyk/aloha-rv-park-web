@@ -4,6 +4,7 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
+import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -178,6 +179,61 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         ? " Background check status: payment_confirmed."
         : ` No background check required for this stay (short stay${stayAmount > 0 ? `, $${stayAmount.toFixed(2)} stay charge included` : ""}).`)
   );
+
+  // Send the applicant an actual PDF receipt (company name, amount,
+  // description, receipt/transaction numbers) — the confirmation page
+  // promises "a receipt has been sent to your email", so this needs to be
+  // a real receipt, not just the Checkr invitation email's paragraph of
+  // instructions.
+  if (application?.email && process.env.RESEND_API_KEY) {
+    try {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("company_name, address")
+        .eq("id", application.company_id)
+        .maybeSingle();
+
+      const amountPaid = (session.amount_total || 0) / 100;
+      const receiptPdf = generateApplicationFeeReceiptPdf({
+        companyName: company?.company_name || "MelyOS",
+        companyAddress: company?.address || null,
+        applicantName: application.full_name || "Applicant",
+        amountPaid,
+        description: stayAmount > 0 ? "Lease Application Fee + Stay Charge" : "Lease Application Fee",
+        receiptNumber: paymentIntentId || session.id,
+        transactionId: session.id,
+        paymentDate: new Date(session.created * 1000),
+      });
+
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: `${company?.company_name || "MelyOS"} <onboarding@resend.dev>`,
+          to: application.email,
+          subject: `Receipt — Application Fee Paid ($${amountPaid.toFixed(2)})`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+              <h2>✅ Payment Confirmed</h2>
+              <p>Thank you, ${application.full_name || "Applicant"}. Your application fee payment of
+              $${amountPaid.toFixed(2)} was received. Your receipt is attached as a PDF.</p>
+            </div>
+          `,
+          attachments: [
+            {
+              filename: "application-fee-receipt.pdf",
+              content: receiptPdf.toString("base64"),
+            },
+          ],
+        }),
+      });
+    } catch (receiptErr) {
+      console.error("Failed to send application fee receipt PDF:", receiptErr);
+    }
+  }
 
   if (!requiresBackgroundCheck) {
     try {

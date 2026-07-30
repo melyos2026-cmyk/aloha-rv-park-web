@@ -616,6 +616,15 @@ export default function LeaseApplicationForm({
     return isAdult && (!occ.license_number || !occ.license_photo_url);
   });
 
+  // Every adult occupant needs their own background check, which means
+  // their own email to receive that invite — it can't be left blank to
+  // fall back to the primary applicant's email like it used to.
+  const adultOccupantsMissingEmail = data.occupants.some((occ) => {
+    const age = calculateAge(occ.date_of_birth);
+    const isAdult = occ.name.trim() !== "" && age !== null && age >= 18;
+    return isAdult && !occ.email?.trim();
+  });
+
   const proration = calculateProration(
     data.lease_start_date,
     Number(data.rent_amount) || 0
@@ -773,6 +782,7 @@ export default function LeaseApplicationForm({
         data.primary_applicant_license_photo_url &&
         !primaryApplicantUnderage &&
         !adultOccupantsMissingLicense &&
+        !adultOccupantsMissingEmail &&
         data.tenant_signature_name &&
         signatureMatchesName &&
         data.tenant_signature_agreed &&
@@ -1565,13 +1575,13 @@ export default function LeaseApplicationForm({
                     {age !== null && age >= 18 && (
                       <div style={styles.field}>
                         <label style={styles.label}>
-                          Email (optional — for their own background check invite)
+                          Email (required) — they'll get their own background check invite
                         </label>
                         <input
                           type="email"
                           style={styles.input}
                           value={occ.email || ""}
-                          placeholder="Leave blank to use the primary applicant's email"
+                          placeholder="their.email@example.com"
                           onChange={(e) => {
                             const updated = [...data.occupants];
                             updated[i] = { ...occ, email: e.target.value };
