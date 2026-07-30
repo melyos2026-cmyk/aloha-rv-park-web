@@ -26,6 +26,11 @@ export default function ResidentDashboard() {
   const [autopayEnabled, setAutopayEnabled] = useState(false);
   const [autopayCardLast4, setAutopayCardLast4] = useState<string | null>(null);
   const [residentId, setResidentId] = useState<string | null>(null);
+  const [activeLease, setActiveLease] = useState<any>(null);
+  const [moveOutDate, setMoveOutDate] = useState("");
+  const [moveOutNote, setMoveOutNote] = useState("");
+  const [moveOutSubmitting, setMoveOutSubmitting] = useState(false);
+  const [moveOutMessage, setMoveOutMessage] = useState("");
   const router = useRouter();
 
   const [editingInfo, setEditingInfo] = useState(false);
@@ -136,6 +141,18 @@ export default function ResidentDashboard() {
       .eq("resident_id", residentId);
     setDocuments(docs || []);
 
+    const { data: lease } = await supabase
+      .from("resident_leases")
+      .select("id, requested_move_out_date, requested_move_out_note")
+      .eq("resident_id", residentId)
+      .eq("status", "Active")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setActiveLease(lease || null);
+    setMoveOutDate(lease?.requested_move_out_date || "");
+    setMoveOutNote(lease?.requested_move_out_note || "");
+
     const { data: occs } = await supabase
       .from("resident_occupants")
       .select("*")
@@ -215,6 +232,31 @@ export default function ResidentDashboard() {
       update_type: updateType,
       message,
     });
+  }
+
+  async function handleSubmitMoveOut() {
+    if (!moveOutDate) {
+      setMoveOutMessage("Please choose a date first.");
+      return;
+    }
+    setMoveOutSubmitting(true);
+    setMoveOutMessage("");
+    try {
+      const res = await fetch("/api/portal/request-move-out", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId, moveOutDate, note: moveOutNote }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setMoveOutMessage(`Error: ${result.error}`);
+      } else {
+        setMoveOutMessage("Move-out date sent to the office.");
+      }
+    } catch {
+      setMoveOutMessage("Something went wrong. Please try again.");
+    }
+    setMoveOutSubmitting(false);
   }
 
   function openEditInfo() {
@@ -690,6 +732,43 @@ export default function ResidentDashboard() {
             <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Maintenance Requests</h2>
             <p style={{ color: "var(--gray)", fontSize: 13 }}>Report issues and track maintenance progress.</p>
           </div>
+
+          {/* Move-out request */}
+          {activeLease && (
+            <div style={card}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
+                Let us know your planned move-out date — the office will follow up to confirm.
+              </p>
+              {activeLease.requested_move_out_date && (
+                <p style={{ fontSize: 13, marginBottom: 12, color: "var(--black)" }}>
+                  Currently requested: <strong>{activeLease.requested_move_out_date}</strong>
+                </p>
+              )}
+              <label style={label}>Move-Out Date</label>
+              <input
+                type="date"
+                value={moveOutDate}
+                onChange={(e) => setMoveOutDate(e.target.value)}
+                style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
+              />
+              <label style={label}>Notes (optional)</label>
+              <textarea
+                value={moveOutNote}
+                onChange={(e) => setMoveOutNote(e.target.value)}
+                rows={2}
+                style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
+              />
+              <button
+                onClick={handleSubmitMoveOut}
+                disabled={moveOutSubmitting}
+                style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 16px", fontWeight: 700, cursor: "pointer", opacity: moveOutSubmitting ? 0.6 : 1 }}
+              >
+                {moveOutSubmitting ? "Sending..." : "Submit Move-Out Date"}
+              </button>
+              {moveOutMessage && <p style={{ fontSize: 13, marginTop: 8 }}>{moveOutMessage}</p>}
+            </div>
+          )}
 
           {/* Electric usage */}
           <div style={card}>
