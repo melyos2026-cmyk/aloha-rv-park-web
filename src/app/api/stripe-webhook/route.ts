@@ -229,7 +229,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: `${company?.company_name || "MelyOS"} <onboarding@resend.dev>`,
+          from: `${company?.company_name || "MelyOS"} <noreply@aloharvparkfl.com>`,
           to: application.email,
           subject: `Receipt — Application Fee Paid ($${amountPaid.toFixed(2)})`,
           html: `
@@ -262,7 +262,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "MelyOS <onboarding@resend.dev>",
+            from: "MelyOS <noreply@aloharvparkfl.com>",
             to: adminNotifyEmail,
             subject: `Short-stay application fee${stayAmount > 0 ? " + stay charge" : ""} paid for ${application?.full_name || "applicant"} — no background check needed`,
             html: `<p>${application?.full_name || "An applicant"} just paid their application fee${
@@ -345,7 +345,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "MelyOS <onboarding@resend.dev>",
+          from: "MelyOS <noreply@aloharvparkfl.com>",
           to: adminNotifyEmail,
          subject: checkrInvited
             ? `Background check application sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
@@ -463,7 +463,7 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Aloha RV Park <onboarding@resend.dev>",
+            from: "Aloha RV Park <noreply@aloharvparkfl.com>",
             to: customerEmail,
             subject: "Your Propane Pickup QR Code",
             html: `

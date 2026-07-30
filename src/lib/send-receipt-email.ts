@@ -73,7 +73,7 @@ export async function sendReceiptEmail(data: ReceiptData) {
 
   try {
     const result = await resend.emails.send({
-      from: "Aloha RV Park <onboarding@resend.dev>",
+      from: "Aloha RV Park <noreply@aloharvparkfl.com>",
       to: data.toEmail,
       subject: `Payment Receipt - ${formatMoney(data.amountPaid)}`,
       html,

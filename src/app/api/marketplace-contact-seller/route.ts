@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Aloha RV Park Marketplace <onboarding@resend.dev>",
+          from: "Aloha RV Park Marketplace <noreply@aloharvparkfl.com>",
           to: sellerEmail,
           reply_to: buyerEmail,
           subject: `Someone is interested in your listing: ${listing.title}`,

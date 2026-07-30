@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "MelyOS <onboarding@resend.dev>",
+            from: "MelyOS <noreply@aloharvparkfl.com>",
             to: notifyEmail,
             subject: `New appointment request${listingTitle ? `: ${listingTitle}` : ""} from ${fullName}`,
             html: `
