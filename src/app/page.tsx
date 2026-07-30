@@ -1,21 +1,37 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 
 export default function Home() {
   const { company } = useCompany();
+  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
   const [mapHeight, setMapHeight] = useState(1350);
+  const [gotRealHeight, setGotRealHeight] = useState(false);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.data?.type === "aloha-map-height" && typeof event.data.height === "number") {
         setMapHeight(event.data.height);
+        setGotRealHeight(true);
       }
     }
     window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+
+    // Fallback while we wait for (or in case we never get) the real height from the map:
+    // estimate proportionally to the iframe's actual rendered width instead of a fixed desktop number.
+    function estimateHeight() {
+      if (gotRealHeight || !mapWrapperRef.current) return;
+      const width = mapWrapperRef.current.offsetWidth || 900;
+      setMapHeight(Math.round(width * 1.72));
+    }
+    estimateHeight();
+    window.addEventListener("resize", estimateHeight);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      window.removeEventListener("resize", estimateHeight);
+    };
+  }, [gotRealHeight]);
 
   const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
   const rates: [string, string][] = [
@@ -91,8 +107,21 @@ export default function Home() {
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Available Now</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Lot Map</h2>
             <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green or orange lot to check availability and book your spot</p>
+            <a
+              href="https://aloha-rv-park-lilac.vercel.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-block", marginTop: 16,
+                background: "var(--red)", color: "#fff",
+                padding: "10px 22px", borderRadius: 6, fontWeight: 700, fontSize: 14,
+                textDecoration: "none"
+              }}
+            >
+              🔍 Open Map Full Screen (Easier on Mobile)
+            </a>
           </div>
-          <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
+          <div ref={mapWrapperRef} style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
             <iframe
               src="https://aloha-rv-park-lilac.vercel.app"
               style={{ width: "100%", height: mapHeight, border: "none" }}
