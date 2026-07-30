@@ -1,9 +1,22 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 
 export default function Home() {
   const { company } = useCompany();
+  const [mapHeight, setMapHeight] = useState(1350);
+
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.type === "aloha-map-height" && typeof event.data.height === "number") {
+        setMapHeight(event.data.height);
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
   const rates: [string, string][] = [
     ["Daily", company?.rate_daily || "$40/night"],
@@ -82,7 +95,7 @@ export default function Home() {
           <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
             <iframe
               src="https://aloha-rv-park-lilac.vercel.app"
-              style={{ width: "100%", height: 1350, border: "none" }}
+              style={{ width: "100%", height: mapHeight, border: "none" }}
               title="Aloha RV Park Lot Map"
               scrolling="no"
             />
