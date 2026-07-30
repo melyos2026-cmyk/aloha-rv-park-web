@@ -23,7 +23,7 @@ export default function Home() {
     function estimateHeight() {
       if (gotRealHeight || !mapWrapperRef.current) return;
       const width = mapWrapperRef.current.offsetWidth || 900;
-      setMapHeight(Math.round(width * 1.72));
+      setMapHeight(Math.round(width * 1.4));
     }
     estimateHeight();
     window.addEventListener("resize", estimateHeight);
