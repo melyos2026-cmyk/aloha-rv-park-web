@@ -118,8 +118,9 @@ export default function Home() {
                 textDecoration: "none"
               }}
             >
-              🔍 Open Map Full Screen (Easier on Mobile)
+              🔍 Open Map Full Screen
             </a>
+            <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10 }}>For the clearest view of every lot, we recommend checking the map from a desktop or laptop computer.</p>
           </div>
           <div ref={mapWrapperRef} style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
             <iframe
