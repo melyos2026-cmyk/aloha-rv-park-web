@@ -316,6 +316,14 @@ const PROPANE_PRODUCT_LABELS: Record<string, string> = {
   motorhome: "Motor Home 40LB Tank",
 };
 
+// ⚠️ propane_orders holds real Stripe transactions and each row's qr_token
+// is the customer's ONLY way to redeem their tank(s) — there is no
+// recovery path if a row is deleted. NEVER run an unconditional
+// `DELETE FROM propane_orders` (e.g. during a "clear test data" cleanup)
+// without a WHERE clause protecting real/recent purchases — this already
+// happened once and wiped 2 real customer orders along with test data.
+// If bulk-clearing test data, filter by a specific test email/date range,
+// or move test rows to `status = 'test'` and filter on that instead.
 async function handlePropanePaid(session: Stripe.Checkout.Session) {
   const { productId, quantity, lotId, park, residentLot, subtotalCents, taxCents, feeCents } =
     session.metadata || {};
