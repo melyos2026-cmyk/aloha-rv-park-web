@@ -107,29 +107,37 @@ export default function Home() {
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Available Now</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Lot Map</h2>
             <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green or orange lot to check availability and book your spot</p>
-            <a
-              href="https://aloha-rv-park-lilac.vercel.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-block", marginTop: 16,
-                background: "var(--red)", color: "#fff",
-                padding: "10px 22px", borderRadius: 6, fontWeight: 700, fontSize: 14,
-                textDecoration: "none"
-              }}
-            >
-              🔍 Open Map Full Screen
-            </a>
-            <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10 }}>For the clearest view of every lot, we recommend checking the map from a desktop or laptop computer.</p>
+            {company?.park_id ? (
+              <>
+                <a
+                  href={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-block", marginTop: 16,
+                    background: "var(--red)", color: "#fff",
+                    padding: "10px 22px", borderRadius: 6, fontWeight: 700, fontSize: 14,
+                    textDecoration: "none"
+                  }}
+                >
+                  🔍 Open Map Full Screen
+                </a>
+                <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10 }}>For the clearest view of every lot, we recommend checking the map from a desktop or laptop computer.</p>
+              </>
+            ) : (
+              <p style={{ fontSize: 14, color: "var(--gray)", marginTop: 16 }}>Map coming soon — contact the office for lot availability.</p>
+            )}
           </div>
-          <div ref={mapWrapperRef} style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
-            <iframe
-              src="https://aloha-rv-park-lilac.vercel.app"
-              style={{ width: "100%", height: mapHeight, border: "none" }}
-              title="Aloha RV Park Lot Map"
-              scrolling="no"
-            />
-          </div>
+          {company?.park_id && (
+            <div ref={mapWrapperRef} style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
+              <iframe
+                src={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
+                style={{ width: "100%", height: mapHeight, border: "none" }}
+                title="Lot Map"
+                scrolling="no"
+              />
+            </div>
+          )}
         </div>
       </section>
 
