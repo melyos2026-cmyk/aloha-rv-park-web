@@ -29,7 +29,8 @@ export default function MaintenancePage() {
       .from("maintenance_requests")
       .select(`
        *,
-       maintenance_request_photos(*)
+       maintenance_request_photos(*),
+       maintenance_request_notes(*)
      `)
       .eq("resident_id", residentId)
       .neq("status", "Cancelled")
@@ -443,6 +444,41 @@ export default function MaintenancePage() {
                         />
                       </a>
                     ))}
+                  </div>
+                )}
+
+                {request.maintenance_request_notes?.length > 0 && (
+                  <div style={{ marginTop: "24px" }}>
+                    <div style={{ fontWeight: 700, color: "#374151", marginBottom: "8px" }}>
+                      Updates from the office:
+                    </div>
+                    {[...request.maintenance_request_notes]
+                      .sort(
+                        (a: any, b: any) =>
+                          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+                      )
+                      .map((note: any) => (
+                        <div
+                          key={note.id}
+                          style={{
+                            background: "#f9fafb",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            padding: "10px 14px",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <p style={{ margin: 0, color: "#374151", fontSize: 14 }}>{note.note}</p>
+                          <p style={{ margin: "4px 0 0", color: "#9ca3af", fontSize: 12 }}>
+                            {new Date(note.created_at).toLocaleString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      ))}
                   </div>
                 )}
               </div>
