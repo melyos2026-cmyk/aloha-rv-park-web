@@ -308,6 +308,8 @@ function ApplyPageInner() {
           Number(data.application_fee_per_additional) || 0,
         application_fee_additional_count: additionalCount,
         application_fee_total: applicationFeeTotal,
+        application_processing_fee: applicationProcessingFee,
+        background_check_required: backgroundCheckRequired,
 
         park_share_primary: parkSharePrimary,
         park_share_per_additional: parkSharePerAdditional,

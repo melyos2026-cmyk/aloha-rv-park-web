@@ -165,7 +165,9 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         : "not_required",
     })
     .eq("id", applicationId)
-    .select("id, full_name, email, application_fee_total, company_id, occupants")
+    .select(
+      "id, full_name, email, application_fee_total, application_fee_primary, application_fee_per_additional, application_fee_additional_count, application_processing_fee, background_check_required, company_id, occupants"
+    )
     .single();
 
   if (error) {
@@ -206,20 +208,90 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     try {
       const { data: company } = await supabase
         .from("companies")
-        .select("company_name, address")
+        .select("company_name, address, logo_url")
         .eq("id", application.company_id)
         .maybeSingle();
 
       const amountPaid = (session.amount_total || 0) / 100;
+      const paymentDate = new Date(session.created * 1000);
+
+      // Build the itemized breakdown from what was actually stored on the
+      // application at submission time — not re-derived from the total,
+      // so it always matches what the applicant agreed to.
+      const lineItems: { description: string; qty: number; unitPrice: number; amount: number }[] = [];
+
+      if (application.background_check_required) {
+        const primaryFee = Number(application.application_fee_primary) || 0;
+        if (primaryFee > 0) {
+          lineItems.push({
+            description: "Background Check — Primary Applicant",
+            qty: 1,
+            unitPrice: primaryFee,
+            amount: primaryFee,
+          });
+        }
+        const additionalCount = Number(application.application_fee_additional_count) || 0;
+        const additionalFee = Number(application.application_fee_per_additional) || 0;
+        if (additionalCount > 0 && additionalFee > 0) {
+          lineItems.push({
+            description: "Background Check — Additional Occupant",
+            qty: additionalCount,
+            unitPrice: additionalFee,
+            amount: additionalFee * additionalCount,
+          });
+        }
+      }
+
+      const processingFee = Number(application.application_processing_fee) || 0;
+      if (processingFee > 0) {
+        lineItems.push({
+          description: "Application Processing Fee",
+          qty: 1,
+          unitPrice: processingFee,
+          amount: processingFee,
+        });
+      }
+
+      if (stayAmount > 0) {
+        lineItems.push({
+          description: "RV Lot Stay Charge",
+          qty: 1,
+          unitPrice: stayAmount,
+          amount: stayAmount,
+        });
+      }
+
+      // Fallback in case none of the stored breakdown fields are populated
+      // (e.g. an application submitted before this itemization existed) —
+      // still show something rather than an empty table.
+      if (lineItems.length === 0) {
+        lineItems.push({
+          description: "Lease Application Fee",
+          qty: 1,
+          unitPrice: amountPaid,
+          amount: amountPaid,
+        });
+      }
+
+      // Simple, human-readable receipt number instead of a raw Stripe ID —
+      // date + time is unique enough for a receipt label (not a DB key).
+      const receiptNumber = `APP-${paymentDate
+        .toLocaleDateString("en-US", { timeZone: "America/New_York" })
+        .replace(/\//g, "")}-${paymentDate
+        .toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false })
+        .replace(/:/g, "")
+        .slice(0, 4)}`;
+
       const receiptPdf = await generateApplicationFeeReceiptPdf({
         companyName: company?.company_name || "MelyOS",
         companyAddress: company?.address || null,
+        companyLogoUrl: company?.logo_url || null,
         applicantName: application.full_name || "Applicant",
-        amountPaid,
-        description: stayAmount > 0 ? "Lease Application Fee + Stay Charge" : "Lease Application Fee",
-        receiptNumber: paymentIntentId || session.id,
+        lineItems,
+        totalPaid: amountPaid,
+        receiptNumber,
         transactionId: session.id,
-        paymentDate: new Date(session.created * 1000),
+        paymentDate,
       });
 
       await fetch("https://api.resend.com/emails", {

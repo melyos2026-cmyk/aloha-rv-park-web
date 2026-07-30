@@ -1,15 +1,23 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
-// Generates a proper PDF payment receipt for a lease application fee.
-// Uses pdf-lib instead of jsPDF — pdf-lib has zero DOM/canvas dependency,
-// so it's reliable in a pure Node serverless function (jsPDF is built for
-// the browser and can behave unpredictably server-side).
+export type ReceiptLineItem = {
+  description: string;
+  qty: number;
+  unitPrice: number;
+  amount: number;
+};
+
+// Generates a professional, itemized PDF payment receipt for a lease
+// application fee. Uses pdf-lib — zero DOM/canvas dependency, so it's
+// reliable in a pure Node serverless function (unlike jsPDF, which is
+// built for the browser).
 export async function generateApplicationFeeReceiptPdf(params: {
   companyName: string;
   companyAddress: string | null;
+  companyLogoUrl: string | null;
   applicantName: string;
-  amountPaid: number;
-  description: string;
+  lineItems: ReceiptLineItem[];
+  totalPaid: number;
   receiptNumber: string;
   transactionId: string;
   paymentDate: Date;
@@ -22,70 +30,111 @@ export async function generateApplicationFeeReceiptPdf(params: {
   const marginX = 54;
   const pageWidth = 612;
   const contentWidth = pageWidth - marginX * 2;
-  let y = 792 - 60;
-  const gray = rgb(0.47, 0.47, 0.47);
+  const gray = rgb(0.45, 0.45, 0.45);
+  const lightGray = rgb(0.6, 0.6, 0.6);
   const black = rgb(0.07, 0.07, 0.07);
-  const lineColor = rgb(0.8, 0.8, 0.8);
+  const lineColor = rgb(0.87, 0.87, 0.87);
+  let y = 792 - 56;
 
-  page.drawText(params.companyName, { x: marginX, y, size: 16, font: fontBold, color: black });
+  // Logo (top-right) — best-effort; if it fails to fetch/embed, skip
+  // silently rather than failing the whole receipt.
+  if (params.companyLogoUrl) {
+    try {
+      const res = await fetch(params.companyLogoUrl);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") || "";
+      const image = contentType.includes("png")
+        ? await doc.embedPng(bytes)
+        : await doc.embedJpg(bytes);
+      const maxDim = 56;
+      const scale = Math.min(maxDim / image.width, maxDim / image.height, 1);
+      const w = image.width * scale;
+      const h = image.height * scale;
+      page.drawImage(image, {
+        x: pageWidth - marginX - w,
+        y: 792 - 56 - h + 12,
+        width: w,
+        height: h,
+      });
+    } catch {
+      // no logo available — fine, just skip it
+    }
+  }
+
+  page.drawText(params.companyName, { x: marginX, y, size: 18, font: fontBold, color: black });
   y -= 20;
 
   if (params.companyAddress) {
     page.drawText(params.companyAddress, { x: marginX, y, size: 10, font, color: gray });
-    y -= 24;
+    y -= 30;
   } else {
-    y -= 10;
+    y -= 16;
   }
 
-  page.drawLine({
-    start: { x: marginX, y },
-    end: { x: marginX + contentWidth, y },
-    thickness: 1,
-    color: lineColor,
-  });
-  y -= 30;
+  page.drawText("RECEIPT", { x: marginX, y, size: 22, font: fontBold, color: black });
+  y -= 28;
 
-  page.drawText("Payment Receipt", { x: marginX, y, size: 18, font: fontBold, color: black });
-  y -= 30;
-
-  const row = (label: string, value: string) => {
-    page.drawText(label, { x: marginX, y, size: 10, font: fontBold, color: black });
-    page.drawText(value, { x: marginX + 160, y, size: 10, font, color: black });
-    y -= 20;
+  // Meta info (two columns: labels left, values right-aligned area)
+  const metaRow = (label: string, value: string) => {
+    page.drawText(label, { x: marginX, y, size: 9, font, color: gray });
+    page.drawText(value, { x: marginX + 130, y, size: 9, font: fontBold, color: black });
+    y -= 15;
   };
 
-  row("Billed To:", params.applicantName);
-  row("Description:", params.description);
-  row("Date:", params.paymentDate.toLocaleString("en-US", { timeZone: "America/New_York" }));
-  row("Receipt #:", params.receiptNumber);
-  row("Transaction ID:", params.transactionId);
-  row("Payment Method:", "Credit/Debit Card (Stripe)");
+  metaRow("Billed To", params.applicantName);
+  metaRow("Receipt #", params.receiptNumber);
+  metaRow("Date", params.paymentDate.toLocaleDateString("en-US", { timeZone: "America/New_York" }));
+  metaRow("Payment Method", "Credit/Debit Card (Stripe)");
+  metaRow("Transaction ID", params.transactionId);
 
+  y -= 20;
+  page.drawLine({ start: { x: marginX, y }, end: { x: marginX + contentWidth, y }, thickness: 1, color: lineColor });
+  y -= 22;
+
+  // Table header
+  const colDesc = marginX;
+  const colQty = marginX + 300;
+  const colUnit = marginX + 360;
+  const colAmount = marginX + contentWidth - 60;
+
+  page.drawText("Description", { x: colDesc, y, size: 9, font: fontBold, color: gray });
+  page.drawText("Qty", { x: colQty, y, size: 9, font: fontBold, color: gray });
+  page.drawText("Unit Price", { x: colUnit, y, size: 9, font: fontBold, color: gray });
+  page.drawText("Amount", { x: colAmount, y, size: 9, font: fontBold, color: gray });
   y -= 10;
-  page.drawLine({
-    start: { x: marginX, y },
-    end: { x: marginX + contentWidth, y },
-    thickness: 1,
-    color: lineColor,
-  });
-  y -= 30;
+  page.drawLine({ start: { x: marginX, y }, end: { x: marginX + contentWidth, y }, thickness: 1, color: lineColor });
+  y -= 20;
 
-  page.drawText("Amount Paid:", { x: marginX, y, size: 14, font: fontBold, color: black });
-  page.drawText(`$${params.amountPaid.toFixed(2)}`, {
-    x: marginX + 160,
-    y,
-    size: 16,
-    font: fontBold,
-    color: black,
-  });
-  y -= 40;
+  for (const item of params.lineItems) {
+    page.drawText(item.description, { x: colDesc, y, size: 10, font, color: black });
+    page.drawText(String(item.qty), { x: colQty, y, size: 10, font, color: black });
+    page.drawText(`$${item.unitPrice.toFixed(2)}`, { x: colUnit, y, size: 10, font, color: black });
+    page.drawText(`$${item.amount.toFixed(2)}`, { x: colAmount, y, size: 10, font, color: black });
+    y -= 20;
+  }
 
+  y -= 6;
+  page.drawLine({ start: { x: marginX, y }, end: { x: marginX + contentWidth, y }, thickness: 1, color: lineColor });
+  y -= 24;
+
+  const totalRow = (label: string, value: string, opts: { big?: boolean } = {}) => {
+    const size = opts.big ? 13 : 10;
+    page.drawText(label, { x: colUnit - 30, y, size, font: fontBold, color: black });
+    page.drawText(value, { x: colAmount, y, size, font: fontBold, color: black });
+    y -= opts.big ? 20 : 16;
+  };
+
+  totalRow("Subtotal", `$${params.totalPaid.toFixed(2)}`);
+  y -= 4;
+  totalRow("Amount Paid", `$${params.totalPaid.toFixed(2)}`, { big: true });
+
+  y -= 24;
   page.drawText("This fee is non-refundable. Thank you for your application.", {
     x: marginX,
     y,
     size: 9,
     font,
-    color: gray,
+    color: lightGray,
   });
 
   const bytes = await doc.save();
