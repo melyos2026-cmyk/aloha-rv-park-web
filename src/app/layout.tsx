@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 import Header from "@/components/Header";
@@ -7,6 +7,11 @@ import Mely from "@/components/Mely";
 import PageTracker from "@/components/PageTracker";
 import { CompanyProvider } from "@/lib/CompanyContext";
 import { supabase } from "@/lib/supabase";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
 
 const SCHEMA_TYPE_BY_BUSINESS_TYPE: Record<string, string> = {
   rv_park: "Campground",
