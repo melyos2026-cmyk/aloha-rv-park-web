@@ -109,6 +109,7 @@ export interface LeaseApplicationData {
   application_processing_fee: string; // flat fee for processing the application itself, on top of the primary/additional fees, always charged
   background_check_consent_given: boolean;
   background_check_threshold_days: string; // admin-set: stays longer than this require a background check
+  first_month_proration_method: string; // admin-set: how a partial first month (month-to-month move-in mid-month) is charged — "prorate_monthly" or "daily_rate"
 }
 
 export interface ParkRule {
@@ -148,7 +149,9 @@ interface ProrationResult {
 
 function calculateProration(
   leaseStartDate: string,
-  monthlyRent: number
+  monthlyRent: number,
+  method: string = "prorate_monthly",
+  dailyRate?: number | null
 ): ProrationResult | null {
   if (!leaseStartDate || monthlyRent <= 0) return null;
   const start = new Date(leaseStartDate + "T00:00:00");
@@ -170,7 +173,15 @@ function calculateProration(
   }
 
   const daysUsed = daysInMonth - dayOfMonth + 1;
-  const proratedAmount = Math.round((monthlyRent / daysInMonth) * daysUsed * 100) / 100;
+  // "daily_rate" method: the park charges its normal nightly rate for each
+  // leftover day of the partial first month, instead of prorating the
+  // monthly rent — some parks prefer this since it matches what a
+  // short-term guest would pay for the same nights. Falls back to
+  // prorate_monthly if no daily_rate is configured on the lot.
+  const proratedAmount =
+    method === "daily_rate" && dailyRate
+      ? Math.round(dailyRate * daysUsed * 100) / 100
+      : Math.round((monthlyRent / daysInMonth) * daysUsed * 100) / 100;
   const endOfMonth = new Date(year, month, daysInMonth);
   const periodEndLabel = endOfMonth.toLocaleDateString("en-US", {
     month: "short",
@@ -380,6 +391,7 @@ const emptyForm: LeaseApplicationData = {
   application_processing_fee: "2.50",
   background_check_consent_given: false,
   background_check_threshold_days: "15",
+  first_month_proration_method: "prorate_monthly",
 };
 
 export interface CompanyInfo {
@@ -627,7 +639,9 @@ export default function LeaseApplicationForm({
 
   const proration = calculateProration(
     data.lease_start_date,
-    Number(data.rent_amount) || 0
+    Number(data.rent_amount) || 0,
+    data.first_month_proration_method || "prorate_monthly",
+    selectedLot?.daily_rate ?? null
   );
 
   const stayNights =
@@ -1299,7 +1313,12 @@ export default function LeaseApplicationForm({
               </div>
             ) : (
               <div>
-                <strong>First month is prorated:</strong> $
+                <strong>
+                  {data.first_month_proration_method === "daily_rate"
+                    ? "First partial month (billed at the daily rate):"
+                    : "First month is prorated:"}
+                </strong>{" "}
+                $
                 {proration.proratedAmount.toFixed(2)} for {proration.daysUsed}{" "}
                 of {proration.daysInMonth} days (through {proration.periodEndLabel}
                 ). Full rent of ${(Number(data.rent_amount) || 0).toFixed(2)}
