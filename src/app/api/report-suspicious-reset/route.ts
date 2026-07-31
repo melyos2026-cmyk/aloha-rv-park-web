@@ -53,11 +53,28 @@ export async function GET(req: NextRequest) {
 
   if (resident?.company_id) {
     const requestedAt = new Date(resetRow.created_at).toLocaleString("en-US", { timeZone: "America/New_York" });
+
+    let locationText = "";
+    if (resetRow.request_ip) {
+      try {
+        const geoRes = await fetch(
+          `http://ip-api.com/json/${resetRow.request_ip}?fields=status,city,regionName,country`
+        );
+        const geoData = await geoRes.json();
+        if (geoData.status === "success") {
+          const parts = [geoData.city, geoData.regionName, geoData.country].filter(Boolean);
+          if (parts.length) locationText = ` (approximately ${parts.join(", ")})`;
+        }
+      } catch (e) {
+        // Geolocation failed — fall back to just the IP below
+      }
+    }
+
     await supabaseAdmin.from("resident_update_notifications").insert({
       company_id: resident.company_id,
       resident_name: resident.full_name || resident.email || "Unknown resident",
       update_type: "security_alert",
-      message: `${resident.full_name || resident.email} reported a password reset email they did NOT request, sent ${requestedAt}${resetRow.request_ip ? ` from IP ${resetRow.request_ip}` : " (no IP captured)"}.`,
+      message: `${resident.full_name || resident.email} reported a password reset email they did NOT request, sent ${requestedAt}${resetRow.request_ip ? ` from IP ${resetRow.request_ip}${locationText}` : " (no IP captured)"}.`,
     });
   }
 
