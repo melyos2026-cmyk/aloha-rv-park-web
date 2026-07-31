@@ -411,6 +411,7 @@ export interface LotOption {
   low_season_price: number | null;
   daily_rate?: number | null;
   weekly_rate?: number | null;
+  use_seasonal_pricing?: boolean;
 }
 
 interface Props {
@@ -883,7 +884,12 @@ export default function LeaseApplicationForm({
                   set("space_id", e.target.value);
                   if (lot) {
                     set("property_address", lot.lot_name);
-                    if (data.use_seasonal_pricing) {
+                    // Reflect this lot's actual Lots Pricing configuration —
+                    // previously this checkbox always started checked
+                    // regardless of what the admin set for the lot.
+                    const lotUsesSeasonalPricing = lot.use_seasonal_pricing !== false;
+                    set("use_seasonal_pricing", lotUsesSeasonalPricing);
+                    if (lotUsesSeasonalPricing) {
                       const computed = calculateLeaseRent(
                         lot,
                         data.lease_start_date,
