@@ -15,6 +15,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Email is required" }, { status: 400 });
   }
 
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  const requestIp = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
+
   const { data: resident } = await supabaseAdmin
     .from("resident_accounts")
     .select("id, email, company_id, companies(company_name, domain)")
@@ -36,12 +39,14 @@ export async function POST(req: Request) {
     email: resident.email,
     token,
     expires_at: expiresAt,
+    request_ip: requestIp,
   });
 
   const company = (resident as any).companies;
   const domain = company?.domain || "aloharvparkfl.com";
   const companyName = company?.company_name || "Aloha RV Park";
   const resetLink = `https://${domain}/portal/reset-password?token=${token}`;
+  const reportLink = `https://${domain}/api/report-suspicious-reset?token=${token}`;
 
   await resend.emails.send({
     from: `${companyName} <noreply@aloharvparkfl.com>`,
@@ -57,7 +62,7 @@ export async function POST(req: Request) {
           </a>
         </p>
         <p>This link expires in 30 minutes.</p>
-        <p>If you did not request this, you can ignore this email.</p>
+        <p>Didn't request this? <a href="${reportLink}">Click here to let ${companyName}'s office know</a> — this helps them see if someone else tried to access your account.</p>
       </div>
     `,
   });
