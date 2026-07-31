@@ -27,6 +27,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (preferredDate) {
+      const today = new Date().toISOString().split("T")[0];
+      if (preferredDate < today) {
+        return NextResponse.json(
+          { error: "Preferred date can't be in the past." },
+          { status: 400 }
+        );
+      }
+    }
+
     const { error: insertError } = await supabaseAdmin.from("real_estate_inquiries").insert({
       company_id: companyId,
       listing_id: listingId || null,

@@ -208,6 +208,7 @@ export default function RealEstatePage() {
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
                       type="date"
+                      min={new Date().toISOString().split("T")[0]}
                       value={inquiryForm.preferredDate}
                       onChange={(e) => setInquiryForm({ ...inquiryForm, preferredDate: e.target.value })}
                       style={{ padding: 12, borderRadius: 6, border: "1px solid #ccc", flex: 1 }}
