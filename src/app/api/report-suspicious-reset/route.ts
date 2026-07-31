@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { companyWantsSecurityAlerts } from "@/lib/securityAlertPrefs";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
     .eq("id", resetRow.resident_id)
     .maybeSingle();
 
-  if (resident?.company_id) {
+  if (resident?.company_id && (await companyWantsSecurityAlerts(resident.company_id))) {
     const requestedAt = new Date(resetRow.created_at).toLocaleString("en-US", { timeZone: "America/New_York" });
 
     let locationText = "";

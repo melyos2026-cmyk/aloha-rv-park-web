@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
+import { companyWantsSecurityAlerts } from "@/lib/securityAlertPrefs";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
         .limit(1)
         .maybeSingle();
 
-      if (matchingLogin && resident.company_id) {
+      if (matchingLogin && resident.company_id && (await companyWantsSecurityAlerts(resident.company_id))) {
         const otherName = (matchingLogin as any).resident_accounts?.full_name || "another resident";
         await supabaseAdmin.from("resident_update_notifications").insert({
           company_id: resident.company_id,
