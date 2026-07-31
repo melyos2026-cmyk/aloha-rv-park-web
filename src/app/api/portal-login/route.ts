@@ -46,11 +46,24 @@ export async function POST(req: Request) {
   });
 
   if (!matches) {
-    // Someone got the account's email right but the password wrong. If this
-    // IP was previously used for a SUCCESSFUL login by a DIFFERENT resident,
-    // that's a meaningful signal in this park specifically (residents don't
-    // share internet here, except a couple of known cases Mely is aware of).
-    if (ip) {
+    // Only flag this after repeated failures — a single typo shouldn't
+    // trigger a security alert. Count recent failed attempts (last 30 min)
+    // on this specific account.
+    const thirtyMinAgo = new Date(Date.now() - 1000 * 60 * 30).toISOString();
+    const { count: recentFailCount } = await supabaseAdmin
+      .from("resident_login_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("resident_id", resident.id)
+      .eq("success", false)
+      .gte("created_at", thirtyMinAgo);
+
+    // Someone got the account's email right but the password wrong,
+    // repeatedly. If this IP was previously used for a SUCCESSFUL login by a
+    // DIFFERENT resident, that's a meaningful signal in this park
+    // specifically (residents don't share internet here, except a couple of
+    // known cases Mely is aware of). Only notify once, right when the count
+    // crosses the threshold — not again on every attempt after.
+    if (ip && recentFailCount === 3) {
       const { data: matchingLogin } = await supabaseAdmin
         .from("resident_login_attempts")
         .select("resident_id, resident_accounts(full_name)")
@@ -67,7 +80,7 @@ export async function POST(req: Request) {
           company_id: resident.company_id,
           resident_name: resident.full_name,
           update_type: "security_alert",
-          message: `Failed login attempt on ${resident.full_name}'s account came from an IP previously used for a successful login by ${otherName}. Could be shared internet — worth checking with both residents.`,
+          message: `3 failed login attempts on ${resident.full_name}'s account came from an IP previously used for a successful login by ${otherName}. Could be shared internet — worth checking with both residents.`,
         });
       }
     }
