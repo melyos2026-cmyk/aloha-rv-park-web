@@ -12,7 +12,7 @@ export default function Home() {
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.data?.type === "aloha-map-height" && typeof event.data.height === "number") {
-        setMapHeight(event.data.height);
+        setMapHeight(Math.min(event.data.height, 4000));
         setGotRealHeight(true);
       }
     }
