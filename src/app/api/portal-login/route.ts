@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
-import { companyWantsSecurityAlerts } from "@/lib/securityAlertPrefs";
+import { getSecurityAlertPrefs } from "@/lib/securityAlertPrefs";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -75,14 +75,20 @@ export async function POST(req: Request) {
         .limit(1)
         .maybeSingle();
 
-      if (matchingLogin && resident.company_id && (await companyWantsSecurityAlerts(resident.company_id))) {
-        const otherName = (matchingLogin as any).resident_accounts?.full_name || "another resident";
-        await supabaseAdmin.from("resident_update_notifications").insert({
-          company_id: resident.company_id,
-          resident_name: resident.full_name,
-          update_type: "security_alert",
-          message: `3 failed login attempts on ${resident.full_name}'s account came from an IP previously used for a successful login by ${otherName}. Could be shared internet — worth checking with both residents.`,
-        });
+      if (matchingLogin && resident.company_id) {
+        const prefs = await getSecurityAlertPrefs(resident.company_id);
+        if (prefs.failedLogins) {
+          const otherName = (matchingLogin as any).resident_accounts?.full_name || "another resident";
+          const ipClause = prefs.includeIp
+            ? ` came from an IP previously used for a successful login by ${otherName}. Could be shared internet — worth checking with both residents.`
+            : ` may be a case of one resident trying to access ${otherName}'s account — worth checking with both residents.`;
+          await supabaseAdmin.from("resident_update_notifications").insert({
+            company_id: resident.company_id,
+            resident_name: resident.full_name,
+            update_type: "security_alert",
+            message: `3 failed login attempts on ${resident.full_name}'s account${ipClause}`,
+          });
+        }
       }
     }
 

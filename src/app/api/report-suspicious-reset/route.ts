@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { companyWantsSecurityAlerts } from "@/lib/securityAlertPrefs";
+import { getSecurityAlertPrefs } from "@/lib/securityAlertPrefs";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,31 +52,37 @@ export async function GET(req: NextRequest) {
     .eq("id", resetRow.resident_id)
     .maybeSingle();
 
-  if (resident?.company_id && (await companyWantsSecurityAlerts(resident.company_id))) {
-    const requestedAt = new Date(resetRow.created_at).toLocaleString("en-US", { timeZone: "America/New_York" });
+  if (resident?.company_id) {
+    const prefs = await getSecurityAlertPrefs(resident.company_id);
 
-    let locationText = "";
-    if (resetRow.request_ip) {
-      try {
-        const geoRes = await fetch(
-          `http://ip-api.com/json/${resetRow.request_ip}?fields=status,city,regionName,country`
-        );
-        const geoData = await geoRes.json();
-        if (geoData.status === "success") {
-          const parts = [geoData.city, geoData.regionName, geoData.country].filter(Boolean);
-          if (parts.length) locationText = ` (approximately ${parts.join(", ")})`;
+    if (prefs.passwordResets) {
+      const requestedAt = new Date(resetRow.created_at).toLocaleString("en-US", { timeZone: "America/New_York" });
+
+      let ipClause = "";
+      if (prefs.includeIp && resetRow.request_ip) {
+        let locationText = "";
+        try {
+          const geoRes = await fetch(
+            `http://ip-api.com/json/${resetRow.request_ip}?fields=status,city,regionName,country`
+          );
+          const geoData = await geoRes.json();
+          if (geoData.status === "success") {
+            const parts = [geoData.city, geoData.regionName, geoData.country].filter(Boolean);
+            if (parts.length) locationText = ` (approximately ${parts.join(", ")})`;
+          }
+        } catch (e) {
+          // Geolocation failed — fall back to just the IP below
         }
-      } catch (e) {
-        // Geolocation failed — fall back to just the IP below
+        ipClause = ` from IP ${resetRow.request_ip}${locationText}`;
       }
-    }
 
-    await supabaseAdmin.from("resident_update_notifications").insert({
-      company_id: resident.company_id,
-      resident_name: resident.full_name || resident.email || "Unknown resident",
-      update_type: "security_alert",
-      message: `${resident.full_name || resident.email} reported a password reset email they did NOT request, sent ${requestedAt}${resetRow.request_ip ? ` from IP ${resetRow.request_ip}${locationText}` : " (no IP captured)"}.`,
-    });
+      await supabaseAdmin.from("resident_update_notifications").insert({
+        company_id: resident.company_id,
+        resident_name: resident.full_name || resident.email || "Unknown resident",
+        update_type: "security_alert",
+        message: `${resident.full_name || resident.email} reported a password reset email they did NOT request, sent ${requestedAt}${ipClause}.`,
+      });
+    }
   }
 
   await supabaseAdmin
