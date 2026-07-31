@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { path, referrer, visitorId } = body;
+  const { path, referrer, visitorId, companyId } = body;
 
   const forwardedFor = req.headers.get("x-forwarded-for");
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
     city,
     region,
     country,
+    company_id: companyId || null,
   });
 
   return NextResponse.json({ success: true });

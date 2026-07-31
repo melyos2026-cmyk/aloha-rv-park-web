@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { useCompany } from "@/lib/CompanyContext";
 
 function getVisitorId() {
   let id = localStorage.getItem("visitor_id");
@@ -14,8 +15,10 @@ function getVisitorId() {
 
 export default function PageTracker() {
   const pathname = usePathname();
+  const { company } = useCompany();
 
   useEffect(() => {
+    if (!company?.id) return; // don't record a view we can't attribute to a company
     const visitorId = getVisitorId();
 
     fetch("/api/track-visit", {
@@ -25,9 +28,10 @@ export default function PageTracker() {
         path: pathname,
         referrer: document.referrer || null,
         visitorId,
+        companyId: company.id,
       }),
     }).catch(() => {});
-  }, [pathname]);
+  }, [pathname, company?.id]);
 
   return null;
 }
