@@ -18,13 +18,16 @@ export async function POST(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   const requestIp = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
 
-  const { data: resident } = await supabaseAdmin
+  const { data: residentMatches } = await supabaseAdmin
     .from("resident_accounts")
     .select("id, email, portal_password, company_id, companies(company_name, domain)")
     .eq("email", email)
     .eq("portal_enabled", true)
     .is("deleted_at", null)
-    .single();
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  const resident = residentMatches?.[0];
 
   // Always return success — don't reveal whether an email exists on file.
   if (!resident) {
@@ -50,7 +53,7 @@ export async function POST(req: Request) {
   const resetLink = `https://${domain}/portal/reset-password?token=${token}`;
   const reportLink = `https://${domain}/api/report-suspicious-reset?token=${token}`;
 
-  await resend.emails.send({
+  const { error: sendError } = await resend.emails.send({
     from: `${companyName} <noreply@aloharvparkfl.com>`,
     to: resident.email,
     subject: isFirstTimeSetup
@@ -83,6 +86,11 @@ export async function POST(req: Request) {
       </div>
     `,
   });
+
+  if (sendError) {
+    console.error("Failed to send resident password/welcome email:", sendError);
+    return NextResponse.json({ success: false, error: sendError.message }, { status: 500 });
+  }
 
   return NextResponse.json({ success: true });
 }
