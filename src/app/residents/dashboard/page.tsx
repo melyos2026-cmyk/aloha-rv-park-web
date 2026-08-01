@@ -20,6 +20,7 @@ export default function ResidentDashboard() {
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
+  const [nextPaymentDate, setNextPaymentDate] = useState<string | null>(null);
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
   const [autopayAvailable, setAutopayAvailable] = useState(false);
@@ -110,6 +111,11 @@ export default function ResidentDashboard() {
       .then((res) => res.json())
       .then((result) => setRentToOwnPlan(result.plan || null))
       .catch(() => setRentToOwnPlan(null));
+
+    fetch(`/api/portal/billing-info?residentId=${residentId}`)
+      .then((res) => res.json())
+      .then((result) => setNextPaymentDate(result.nextPaymentDate || null))
+      .catch(() => setNextPaymentDate(null));
 
     fetch(`/api/portal/propane-orders?residentId=${residentId}`)
       .then((res) => res.json())
@@ -685,7 +691,12 @@ export default function ResidentDashboard() {
           {/* Outstanding charges list */}
           {(payments.length > 0 || pendingInvoices.length > 0) && (
             <div style={card}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Outstanding Charges</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Outstanding Charges</h2>
+              {nextPaymentDate && (
+                <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
+                  Next Payment (Due Date): <strong>{nextPaymentDate}</strong>
+                </p>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {payments.map(p => (
                   <div key={p.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, display: "flex", justifyContent: "space-between" }}>
