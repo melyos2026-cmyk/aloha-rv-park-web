@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
   const { data: resident } = await supabaseAdmin
     .from("resident_accounts")
-    .select("id, email, company_id, companies(company_name, domain)")
+    .select("id, email, portal_password, company_id, companies(company_name, domain)")
     .eq("email", email)
     .eq("portal_enabled", true)
     .is("deleted_at", null)
@@ -30,6 +30,8 @@ export async function POST(req: Request) {
   if (!resident) {
     return NextResponse.json({ success: true });
   }
+
+  const isFirstTimeSetup = !resident.portal_password;
 
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 1000 * 60 * 30).toISOString();
@@ -51,8 +53,23 @@ export async function POST(req: Request) {
   await resend.emails.send({
     from: `${companyName} <noreply@aloharvparkfl.com>`,
     to: resident.email,
-    subject: "Reset your resident portal password",
-    html: `
+    subject: isFirstTimeSetup
+      ? `Welcome to ${companyName} — set up your resident portal`
+      : "Reset your resident portal password",
+    html: isFirstTimeSetup
+      ? `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>Welcome to ${companyName}'s Resident Portal</h2>
+        <p>Your resident portal account is ready. Click below to set up your password and get started — you'll be able to view your invoices, make payments, and more.</p>
+        <p>
+          <a href="${resetLink}" style="background:#000;color:#fff;padding:12px 18px;text-decoration:none;border-radius:8px;">
+            Set Up My Password
+          </a>
+        </p>
+        <p>This link expires in 30 minutes.</p>
+      </div>
+    `
+      : `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>Reset Your Password</h2>
         <p>You requested to reset your resident portal password.</p>
