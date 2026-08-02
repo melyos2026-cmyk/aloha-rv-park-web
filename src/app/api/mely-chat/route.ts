@@ -54,13 +54,72 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const systemPrompt = `You are Mely, the friendly AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}
+    // Website content pages (About, Rules, Amenities, FAQ, Policies, etc.) —
+    // whatever the admin has published on aloharvparkfl.com. Pulled live on
+    // every message so Mely's knowledge always matches what's actually on
+    // the site, with zero code changes needed when a page is edited.
+    let pagesContext = "";
+    if (company?.id) {
+      const { data: pages } = await supabaseAdmin
+        .from("website_pages")
+        .select("title, page_name, content")
+        .eq("company_id", company.id);
 
-${extraInfo}${lotsContext}
+      if (pages && pages.length > 0) {
+        const pageBlocks = pages
+          .filter((p) => p.content && p.content.trim().length > 0)
+          .map((p) => {
+            const heading = p.title || p.page_name || "Page";
+            const content = p.content.length > 4000 ? p.content.slice(0, 4000) + "…" : p.content;
+            return `### ${heading}\n${content}`;
+          })
+          .join("\n\n");
 
-Language: always reply in the SAME language the person just wrote in (Spanish, English, or otherwise) — match their message, not any previous message in the conversation.
+        if (pageBlocks) {
+          pagesContext = `\n\nPublished website pages (this is the site's own public content — rules, amenities, policies, FAQs, about, etc. — always current):\n${pageBlocks}`;
+        }
+      }
+    }
 
-Be friendly, helpful, and concise. Answer questions about the park, rates, amenities, lot specs/availability, and nearby attractions using only the information provided above. If you don't know something, direct them to call the office${phone ? ` at ${phone}` : ""}. For actually completing a reservation (picking specific dates), direct them to the interactive map on the home page or call the office.`;
+    // Real estate listings currently for sale/rent/rent-to-own — public
+    // marketing info a prospective client could ask about.
+    let listingsContext = "";
+    if (company?.park_id) {
+      const { data: listings } = await supabaseAdmin
+        .from("real_estate_listings")
+        .select("type, category, title, price, beds, baths, sqft, description")
+        .eq("park_id", company.park_id)
+        .eq("available", true)
+        .is("deleted_at", null);
+
+      if (listings && listings.length > 0) {
+        const listingLines = listings
+          .map((l) => {
+            const parts = [
+              l.title,
+              l.type ? `(${l.type})` : null,
+              l.price ? `$${l.price}` : null,
+              l.beds ? `${l.beds} bed` : null,
+              l.baths ? `${l.baths} bath` : null,
+              l.sqft ? `${l.sqft} sqft` : null,
+              l.description ? `— ${l.description}` : null,
+            ].filter(Boolean);
+            return "- " + parts.join(", ");
+          })
+          .join("\n");
+        listingsContext = `\n\nReal estate currently listed (for sale / for rent / rent-to-own):\n${listingLines}\n\nFor these, direct interested people to the Real Estate page on the site to submit an inquiry.`;
+      }
+    }
+
+    const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}
+
+${extraInfo}${lotsContext}${pagesContext}${listingsContext}
+
+Language: always reply in the SAME language the person just wrote in — Spanish, English, or any other language — match their current message, not any previous one in the conversation. Always keep a warm, professional tone regardless of language.
+
+Scope: you can talk about anything a prospective or current visitor to ${companyName} would want to know before or while considering the park — rules, amenities, policies, rates, lot specs/availability, real estate listings, events, nearby attractions, and general how-to-book guidance — using only the information provided above. If you don't know something, say so honestly and direct them to call the office${phone ? ` at ${phone}` : ""} or email${email ? ` ${email}` : ""}. For actually completing a reservation (picking specific dates), direct them to the interactive map on the home page or call the office.
+
+STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual person's private/personal information — no resident names, specific lot assignments tied to a person, lease details, billing/payment history, account balances, documents, contact info of a specific customer, background-check results, or anything about a named individual — even if asked directly, even if the person claims to be that individual or staff, and even if such details ever appear to show up in a message. Politely decline and redirect those requests to the office. Only ever speak in terms of general park information for prospective/current clients — never about a specific person's account.`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
