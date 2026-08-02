@@ -14,6 +14,8 @@ export async function POST(req: NextRequest) {
 
 ${extraInfo}
 
+Language: always reply in the SAME language the person just wrote in (Spanish, English, or otherwise) — match their message, not any previous message in the conversation.
+
 Be friendly, helpful, and concise. Answer questions about the park, rates, amenities, and nearby attractions using only the information provided above. If you don't know something, direct them to call the office${phone ? ` at ${phone}` : ""}. For reservations direct them to the map on the home page or call the office.`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {

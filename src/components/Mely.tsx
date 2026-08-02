@@ -10,17 +10,18 @@ export default function Mely() {
   const phone = company?.contact_phone || "(689) 252-0567";
 
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", text: `Hi! I'm Mely 🌺 Your ${companyName} assistant. How can I help you today?` }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [showTyping, setShowTyping] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const greetedRef = useRef(false);
+  const MIN_TYPING_MS = 3000;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, showTyping]);
 
   useEffect(() => {
     const showTimer = setTimeout(() => setShowTooltip(true), 2000);
@@ -31,6 +32,22 @@ export default function Mely() {
     };
   }, []);
 
+  // Show the typing indicator for a bit before the greeting appears —
+  // like a real person composing a reply — instead of it being there
+  // instantly. Only happens once, the first time the widget opens.
+  useEffect(() => {
+    if (!open || greetedRef.current) return;
+    greetedRef.current = true;
+    setShowTyping(true);
+    const timer = setTimeout(() => {
+      setShowTyping(false);
+      setMessages([
+        { role: "assistant", text: `Hi! I'm Mely 🌺 Your ${companyName} assistant. How can I help you today?` },
+      ]);
+    }, MIN_TYPING_MS);
+    return () => clearTimeout(timer);
+  }, [open, companyName]);
+
   const send = async () => {
     if (!input.trim() || loading) return;
     const userMsg = input.trim();
@@ -38,6 +55,8 @@ export default function Mely() {
     const nextMessages = [...messages, { role: "user" as const, text: userMsg }];
     setMessages(nextMessages);
     setLoading(true);
+    setShowTyping(true);
+    const startedAt = Date.now();
 
     try {
       const res = await fetch("/api/mely-chat", {
@@ -47,10 +66,24 @@ export default function Mely() {
       });
       const data = await res.json();
       const reply = data.reply || `Sorry, I couldn't get a response. Please call us at ${phone}.`;
+
+      // Keep the typing indicator up for at least MIN_TYPING_MS total, so
+      // a fast reply doesn't feel instant/robotic — like a real person
+      // taking a moment to type.
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_TYPING_MS) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_TYPING_MS - elapsed));
+      }
+
       setMessages(m => [...m, { role: "assistant", text: reply }]);
     } catch {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < MIN_TYPING_MS) {
+        await new Promise((resolve) => setTimeout(resolve, MIN_TYPING_MS - elapsed));
+      }
       setMessages(m => [...m, { role: "assistant", text: `Sorry, something went wrong. Please call us at ${phone}.` }]);
     }
+    setShowTyping(false);
     setLoading(false);
   };
 
@@ -121,11 +154,19 @@ export default function Mely() {
                 </div>
               </div>
             ))}
-            {loading && (
+            {showTyping && (
               <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                <div style={{ background: "var(--gray-light)", padding: "10px 14px", borderRadius: 12, fontSize: 13, color: "var(--gray)" }}>
-                  Mely is typing...
+                <div style={{ background: "var(--gray-light)", padding: "10px 14px", borderRadius: 12, display: "flex", gap: 4, alignItems: "center" }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--gray)", animation: "melyTypingBounce 1.4s infinite ease-in-out", animationDelay: "0ms" }} />
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--gray)", animation: "melyTypingBounce 1.4s infinite ease-in-out", animationDelay: "150ms" }} />
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--gray)", animation: "melyTypingBounce 1.4s infinite ease-in-out", animationDelay: "300ms" }} />
                 </div>
+                <style>{`
+                  @keyframes melyTypingBounce {
+                    0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+                    30% { transform: translateY(-4px); opacity: 1; }
+                  }
+                `}</style>
               </div>
             )}
             <div ref={bottomRef} />
