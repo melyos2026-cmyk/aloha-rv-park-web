@@ -9,7 +9,6 @@ const supabaseAdmin = createClient(
 export async function POST(req: NextRequest) {
   try {
     const {
-      companyId,
       listingId,
       listingTitle,
       fullName,
@@ -20,11 +19,42 @@ export async function POST(req: NextRequest) {
       message,
     } = await req.json();
 
-    if (!companyId || !fullName || !email) {
+    if (!fullName || !email) {
       return NextResponse.json(
-        { error: "companyId, fullName, and email are required." },
+        { error: "fullName and email are required." },
         { status: 400 }
       );
+    }
+
+    // SECURITY: derive the company from the request's own Host header
+    // instead of trusting a client-sent companyId — same cross-tenant
+    // pattern fixed in mely-chat/route.ts. Without this, an inquiry (and
+    // its notification/email) could be filed against a different company
+    // than the one the visitor is actually on.
+    const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
+    const { data: company } = await supabaseAdmin
+      .from("companies")
+      .select("id, park_id, contact_email")
+      .eq("domain", host)
+      .maybeSingle();
+
+    if (!company) {
+      return NextResponse.json({ error: "Company not found for this domain." }, { status: 404 });
+    }
+
+    // If a listingId was given, confirm it actually belongs to this same
+    // company's park before attaching it to the inquiry — otherwise
+    // someone could tie an inquiry to another company's listing.
+    let verifiedListingId: string | null = null;
+    if (listingId) {
+      const { data: listing } = await supabaseAdmin
+        .from("real_estate_listings")
+        .select("id, park_id")
+        .eq("id", listingId)
+        .maybeSingle();
+      if (listing && listing.park_id === company.park_id) {
+        verifiedListingId = listing.id;
+      }
     }
 
     if (preferredDate) {
@@ -38,8 +68,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: insertError } = await supabaseAdmin.from("real_estate_inquiries").insert({
-      company_id: companyId,
-      listing_id: listingId || null,
+      company_id: company.id,
+      listing_id: verifiedListingId,
       listing_title: listingTitle || null,
       full_name: fullName,
       email,
@@ -55,20 +85,14 @@ export async function POST(req: NextRequest) {
 
     // Surface it in the admin's 🔔 Notifications bell too, not just email.
     await supabaseAdmin.from("resident_update_notifications").insert({
-      company_id: companyId,
+      company_id: company.id,
       resident_name: fullName,
       update_type: "real_estate_inquiry",
       message: `New appointment request${listingTitle ? ` for "${listingTitle}"` : ""} from ${fullName} (${email}${phone ? `, ${phone}` : ""}).`,
     });
 
     // Notify the company's own contact email (falls back to Mely's if unset).
-    const { data: company } = await supabaseAdmin
-      .from("companies")
-      .select("contact_email")
-      .eq("id", companyId)
-      .single();
-
-    const notifyEmail = company?.contact_email || process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com";
+    const notifyEmail = company.contact_email || process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com";
 
     if (process.env.RESEND_API_KEY) {
       try {

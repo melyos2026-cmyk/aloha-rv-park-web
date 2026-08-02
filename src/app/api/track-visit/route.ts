@@ -8,7 +8,18 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { path, referrer, visitorId, companyId } = body;
+  const { path, referrer, visitorId } = body;
+
+  // SECURITY: derive company_id from the request's own Host header instead
+  // of trusting the client-sent companyId — same cross-tenant pattern fixed
+  // in mely-chat/route.ts. Prevents page-view analytics from being tagged
+  // to the wrong company (accidentally or by a spoofed request).
+  const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
+  const { data: company } = await supabaseAdmin
+    .from("companies")
+    .select("id")
+    .eq("domain", host)
+    .maybeSingle();
 
   const forwardedFor = req.headers.get("x-forwarded-for");
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
@@ -41,7 +52,7 @@ export async function POST(req: Request) {
     city,
     region,
     country,
-    company_id: companyId || null,
+    company_id: company?.id || null,
   });
 
   if (error) {

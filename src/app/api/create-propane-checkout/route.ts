@@ -6,13 +6,15 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const MAX_QTY: Record<string, number> = { "20lb": 20, "30lb": 20, "40lb": 20, forklift: 20, motorhome: 200 };
 
 // POST /api/create-propane-checkout
-// Body: { productId, quantity, parkId, customerEmail }
+// Body: { productId, quantity, customerEmail, lotNumber }
+// Company/park is derived server-side from the request's Host header, not
+// from a client-sent parkId (see SECURITY note below).
 // Same propane_pricing/propane_orders tables as the map's "Buy Propane"
 // flow — a purchase made from the website's own /propane page behaves
 // identically to one made from the map (same pricing, same QR pickup flow).
 export async function POST(req: NextRequest) {
   try {
-    const { productId, quantity, parkId, customerEmail, lotNumber } = await req.json();
+    const { productId, quantity, customerEmail, lotNumber } = await req.json();
 
     if (!customerEmail && !lotNumber) {
       return NextResponse.json(
@@ -21,11 +23,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // SECURITY: derive the company from the request's own Host header
+    // instead of trusting a client-sent parkId — same cross-tenant pattern
+    // fixed in mely-chat/route.ts. Without this, a request could pass
+    // another company's parkId and buy propane priced/fulfilled under that
+    // other company instead of the site the customer is actually on.
+    const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
     const { data: company } = await supabase
       .from("companies")
-      .select("id")
-      .eq("park_id", parkId || "aloha")
-      .single();
+      .select("id, park_id")
+      .eq("domain", host)
+      .maybeSingle();
 
     if (!company) {
       return NextResponse.json({ error: "Park not found" }, { status: 404 });
@@ -127,7 +135,7 @@ export async function POST(req: NextRequest) {
         quantity: String(rawQty),
         lotId: "",
         residentLot: lotNumber || "",
-        park: parkId || "aloha",
+        park: company.park_id || "aloha",
         subtotalCents: String(subtotalCents),
         taxCents: String(taxCents),
         feeCents: String(processingFeeCents),
