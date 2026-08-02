@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { requireMatchingSession } from "@/lib/portalSession";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -16,6 +17,12 @@ export async function POST(req: NextRequest) {
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
+
+  // SECURITY: require the caller's own signed session to match this
+  // residentId — otherwise anyone could start a card-save flow tied to a
+  // DIFFERENT resident's account just by knowing/guessing their id.
+  const authError = requireMatchingSession(req, residentId);
+  if (authError) return authError;
 
   const { data: resident, error } = await supabase
     .from("resident_accounts")

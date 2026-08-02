@@ -226,6 +226,7 @@ export default function ResidentDashboard() {
   function logout() {
     localStorage.removeItem("resident_id");
     localStorage.removeItem("resident_name");
+    fetch("/api/portal-logout", { method: "POST" }).catch(() => {});
     router.push("/login");
   }
 
@@ -661,7 +662,7 @@ export default function ResidentDashboard() {
                           await fetch("/api/portal/dismiss-propane-order", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ orderId: order.id }),
+                            body: JSON.stringify({ orderId: order.id, residentId }),
                           });
                           setPropaneOrders((prev) => prev.filter((o) => o.id !== order.id));
                         }}

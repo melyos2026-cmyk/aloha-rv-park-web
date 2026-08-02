@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { requireMatchingSession } from "@/lib/portalSession";
 
 // POST /api/notify-maintenance-request
 // Body: { companyId, residentId, subject, priority }
@@ -23,8 +24,15 @@ export async function POST(req: NextRequest) {
   // always sends a resident's own company_id (residents/maintenance/page.tsx
   // fetches it fresh right before calling this), so this check doesn't
   // change anything for legitimate calls.
+  //
+  // Also require the caller's own signed portal session to match residentId
+  // when one is given — same reasoning as the rest of /api/portal/*: a bare
+  // residentId isn't proof of who's actually calling.
   let residentName: string | null = null;
   if (residentId) {
+    const authError = requireMatchingSession(req, residentId);
+    if (authError) return authError;
+
     const { data: resident } = await supabase
       .from("resident_accounts")
       .select("full_name, company_id")

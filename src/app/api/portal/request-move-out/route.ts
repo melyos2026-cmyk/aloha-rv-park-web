@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { requireMatchingSession } from "@/lib/portalSession";
 
 // POST /api/portal/request-move-out
 // Body: { residentId, moveOutDate, note }
@@ -16,6 +17,13 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  // SECURITY: require the caller's own signed session to match this
+  // residentId — otherwise anyone knowing/guessing a residentId could file
+  // a fake move-out request (and end someone else's lease) on their
+  // behalf. This was the original gap that started this audit.
+  const authError = requireMatchingSession(req, residentId);
+  if (authError) return authError;
 
   const { data: resident } = await supabase
     .from("resident_accounts")

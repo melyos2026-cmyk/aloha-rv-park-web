@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { requireMatchingSession } from "@/lib/portalSession";
 
 // GET /api/portal/propane-orders?residentId=...
 // Matches orders either by the resident's email or by the lot number they
@@ -10,6 +11,12 @@ export async function GET(req: NextRequest) {
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
+
+  // SECURITY: require the caller's own signed session to match this
+  // residentId — otherwise anyone could read another resident's propane
+  // purchase history/QR pickup codes just by knowing/guessing their id.
+  const authError = requireMatchingSession(req, residentId);
+  if (authError) return authError;
 
   const { data: resident, error: residentError } = await supabase
     .from("resident_accounts")

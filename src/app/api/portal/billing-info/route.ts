@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireMatchingSession } from "@/lib/portalSession";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,6 +17,12 @@ export async function GET(req: NextRequest) {
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
+
+  // SECURITY: require the caller's own signed session to match this
+  // residentId — otherwise anyone could read another resident's billing
+  // due-date just by knowing/guessing their id.
+  const authError = requireMatchingSession(req, residentId);
+  if (authError) return authError;
 
   const { data: profile } = await supabaseAdmin
     .from("resident_billing_profiles")

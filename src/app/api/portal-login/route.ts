@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
 import { getSecurityAlertPrefs } from "@/lib/securityAlertPrefs";
+import { setPortalSessionCookie } from "@/lib/portalSession";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -95,5 +96,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
   }
 
-  return NextResponse.json({ id: resident.id, full_name: resident.full_name });
+  const res = NextResponse.json({ id: resident.id, full_name: resident.full_name });
+  setPortalSessionCookie(res, resident.id, resident.company_id || null);
+  return res;
 }
