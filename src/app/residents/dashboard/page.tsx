@@ -66,6 +66,14 @@ export default function ResidentDashboard() {
   const [rvLengthFt, setRvLengthFt] = useState("");
   const [rvVinOrTag, setRvVinOrTag] = useState("");
   const [savingRvInfo, setSavingRvInfo] = useState(false);
+  // Inline status messages (Aug 2 debugging) — shown in the page itself
+  // instead of relying only on window.alert(), since alert() can be
+  // silently suppressed by some mobile browsers/in-app webviews, which
+  // made earlier failures look like "nothing happened."
+  const [residentInfoMessage, setResidentInfoMessage] = useState("");
+  const [occupantMessage, setOccupantMessage] = useState("");
+  const [vehicleMessage, setVehicleMessage] = useState("");
+  const [rvMessage, setRvMessage] = useState("");
 
   const outstandingBalance =
     payments.reduce((sum, payment) => {
@@ -266,11 +274,12 @@ export default function ResidentDashboard() {
   }
 
   async function saveResidentInfo() {
+    setResidentInfoMessage("");
     // SECURITY (Aug 2): moved from a direct client-side Supabase update to
     // a session-guarded server route — see /api/portal/save-resident-info.
-    // Wrapped in try/catch (Aug 2 debugging) so any failure — network
-    // error, or the server returning something that isn't valid JSON —
-    // always shows an alert instead of silently doing nothing.
+    // Uses an inline message instead of alert() (Aug 2 debugging) — alert()
+    // can be silently suppressed by some mobile browsers/in-app webviews,
+    // which made earlier failures look like "nothing happened."
     try {
       const res = await fetch("/api/portal/save-resident-info", {
         method: "POST",
@@ -279,20 +288,27 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        alert("Could not save changes: " + (result?.error || res.status));
+        setResidentInfoMessage("Could not save changes: " + (result?.error || res.status));
         return;
       }
 
       setEditingInfo(false);
       loadResidentDashboard();
     } catch (err: any) {
-      alert("Could not save changes (unexpected error): " + (err?.message || err));
+      setResidentInfoMessage("Could not save changes (unexpected error): " + (err?.message || err));
     }
   }
 
   async function addOccupant() {
+    setOccupantMessage("");
     if (!occFullName.trim()) {
-      alert("Please enter a full name.");
+      setOccupantMessage("Please enter a full name.");
+      return;
+    }
+    // Mely asked (Aug 2) that Stay Start/End Date be required before a
+    // visitor can be saved, not just optional.
+    if (occType === "visitor" && (!occStayStart || !occStayEnd)) {
+      setOccupantMessage("Please enter both a Stay Start Date and Stay End Date.");
       return;
     }
 
@@ -300,7 +316,8 @@ export default function ResidentDashboard() {
     // insert/update to a session-guarded server route — see
     // /api/portal/save-occupant. Notification-sending behavior (which
     // update_type fires) is preserved server-side, unchanged.
-    // Wrapped in try/catch (Aug 2 debugging) — see note in saveResidentInfo.
+    // Inline message instead of alert() (Aug 2 debugging) — see note in
+    // saveResidentInfo.
     try {
       const res = await fetch("/api/portal/save-occupant", {
         method: "POST",
@@ -319,7 +336,7 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        alert((editingVisitorId ? "Could not update visitor: " : "Could not add: ") + (result?.error || res.status));
+        setOccupantMessage((editingVisitorId ? "Could not update visitor: " : "Could not add: ") + (result?.error || res.status));
         return;
       }
 
@@ -334,11 +351,12 @@ export default function ResidentDashboard() {
       setAddingOccupant(false);
       loadResidentDashboard();
     } catch (err: any) {
-      alert("Could not save (unexpected error): " + (err?.message || err));
+      setOccupantMessage("Could not save (unexpected error): " + (err?.message || err));
     }
   }
 
   function startEditVisitor(person: any) {
+    setOccupantMessage("");
     setEditingVisitorId(person.id);
     setOccFullName(person.full_name || "");
     setOccRelationship(person.relationship || "");
@@ -352,6 +370,7 @@ export default function ResidentDashboard() {
 
   async function deleteVisitor(id: string) {
     if (!confirm("Remove this visitor?")) return;
+    setOccupantMessage("");
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
     // a session-guarded server route — see /api/portal/delete-occupant.
@@ -363,19 +382,20 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        alert("Could not remove visitor: " + (result?.error || res.status));
+        setOccupantMessage("Could not remove visitor: " + (result?.error || res.status));
         return;
       }
 
       loadResidentDashboard();
     } catch (err: any) {
-      alert("Could not remove visitor (unexpected error): " + (err?.message || err));
+      setOccupantMessage("Could not remove visitor (unexpected error): " + (err?.message || err));
     }
   }
 
   async function addVehicle() {
+    setVehicleMessage("");
     if (!vehPlate.trim()) {
-      alert("Please enter a license plate.");
+      setVehicleMessage("Please enter a license plate.");
       return;
     }
 
@@ -383,6 +403,7 @@ export default function ResidentDashboard() {
     // insert/update to a session-guarded server route — see
     // /api/portal/save-vehicle. Behavior preserved: updates don't fire a
     // notification, new vehicles do (handled server-side now).
+    // Inline message instead of alert() (Aug 2 debugging).
     try {
       const res = await fetch("/api/portal/save-vehicle", {
         method: "POST",
@@ -400,7 +421,7 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        alert((editingVehicleId ? "Could not update vehicle: " : "Could not add vehicle: ") + (result?.error || res.status));
+        setVehicleMessage((editingVehicleId ? "Could not update vehicle: " : "Could not add vehicle: ") + (result?.error || res.status));
         return;
       }
 
@@ -425,13 +446,14 @@ export default function ResidentDashboard() {
       setAddingVehicle(false);
       loadResidentDashboard();
     } catch (err: any) {
-      alert("Could not save vehicle (unexpected error): " + (err?.message || err));
+      setVehicleMessage("Could not save vehicle (unexpected error): " + (err?.message || err));
     }
   }
 
   async function deleteVehicle(vehicleId: string) {
     const confirmed = confirm("Remove this vehicle?");
     if (!confirmed) return;
+    setVehicleMessage("");
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
     // a session-guarded server route — see /api/portal/delete-vehicle.
@@ -443,17 +465,18 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        alert("Could not remove vehicle: " + (result?.error || res.status));
+        setVehicleMessage("Could not remove vehicle: " + (result?.error || res.status));
         return;
       }
       loadResidentDashboard();
     } catch (err: any) {
-      alert("Could not remove vehicle (unexpected error): " + (err?.message || err));
+      setVehicleMessage("Could not remove vehicle (unexpected error): " + (err?.message || err));
     }
   }
 
   async function saveRvInfo() {
     setSavingRvInfo(true);
+    setRvMessage("");
     // SECURITY (Aug 2): moved from a direct client-side Supabase update to
     // a session-guarded server route — see /api/portal/save-rv-info.
     try {
@@ -472,12 +495,12 @@ export default function ResidentDashboard() {
       const result = await res.json();
 
       if (!res.ok) {
-        alert("Could not save RV info: " + (result?.error || res.status));
+        setRvMessage("Could not save RV info: " + (result?.error || res.status));
       } else {
-        alert("RV info saved.");
+        setRvMessage("RV info saved.");
       }
     } catch (err: any) {
-      alert("Could not save RV info (unexpected error): " + (err?.message || err));
+      setRvMessage("Could not save RV info (unexpected error): " + (err?.message || err));
     }
     setSavingRvInfo(false);
   }
@@ -572,6 +595,7 @@ export default function ResidentDashboard() {
               <input placeholder="Phone" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
               <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                 <button onClick={saveResidentInfo} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                {residentInfoMessage && <p style={{ fontSize: 13, marginTop: 8, color: residentInfoMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{residentInfoMessage}</p>}
                 <button onClick={() => setEditingInfo(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
               </div>
             </div>
@@ -843,6 +867,7 @@ export default function ResidentDashboard() {
                   <input placeholder="Email" value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                 </div>
                 <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                {occupantMessage && occType === "household" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith("Could not") || occupantMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
               </div>
             )}
 
@@ -874,17 +899,18 @@ export default function ResidentDashboard() {
                   <input placeholder="Phone" value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Email" value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Stay Start Date</label>
-                    <input type="date" value={occStayStart} onChange={e => setOccStayStart(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Stay Start Date (required)</label>
+                    <input type="date" value={occStayStart} onChange={e => setOccStayStart(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Stay End Date</label>
-                    <input type="date" value={occStayEnd} onChange={e => setOccStayEnd(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Stay End Date (required)</label>
+                    <input type="date" value={occStayEnd} onChange={e => setOccStayEnd(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                 </div>
                 <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
                   {editingVisitorId ? "Update Visitor" : "Save Visitor"}
                 </button>
+                {occupantMessage && occType === "visitor" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith("Could not") || occupantMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
               </div>
             )}
 
@@ -931,6 +957,7 @@ export default function ResidentDashboard() {
                   <input placeholder="License State" value={vehState} onChange={e => setVehState(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                 </div>
                 <button onClick={addVehicle} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{editingVehicleId ? "Update Vehicle" : "Save Vehicle"}</button>
+                {vehicleMessage && <p style={{ fontSize: 13, marginTop: 8, color: vehicleMessage.startsWith("Could not") || vehicleMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{vehicleMessage}</p>}
               </div>
             )}
 
@@ -983,6 +1010,7 @@ export default function ResidentDashboard() {
             >
               {savingRvInfo ? "Saving..." : "Save RV Info"}
             </button>
+            {rvMessage && <p style={{ fontSize: 13, marginTop: 8, color: rvMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{rvMessage}</p>}
           </div>
 
         </div>
