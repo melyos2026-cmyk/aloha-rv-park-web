@@ -268,19 +268,26 @@ export default function ResidentDashboard() {
   async function saveResidentInfo() {
     // SECURITY (Aug 2): moved from a direct client-side Supabase update to
     // a session-guarded server route — see /api/portal/save-resident-info.
-    const res = await fetch("/api/portal/save-resident-info", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ residentId: resident.id, phone: formPhone.trim() }),
-    });
-    const result = await res.json();
-    if (!res.ok) {
-      alert("Could not save changes: " + result.error);
-      return;
-    }
+    // Wrapped in try/catch (Aug 2 debugging) so any failure — network
+    // error, or the server returning something that isn't valid JSON —
+    // always shows an alert instead of silently doing nothing.
+    try {
+      const res = await fetch("/api/portal/save-resident-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId: resident.id, phone: formPhone.trim() }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        alert("Could not save changes: " + (result?.error || res.status));
+        return;
+      }
 
-    setEditingInfo(false);
-    loadResidentDashboard();
+      setEditingInfo(false);
+      loadResidentDashboard();
+    } catch (err: any) {
+      alert("Could not save changes (unexpected error): " + (err?.message || err));
+    }
   }
 
   async function addOccupant() {
@@ -293,37 +300,42 @@ export default function ResidentDashboard() {
     // insert/update to a session-guarded server route — see
     // /api/portal/save-occupant. Notification-sending behavior (which
     // update_type fires) is preserved server-side, unchanged.
-    const res = await fetch("/api/portal/save-occupant", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        residentId: resident.id,
-        occupantId: editingVisitorId || undefined,
-        occupantType: occType,
-        fullName: occFullName.trim(),
-        relationship: occRelationship.trim(),
-        phone: occPhone.trim(),
-        email: occEmail.trim().toLowerCase(),
-        stayStart: occStayStart || null,
-        stayEnd: occStayEnd || null,
-      }),
-    });
-    const result = await res.json();
-    if (!res.ok) {
-      alert((editingVisitorId ? "Could not update visitor: " : "Could not add: ") + result.error);
-      return;
-    }
+    // Wrapped in try/catch (Aug 2 debugging) — see note in saveResidentInfo.
+    try {
+      const res = await fetch("/api/portal/save-occupant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId: resident.id,
+          occupantId: editingVisitorId || undefined,
+          occupantType: occType,
+          fullName: occFullName.trim(),
+          relationship: occRelationship.trim(),
+          phone: occPhone.trim(),
+          email: occEmail.trim().toLowerCase(),
+          stayStart: occStayStart || null,
+          stayEnd: occStayEnd || null,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        alert((editingVisitorId ? "Could not update visitor: " : "Could not add: ") + (result?.error || res.status));
+        return;
+      }
 
-    setOccFullName("");
-    setOccRelationship("");
-    setOccPhone("");
-    setOccEmail("");
-    setOccStayStart("");
-    setOccStayEnd("");
-    setOccType("household");
-    setEditingVisitorId(null);
-    setAddingOccupant(false);
-    loadResidentDashboard();
+      setOccFullName("");
+      setOccRelationship("");
+      setOccPhone("");
+      setOccEmail("");
+      setOccStayStart("");
+      setOccStayEnd("");
+      setOccType("household");
+      setEditingVisitorId(null);
+      setAddingOccupant(false);
+      loadResidentDashboard();
+    } catch (err: any) {
+      alert("Could not save (unexpected error): " + (err?.message || err));
+    }
   }
 
   function startEditVisitor(person: any) {
@@ -343,18 +355,22 @@ export default function ResidentDashboard() {
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
     // a session-guarded server route — see /api/portal/delete-occupant.
-    const res = await fetch("/api/portal/delete-occupant", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ residentId: resident.id, occupantId: id }),
-    });
-    const result = await res.json();
-    if (!res.ok) {
-      alert("Could not remove visitor: " + result.error);
-      return;
-    }
+    try {
+      const res = await fetch("/api/portal/delete-occupant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId: resident.id, occupantId: id }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        alert("Could not remove visitor: " + (result?.error || res.status));
+        return;
+      }
 
-    loadResidentDashboard();
+      loadResidentDashboard();
+    } catch (err: any) {
+      alert("Could not remove visitor (unexpected error): " + (err?.message || err));
+    }
   }
 
   async function addVehicle() {
@@ -367,46 +383,50 @@ export default function ResidentDashboard() {
     // insert/update to a session-guarded server route — see
     // /api/portal/save-vehicle. Behavior preserved: updates don't fire a
     // notification, new vehicles do (handled server-side now).
-    const res = await fetch("/api/portal/save-vehicle", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        residentId: resident.id,
-        vehicleId: editingVehicleId || undefined,
-        make: vehMake.trim(),
-        model: vehModel.trim(),
-        year: vehYear.trim(),
-        color: vehColor.trim(),
-        plate: vehPlate.trim(),
-        state: vehState.trim(),
-      }),
-    });
-    const result = await res.json();
-    if (!res.ok) {
-      alert((editingVehicleId ? "Could not update vehicle: " : "Could not add vehicle: ") + result.error);
-      return;
-    }
+    try {
+      const res = await fetch("/api/portal/save-vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId: resident.id,
+          vehicleId: editingVehicleId || undefined,
+          make: vehMake.trim(),
+          model: vehModel.trim(),
+          year: vehYear.trim(),
+          color: vehColor.trim(),
+          plate: vehPlate.trim(),
+          state: vehState.trim(),
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        alert((editingVehicleId ? "Could not update vehicle: " : "Could not add vehicle: ") + (result?.error || res.status));
+        return;
+      }
 
-    if (editingVehicleId) {
-      setEditingVehicleId(null);
+      if (editingVehicleId) {
+        setEditingVehicleId(null);
+        setVehMake("");
+        setVehModel("");
+        setVehYear("");
+        setVehColor("");
+        setVehPlate("");
+        setVehState("");
+        loadResidentDashboard();
+        return;
+      }
+
       setVehMake("");
       setVehModel("");
       setVehYear("");
       setVehColor("");
       setVehPlate("");
       setVehState("");
+      setAddingVehicle(false);
       loadResidentDashboard();
-      return;
+    } catch (err: any) {
+      alert("Could not save vehicle (unexpected error): " + (err?.message || err));
     }
-
-    setVehMake("");
-    setVehModel("");
-    setVehYear("");
-    setVehColor("");
-    setVehPlate("");
-    setVehState("");
-    setAddingVehicle(false);
-    loadResidentDashboard();
   }
 
   async function deleteVehicle(vehicleId: string) {
@@ -415,41 +435,49 @@ export default function ResidentDashboard() {
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
     // a session-guarded server route — see /api/portal/delete-vehicle.
-    const res = await fetch("/api/portal/delete-vehicle", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ residentId: resident.id, vehicleId }),
-    });
-    const result = await res.json();
-    if (!res.ok) {
-      alert("Could not remove vehicle: " + result.error);
-      return;
+    try {
+      const res = await fetch("/api/portal/delete-vehicle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId: resident.id, vehicleId }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        alert("Could not remove vehicle: " + (result?.error || res.status));
+        return;
+      }
+      loadResidentDashboard();
+    } catch (err: any) {
+      alert("Could not remove vehicle (unexpected error): " + (err?.message || err));
     }
-    loadResidentDashboard();
   }
 
   async function saveRvInfo() {
     setSavingRvInfo(true);
     // SECURITY (Aug 2): moved from a direct client-side Supabase update to
     // a session-guarded server route — see /api/portal/save-rv-info.
-    const res = await fetch("/api/portal/save-rv-info", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        residentId: resident.id,
-        rvMake: rvMake.trim(),
-        rvModel: rvModel.trim(),
-        rvYear: rvYear.trim(),
-        rvLengthFt,
-        rvVinOrTag: rvVinOrTag.trim(),
-      }),
-    });
-    const result = await res.json();
+    try {
+      const res = await fetch("/api/portal/save-rv-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId: resident.id,
+          rvMake: rvMake.trim(),
+          rvModel: rvModel.trim(),
+          rvYear: rvYear.trim(),
+          rvLengthFt,
+          rvVinOrTag: rvVinOrTag.trim(),
+        }),
+      });
+      const result = await res.json();
 
-    if (!res.ok) {
-      alert("Could not save RV info: " + result.error);
-    } else {
-      alert("RV info saved.");
+      if (!res.ok) {
+        alert("Could not save RV info: " + (result?.error || res.status));
+      } else {
+        alert("RV info saved.");
+      }
+    } catch (err: any) {
+      alert("Could not save RV info (unexpected error): " + (err?.message || err));
     }
     setSavingRvInfo(false);
   }
