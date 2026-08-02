@@ -8,7 +8,21 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, company } = await req.json();
+    const { messages } = await req.json();
+
+    // SECURITY: never trust a `company` object sent by the client for DB
+    // scoping — that would let anyone POST an arbitrary company.id/park_id
+    // and pull another tenant's private website content, listings, or lot
+    // pricing (cross-tenant leak). Always re-derive the company server-side
+    // from the request's own Host header, the same way pages/[slug] does.
+    const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
+    const { data: company } = await supabaseAdmin
+      .from("companies")
+      .select(
+        "id, company_name, address, contact_email, contact_phone, ai_assistant_info, park_id"
+      )
+      .eq("domain", host)
+      .maybeSingle();
 
     const companyName = company?.company_name || "the park";
     const address = company?.address || "";
