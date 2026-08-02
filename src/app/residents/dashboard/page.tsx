@@ -230,16 +230,10 @@ export default function ResidentDashboard() {
     router.push("/login");
   }
 
-  async function notifyAdmin(updateType: string, message: string) {
-    if (!resident) return;
-    await supabase.from("resident_update_notifications").insert({
-      company_id: resident.company_id,
-      resident_id: resident.id,
-      resident_name: resident.full_name,
-      update_type: updateType,
-      message,
-    });
-  }
+  // notifyAdmin was removed (Aug 2) — every call site was migrated to a
+  // session-guarded server route (/api/portal/save-resident-info,
+  // save-occupant, delete-occupant, save-vehicle) that inserts its own
+  // resident_update_notifications row server-side instead.
 
   async function handleSubmitMoveOut() {
     if (!moveOutDate) {
@@ -272,22 +266,18 @@ export default function ResidentDashboard() {
   }
 
   async function saveResidentInfo() {
-    const { error } = await supabase
-      .from("resident_accounts")
-      .update({
-        phone: formPhone.trim(),
-      })
-      .eq("id", resident.id);
-
-    if (error) {
-      alert("Could not save changes: " + error.message);
+    // SECURITY (Aug 2): moved from a direct client-side Supabase update to
+    // a session-guarded server route — see /api/portal/save-resident-info.
+    const res = await fetch("/api/portal/save-resident-info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId: resident.id, phone: formPhone.trim() }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      alert("Could not save changes: " + result.error);
       return;
     }
-
-    await notifyAdmin(
-      "resident_info",
-      `${resident.full_name} updated their phone number to ${formPhone.trim()}.`
-    );
 
     setEditingInfo(false);
     loadResidentDashboard();
@@ -299,50 +289,29 @@ export default function ResidentDashboard() {
       return;
     }
 
-    if (editingVisitorId) {
-      const { error } = await supabase
-        .from("resident_occupants")
-        .update({
-          full_name: occFullName.trim(),
-          relationship: occRelationship.trim(),
-          phone: occPhone.trim(),
-          email: occEmail.trim().toLowerCase(),
-          stay_start_date: occStayStart || null,
-          stay_end_date: occStayEnd || null,
-        })
-        .eq("id", editingVisitorId);
-
-      if (error) {
-        alert("Could not update visitor: " + error.message);
-        return;
-      }
-
-      await notifyAdmin(
-        "visitor_updated",
-        `${resident.full_name} updated a visitor: ${occFullName.trim()}.`
-      );
-    } else {
-      const { error } = await supabase.from("resident_occupants").insert({
-        company_id: resident.company_id,
-        resident_id: resident.id,
-        occupant_type: occType,
-        full_name: occFullName.trim(),
+    // SECURITY (Aug 2): moved from direct client-side Supabase
+    // insert/update to a session-guarded server route — see
+    // /api/portal/save-occupant. Notification-sending behavior (which
+    // update_type fires) is preserved server-side, unchanged.
+    const res = await fetch("/api/portal/save-occupant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        residentId: resident.id,
+        occupantId: editingVisitorId || undefined,
+        occupantType: occType,
+        fullName: occFullName.trim(),
         relationship: occRelationship.trim(),
         phone: occPhone.trim(),
         email: occEmail.trim().toLowerCase(),
-        stay_start_date: occType === "visitor" ? (occStayStart || null) : null,
-        stay_end_date: occType === "visitor" ? (occStayEnd || null) : null,
-      });
-
-      if (error) {
-        alert("Could not add: " + error.message);
-        return;
-      }
-
-      await notifyAdmin(
-        occType === "visitor" ? "visitor_added" : "occupant_added",
-        `${resident.full_name} added a new ${occType === "visitor" ? "visitor" : "household occupant"}: ${occFullName.trim()}.`
-      );
+        stayStart: occStayStart || null,
+        stayEnd: occStayEnd || null,
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      alert((editingVisitorId ? "Could not update visitor: " : "Could not add: ") + result.error);
+      return;
     }
 
     setOccFullName("");
@@ -372,14 +341,19 @@ export default function ResidentDashboard() {
   async function deleteVisitor(id: string) {
     if (!confirm("Remove this visitor?")) return;
 
-    const { error } = await supabase.from("resident_occupants").delete().eq("id", id);
-
-    if (error) {
-      alert("Could not remove visitor: " + error.message);
+    // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
+    // a session-guarded server route — see /api/portal/delete-occupant.
+    const res = await fetch("/api/portal/delete-occupant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId: resident.id, occupantId: id }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      alert("Could not remove visitor: " + result.error);
       return;
     }
 
-    await notifyAdmin("visitor_removed", `${resident.full_name} removed a visitor.`);
     loadResidentDashboard();
   }
 
@@ -389,24 +363,31 @@ export default function ResidentDashboard() {
       return;
     }
 
+    // SECURITY (Aug 2): moved from direct client-side Supabase
+    // insert/update to a session-guarded server route — see
+    // /api/portal/save-vehicle. Behavior preserved: updates don't fire a
+    // notification, new vehicles do (handled server-side now).
+    const res = await fetch("/api/portal/save-vehicle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        residentId: resident.id,
+        vehicleId: editingVehicleId || undefined,
+        make: vehMake.trim(),
+        model: vehModel.trim(),
+        year: vehYear.trim(),
+        color: vehColor.trim(),
+        plate: vehPlate.trim(),
+        state: vehState.trim(),
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      alert((editingVehicleId ? "Could not update vehicle: " : "Could not add vehicle: ") + result.error);
+      return;
+    }
+
     if (editingVehicleId) {
-      const { error } = await supabase
-        .from("resident_vehicles")
-        .update({
-          vehicle_make: vehMake.trim(),
-          vehicle_model: vehModel.trim(),
-          vehicle_year: vehYear.trim(),
-          color: vehColor.trim(),
-          license_plate: vehPlate.trim(),
-          license_state: vehState.trim(),
-        })
-        .eq("id", editingVehicleId);
-
-      if (error) {
-        alert("Could not update vehicle: " + error.message);
-        return;
-      }
-
       setEditingVehicleId(null);
       setVehMake("");
       setVehModel("");
@@ -417,27 +398,6 @@ export default function ResidentDashboard() {
       loadResidentDashboard();
       return;
     }
-
-    const { error } = await supabase.from("resident_vehicles").insert({
-      company_id: resident.company_id,
-      resident_id: resident.id,
-      vehicle_make: vehMake.trim(),
-      vehicle_model: vehModel.trim(),
-      vehicle_year: vehYear.trim(),
-      color: vehColor.trim(),
-      license_plate: vehPlate.trim(),
-      license_state: vehState.trim(),
-    });
-
-    if (error) {
-      alert("Could not add vehicle: " + error.message);
-      return;
-    }
-
-    await notifyAdmin(
-      "vehicle_added",
-      `${resident.full_name} added a new vehicle: ${vehYear} ${vehMake} ${vehModel} (Plate: ${vehPlate}).`
-    );
 
     setVehMake("");
     setVehModel("");
@@ -453,9 +413,16 @@ export default function ResidentDashboard() {
     const confirmed = confirm("Remove this vehicle?");
     if (!confirmed) return;
 
-    const { error } = await supabase.from("resident_vehicles").delete().eq("id", vehicleId);
-    if (error) {
-      alert("Could not remove vehicle: " + error.message);
+    // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
+    // a session-guarded server route — see /api/portal/delete-vehicle.
+    const res = await fetch("/api/portal/delete-vehicle", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId: resident.id, vehicleId }),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      alert("Could not remove vehicle: " + result.error);
       return;
     }
     loadResidentDashboard();
@@ -463,19 +430,24 @@ export default function ResidentDashboard() {
 
   async function saveRvInfo() {
     setSavingRvInfo(true);
-    const { error } = await supabase
-      .from("resident_accounts")
-      .update({
-        rv_make: rvMake.trim() || null,
-        rv_model: rvModel.trim() || null,
-        rv_year: rvYear.trim() || null,
-        rv_length_ft: rvLengthFt ? Number(rvLengthFt) : null,
-        rv_vin_or_tag: rvVinOrTag.trim() || null,
-      })
-      .eq("id", resident.id);
+    // SECURITY (Aug 2): moved from a direct client-side Supabase update to
+    // a session-guarded server route — see /api/portal/save-rv-info.
+    const res = await fetch("/api/portal/save-rv-info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        residentId: resident.id,
+        rvMake: rvMake.trim(),
+        rvModel: rvModel.trim(),
+        rvYear: rvYear.trim(),
+        rvLengthFt,
+        rvVinOrTag: rvVinOrTag.trim(),
+      }),
+    });
+    const result = await res.json();
 
-    if (error) {
-      alert("Could not save RV info: " + error.message);
+    if (!res.ok) {
+      alert("Could not save RV info: " + result.error);
     } else {
       alert("RV info saved.");
     }
