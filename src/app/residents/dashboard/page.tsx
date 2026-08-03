@@ -137,16 +137,17 @@ export default function ResidentDashboard() {
       .then((result) => setPropaneOrders(result.orders || []))
       .catch(() => setPropaneOrders([]));
 
-    const { data: feeSettings } = await supabase
-      .from("company_fee_settings")
-      .select("accept_online_payments, autopay_available")
-      .eq("company_id", residentData.company_id)
-      .maybeSingle();
-    // Default to true (allow online payments) when this hasn't been
-    // explicitly configured, so we never silently hide an already-working
-    // Pay Now button for a company that just hasn't touched Fee Settings.
-    setAcceptOnlinePayments(feeSettings ? !!feeSettings.accept_online_payments : true);
-    setAutopayAvailable(!!feeSettings?.autopay_available);
+    // FOUND (Aug 3): company_fee_settings was read directly with the anon
+    // key here, which is very likely blocked by RLS the same way
+    // resident_occupants/resident_vehicles were (commit 6730b12) — that
+    // would silently make autopayAvailable always false, hiding the
+    // Autopay section regardless of the real setting. Moved to a
+    // session-guarded server route (Service Role Key).
+    const feeSettingsData = await fetch(`/api/portal/fee-settings?residentId=${residentId}`)
+      .then((r) => r.json())
+      .catch(() => null);
+    setAcceptOnlinePayments(feeSettingsData?.acceptOnlinePayments ?? true);
+    setAutopayAvailable(!!feeSettingsData?.autopayAvailable);
 
     const { data: electricData } = await supabase
       .from("resident_electric_readings")
