@@ -66,6 +66,10 @@ export default function ResidentDashboard() {
   const [rvLengthFt, setRvLengthFt] = useState("");
   const [rvVinOrTag, setRvVinOrTag] = useState("");
   const [savingRvInfo, setSavingRvInfo] = useState(false);
+  // View/edit toggle for RV Info (Aug 3, per Mely's feedback) — shows saved
+  // info as plain text with an Edit button, instead of always-open input
+  // boxes with no clear "saved" state.
+  const [editingRvInfo, setEditingRvInfo] = useState(false);
   // Inline status messages (Aug 2 debugging) — shown in the page itself
   // instead of relying only on window.alert(), since alert() can be
   // silently suppressed by some mobile browsers/in-app webviews, which
@@ -108,6 +112,7 @@ export default function ResidentDashboard() {
     setRvYear(residentData?.rv_year || "");
     setRvLengthFt(residentData?.rv_length_ft ? String(residentData.rv_length_ft) : "");
     setRvVinOrTag(residentData?.rv_vin_or_tag || "");
+    setEditingRvInfo(!residentData?.rv_make && !residentData?.rv_model && !residentData?.rv_vin_or_tag);
 
     if (residentError || !residentData) {
       setMessage("Resident not found.");
@@ -498,6 +503,7 @@ export default function ResidentDashboard() {
         setRvMessage("Could not save RV info: " + (result?.error || res.status));
       } else {
         setRvMessage("RV info saved.");
+        setEditingRvInfo(false);
       }
     } catch (err: any) {
       setRvMessage("Could not save RV info (unexpected error): " + (err?.message || err));
@@ -995,21 +1001,66 @@ export default function ResidentDashboard() {
           </div>
 
           <div style={{ ...card, marginTop: 16 }}>
-            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>🚐 RV Info</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <input placeholder="RV Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-              <input placeholder="RV Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-              <input placeholder="RV Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-              <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-              <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>🚐 RV Info</h2>
+              {!editingRvInfo && (
+                <button
+                  onClick={() => { setEditingRvInfo(true); setRvMessage(""); }}
+                  style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Edit
+                </button>
+              )}
             </div>
-            <button
-              onClick={saveRvInfo}
-              disabled={savingRvInfo}
-              style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: savingRvInfo ? "default" : "pointer", opacity: savingRvInfo ? 0.7 : 1 }}
-            >
-              {savingRvInfo ? "Saving..." : "Save RV Info"}
-            </button>
+
+            {editingRvInfo ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                  <input placeholder="RV Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="RV Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="RV Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={saveRvInfo}
+                    disabled={savingRvInfo}
+                    style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: savingRvInfo ? "default" : "pointer", opacity: savingRvInfo ? 0.7 : 1 }}
+                  >
+                    {savingRvInfo ? "Saving..." : "Save RV Info"}
+                  </button>
+                  {/* Only offer Cancel once there's actually saved data to fall back to
+                      — a resident entering RV info for the first time has nothing to
+                      cancel back to, so forcing them into view mode would just show blanks. */}
+                  {(resident?.rv_make || resident?.rv_model || resident?.rv_vin_or_tag) && (
+                    <button
+                      onClick={() => {
+                        setRvMake(resident?.rv_make || "");
+                        setRvModel(resident?.rv_model || "");
+                        setRvYear(resident?.rv_year || "");
+                        setRvLengthFt(resident?.rv_length_ft ? String(resident.rv_length_ft) : "");
+                        setRvVinOrTag(resident?.rv_vin_or_tag || "");
+                        setRvMessage("");
+                        setEditingRvInfo(false);
+                      }}
+                      disabled={savingRvInfo}
+                      style={{ background: "transparent", color: "#000", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 14, lineHeight: 1.8 }}>
+                <p><strong>Make:</strong> {rvMake || "—"}</p>
+                <p><strong>Model:</strong> {rvModel || "—"}</p>
+                <p><strong>Year:</strong> {rvYear || "—"}</p>
+                <p><strong>Length:</strong> {rvLengthFt ? `${rvLengthFt} ft` : "—"}</p>
+                <p><strong>VIN / Tag #:</strong> {rvVinOrTag || "—"}</p>
+              </div>
+            )}
             {rvMessage && <p style={{ fontSize: 13, marginTop: 8, color: rvMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{rvMessage}</p>}
           </div>
 
