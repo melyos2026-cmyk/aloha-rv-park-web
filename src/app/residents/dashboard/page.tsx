@@ -208,6 +208,7 @@ export default function ResidentDashboard() {
       .from("announcements")
       .select("*")
       .eq("company_id", residentData.company_id)
+      .is("archived_at", null)
       .order("created_at", { ascending: false });
     setAnnouncements(anns || []);
 
