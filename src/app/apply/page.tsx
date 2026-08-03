@@ -34,6 +34,18 @@ function ApplyPageInner() {
 
   const [invitationId, setInvitationId] = useState<string | null>(null);
   const [isRentToOwn, setIsRentToOwn] = useState(false);
+  // From the admin's invite (see melyos-builder's Send Application modal):
+  // background-check skip/require is only ever meaningful for a returning
+  // resident; Family/Friends forces an always-skipped, never-charged
+  // background check (rent/deposit are unaffected — admin sets those
+  // normally, or $0 themselves if that's also the intent). lockAdminFields
+  // tells the form the applicant can't edit rent/deposit/lot themselves
+  // once the admin set them at invite time — they can only fill in their
+  // own personal info.
+  const [isReturningResident, setIsReturningResident] = useState(false);
+  const [backgroundCheckOverride, setBackgroundCheckOverride] = useState<"" | "required" | "skip">("");
+  const [isFamilyFriend, setIsFamilyFriend] = useState(false);
+  const [lockAdminFields, setLockAdminFields] = useState(false);
   const [rentToOwnTerms, setRentToOwnTerms] = useState<{
     totalPrice: number | null;
     monthlyPayment: number | null;
@@ -132,6 +144,15 @@ function ApplyPageInner() {
 
         setInvitationId(data.id);
         setIsRentToOwn(!!data.is_rent_to_own);
+        setIsReturningResident(!!data.is_returning_resident);
+        setBackgroundCheckOverride(data.background_check_override || "");
+        setIsFamilyFriend(!!data.is_family_friend);
+        // Lock rent/deposit/lot for the applicant only when the admin
+        // actually set them at invite time (a plain invite with no rent
+        // entered still lets the applicant see the lot's normal rate) —
+        // this is independent of Family/Friends, which only affects
+        // background check.
+        setLockAdminFields(data.monthly_rent != null);
         setRentToOwnTerms({
           totalPrice: data.rent_to_own_total_price ?? null,
           monthlyPayment: data.rent_to_own_monthly_payment ?? null,
@@ -179,6 +200,11 @@ function ApplyPageInner() {
       // Mirrors LeaseApplicationForm's own backgroundCheckRequired logic:
       // month-to-month always requires one; a fixed-term stay only requires
       // one once it's longer than the admin's configured threshold.
+      // OVERRIDDEN (Aug 2) when the admin set one at invite time: a Comp
+      // Occupant is always skipped (and never charged); a returning
+      // resident can be skipped or force-required by the admin. A
+      // brand-new resident (not marked returning) can never get an
+      // override — always the automatic rule below, no matter what.
       const stayNights =
         !data.month_to_month && data.lease_start_date && data.lease_end_date
           ? Math.round(
@@ -189,9 +215,16 @@ function ApplyPageInner() {
           : null;
       const backgroundCheckThresholdDays =
         Number(data.background_check_threshold_days) || 15;
-      const backgroundCheckRequired =
+      const automaticBackgroundCheckRequired =
         data.month_to_month ||
         (stayNights !== null && stayNights > backgroundCheckThresholdDays);
+      const backgroundCheckRequired = isFamilyFriend
+        ? false
+        : isReturningResident && backgroundCheckOverride === "skip"
+        ? false
+        : isReturningResident && backgroundCheckOverride === "required"
+        ? true
+        : automaticBackgroundCheckRequired;
 
       // $2.50 application/processing fee is always charged. The $75
       // primary / $50 per-additional-adult fee is the BACKGROUND CHECK
@@ -416,6 +449,7 @@ function ApplyPageInner() {
         isRentToOwn={isRentToOwn}
         rentToOwnTerms={rentToOwnTerms}
         applicationId={invitationId}
+        lockAdminFields={lockAdminFields}
         onUploadFile={uploadLicensePhoto}
         onSubmit={handleSubmit}
       />

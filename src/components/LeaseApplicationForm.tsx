@@ -433,6 +433,10 @@ interface Props {
     depositPaid: boolean;
   };
   applicationId?: string | null;
+  // When true, the applicant can't edit rent/deposit/lot — the admin
+  // already set them at invite time (Aug 2, admin-initiated application
+  // flow). The applicant can still edit their own personal info normally.
+  lockAdminFields?: boolean;
   onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
   submitting?: boolean;
@@ -535,6 +539,7 @@ export default function LeaseApplicationForm({
   isRentToOwn,
   rentToOwnTerms,
   applicationId,
+  lockAdminFields,
   onSubmit,
   onUploadFile,
   submitting,
@@ -877,6 +882,7 @@ export default function LeaseApplicationForm({
               <select
                 style={styles.input}
                 value={data.space_id}
+                disabled={mode === "applicant" && lockAdminFields}
                 onChange={(e) => {
                   const lot = availableLots.find(
                     (l) => l.id === e.target.value
@@ -902,7 +908,9 @@ export default function LeaseApplicationForm({
                       // applicant has actually decided month-to-month vs. a
                       // real end date — otherwise the pricing banner shows
                       // prematurely with a fallback number.
-                      set("rent_amount", computed !== null ? String(computed) : "");
+                      if (!(mode === "applicant" && lockAdminFields)) {
+                        set("rent_amount", computed !== null ? String(computed) : "");
+                      }
                     } else {
                       set("rent_amount", String(lot.base_price ?? ""));
                     }
@@ -1070,7 +1078,9 @@ export default function LeaseApplicationForm({
                       highSeasonStartMonthDay,
                       highSeasonEndMonthDay
                     );
-                    set("rent_amount", computed !== null ? String(computed) : "");
+                    if (!(mode === "applicant" && lockAdminFields)) {
+                      set("rent_amount", computed !== null ? String(computed) : "");
+                    }
                   }
                 }}
                 minDate={new Date()}
@@ -1126,7 +1136,9 @@ export default function LeaseApplicationForm({
                   highSeasonStartMonthDay,
                   highSeasonEndMonthDay
                 );
-                set("rent_amount", computed !== null ? String(computed) : "");
+                if (!(mode === "applicant" && lockAdminFields)) {
+                  set("rent_amount", computed !== null ? String(computed) : "");
+                }
               }
             }}
           />
@@ -1151,7 +1163,9 @@ export default function LeaseApplicationForm({
                       highSeasonStartMonthDay,
                       highSeasonEndMonthDay
                     );
-                    set("rent_amount", computed !== null ? String(computed) : "");
+                    if (!(mode === "applicant" && lockAdminFields)) {
+                      set("rent_amount", computed !== null ? String(computed) : "");
+                    }
                   }
                 }}
                 minDate={parseDateString(data.lease_start_date) ?? new Date()}
