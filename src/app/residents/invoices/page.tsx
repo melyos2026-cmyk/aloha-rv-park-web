@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 type InvoiceItem = {
   id: string;
@@ -25,6 +24,7 @@ export default function InvoicesPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoices();
@@ -42,20 +42,22 @@ export default function InvoicesPage() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("resident_invoices")
-      .select("*")
-      .eq("resident_id", residentId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("INVOICES ERROR:", error);
-      setMessage("Could not load invoices.");
-      setLoading(false);
-      return;
+    // SECURITY (Aug 3, item #17): moved from a direct client-side Supabase
+    // read (anon key, bare localStorage resident_id, no session check) to
+    // a session-guarded server route — same gap found/fixed in
+    // payment-history.
+    try {
+      const res = await fetch(`/api/portal/invoices?residentId=${residentId}`);
+      const result = await res.json();
+      if (!res.ok) {
+        setMessage("Could not load invoices: " + (result?.error || res.status));
+        setLoading(false);
+        return;
+      }
+      setInvoices(result.invoices || []);
+    } catch (err: any) {
+      setMessage("Could not load invoices (unexpected error): " + (err?.message || err));
     }
-
-    setInvoices(data || []);
     setLoading(false);
   }
 
@@ -68,18 +70,41 @@ export default function InvoicesPage() {
     setExpanded(invoiceId);
 
     if (!itemsByInvoice[invoiceId]) {
-      const { data } = await supabase
-        .from("resident_invoice_items")
-        .select("*")
-        .eq("invoice_id", invoiceId)
-        .order("created_at", { ascending: true });
-
-      setItemsByInvoice((prev) => ({ ...prev, [invoiceId]: data || [] }));
+      const residentId = localStorage.getItem("resident_id");
+      const res = await fetch(`/api/portal/invoice-items?invoiceId=${invoiceId}&residentId=${residentId}`);
+      const result = await res.json();
+      setItemsByInvoice((prev) => ({ ...prev, [invoiceId]: result.items || [] }));
     }
   }
 
+  async function downloadInvoicePdf(invoiceId: string) {
+    const residentId = localStorage.getItem("resident_id");
+    setDownloadingId(invoiceId);
+    try {
+      const res = await fetch(`/api/portal/invoice-pdf?invoiceId=${invoiceId}&residentId=${residentId}`);
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        alert("Could not download invoice: " + (result?.error || res.status));
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "invoice.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert("Could not download invoice (unexpected error): " + (err?.message || err));
+    }
+    setDownloadingId(null);
+  }
+
   function formatMoney(value: number | null) {
-    return `$${Number(value || 0).toFixed(2)}`;
+    const n = Number(value || 0);
+    return n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
   }
 
   function formatDate(value: string | null) {
@@ -110,7 +135,7 @@ export default function InvoicesPage() {
         <div className="rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #16a34a" }}>
           <h1 className="text-2xl font-bold text-black">Invoices</h1>
           <p className="mt-1 text-sm text-black">
-            View your monthly invoices and charge breakdown.
+            View your monthly invoices and charge breakdown, or download a printable PDF.
           </p>
         </div>
 
@@ -149,7 +174,7 @@ export default function InvoicesPage() {
                         >
                           {invoice.status || "Pending"}
                         </span>
-                        <span className="text-lg font-bold text-black">
+                        <span className="font-bold text-black">
                           {formatMoney(invoice.total_amount)}
                         </span>
                       </div>
@@ -157,25 +182,32 @@ export default function InvoicesPage() {
 
                     {isOpen && (
                       <div className="mt-3 border-t pt-3">
-                        {(itemsByInvoice[invoice.id] || []).length === 0 ? (
-                          <p className="text-sm text-gray-500">Loading details...</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {(itemsByInvoice[invoice.id] || []).map((item) => (
-                              <div
-                                key={item.id}
-                                className="flex items-center justify-between text-sm"
-                              >
-                                <span className="text-black">
-                                  {item.description || item.charge_type}
-                                </span>
-                                <span className="font-semibold text-black">
-                                  {formatMoney(item.amount)}
-                                </span>
-                              </div>
-                            ))}
+                        {(itemsByInvoice[invoice.id] || []).map((item) => (
+                          <div key={item.id} className="flex justify-between py-1 text-sm text-black">
+                            <span>{item.description || item.charge_type || "Charge"}</span>
+                            <span style={{ color: Number(item.amount || 0) < 0 ? "#16a34a" : undefined }}>
+                              {formatMoney(item.amount)}
+                            </span>
                           </div>
-                        )}
+                        ))}
+                        <button
+                          onClick={() => downloadInvoicePdf(invoice.id)}
+                          disabled={downloadingId === invoice.id}
+                          style={{
+                            marginTop: 12,
+                            background: "#000",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "8px 16px",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: downloadingId === invoice.id ? "default" : "pointer",
+                            opacity: downloadingId === invoice.id ? 0.7 : 1,
+                          }}
+                        >
+                          {downloadingId === invoice.id ? "Preparing..." : "⬇ Download PDF"}
+                        </button>
                       </div>
                     )}
                   </div>
