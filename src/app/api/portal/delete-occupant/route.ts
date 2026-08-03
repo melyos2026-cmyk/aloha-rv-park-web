@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   // the occupant's id.
   const { data: existing } = await supabase
     .from("resident_occupants")
-    .select("id, resident_id")
+    .select("id, resident_id, occupant_type, full_name")
     .eq("id", occupantId)
     .maybeSingle();
 
@@ -46,12 +46,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const isVisitor = existing.occupant_type === "visitor";
   await supabase.from("resident_update_notifications").insert({
     company_id: resident.company_id,
     resident_id: residentId,
     resident_name: resident.full_name,
-    update_type: "visitor_removed",
-    message: `${resident.full_name} removed a visitor.`,
+    update_type: isVisitor ? "visitor_removed" : "occupant_removed",
+    message: `${resident.full_name} removed a ${isVisitor ? "visitor" : "household occupant"}${existing.full_name ? `: ${existing.full_name}` : ""}.`,
   });
 
   return NextResponse.json({ success: true });

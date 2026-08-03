@@ -361,6 +361,10 @@ export default function ResidentDashboard() {
     }
   }
 
+  // Despite the name (kept to avoid touching every call site), this now
+  // works for both Visitors and Household Occupants — Aug 3, per Mely's
+  // request to let residents remove/edit a household occupant who moved
+  // out, not just contact park management.
   function startEditVisitor(person: any) {
     setOccupantMessage("");
     setEditingVisitorId(person.id);
@@ -370,12 +374,12 @@ export default function ResidentDashboard() {
     setOccEmail(person.email || "");
     setOccStayStart(person.stay_start_date || "");
     setOccStayEnd(person.stay_end_date || "");
-    setOccType("visitor");
+    setOccType(person.occupant_type === "visitor" ? "visitor" : "household");
     setAddingOccupant(true);
   }
 
   async function deleteVisitor(id: string) {
-    if (!confirm("Remove this visitor?")) return;
+    if (!confirm("Remove this person?")) return;
     setOccupantMessage("");
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
@@ -388,13 +392,13 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setOccupantMessage("Could not remove visitor: " + (result?.error || res.status));
+        setOccupantMessage("Could not remove: " + (result?.error || res.status));
         return;
       }
 
       loadResidentDashboard();
     } catch (err: any) {
-      setOccupantMessage("Could not remove visitor (unexpected error): " + (err?.message || err));
+      setOccupantMessage("Could not remove (unexpected error): " + (err?.message || err));
     }
   }
 
@@ -859,13 +863,13 @@ export default function ResidentDashboard() {
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18 }}>Household Occupants</h2>
-              <button onClick={() => { setOccType("household"); setEditingVisitorId(null); setAddingOccupant(!addingOccupant); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {addingOccupant && occType === "household" && !editingVisitorId ? "Cancel" : "+ Add"}
+              <button onClick={() => { setOccType("household"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setAddingOccupant(!addingOccupant || occType !== "household"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                {addingOccupant && occType === "household" ? "Cancel" : "+ Add"}
               </button>
             </div>
-            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>People living here permanently. Contact park management to edit or remove.</p>
+            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>People living here permanently.</p>
 
-            {addingOccupant && occType === "household" && !editingVisitorId && (
+            {addingOccupant && occType === "household" && (
               <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                   <input placeholder="Full Name" value={occFullName} onChange={e => setOccFullName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
@@ -873,7 +877,9 @@ export default function ResidentDashboard() {
                   <input placeholder="Phone" value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Email" value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                 </div>
-                <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
+                  {editingVisitorId ? "Update Occupant" : "Save"}
+                </button>
                 {occupantMessage && occType === "household" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith("Could not") || occupantMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
               </div>
             )}
@@ -883,6 +889,10 @@ export default function ResidentDashboard() {
                 <p style={{ fontWeight: 700 }}>{person.full_name}</p>
                 <p style={{ fontSize: 13 }}>{person.relationship}</p>
                 <p style={{ color: "var(--gray)", fontSize: 13 }}>{person.phone} {person.email}</p>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button onClick={() => startEditVisitor(person)} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Edit</button>
+                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "#fff", color: "#dc2626", border: "1px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Remove</button>
+                </div>
               </div>
             ))}
             {occupants.filter(p => p.occupant_type !== "visitor").length === 0 && <p style={{ color: "var(--gray)" }}>No household occupants listed.</p>}
