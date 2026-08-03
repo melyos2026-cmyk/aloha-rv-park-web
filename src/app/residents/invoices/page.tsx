@@ -25,6 +25,9 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  // Search by month name or year (Aug 3, per Mely's request) — invoice_month
+  // is stored like "August 2026", so a plain substring match covers both.
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     loadInvoices();
@@ -42,10 +45,6 @@ export default function InvoicesPage() {
       return;
     }
 
-    // SECURITY (Aug 3, item #17): moved from a direct client-side Supabase
-    // read (anon key, bare localStorage resident_id, no session check) to
-    // a session-guarded server route — same gap found/fixed in
-    // payment-history.
     try {
       const res = await fetch(`/api/portal/invoices?residentId=${residentId}`);
       const result = await res.json();
@@ -109,7 +108,7 @@ export default function InvoicesPage() {
 
   function formatDate(value: string | null) {
     if (!value) return "No due date";
-    return new Date(value).toLocaleDateString();
+    return new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
   }
 
   function statusColor(status: string | null) {
@@ -118,6 +117,10 @@ export default function InvoicesPage() {
     if (s === "pending") return { bg: "#fef9c3", text: "#854d0e" };
     return { bg: "#f3f4f6", text: "#374151" };
   }
+
+  const filteredInvoices = invoices.filter((inv) =>
+    (inv.invoice_month || "").toLowerCase().includes(search.trim().toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -132,9 +135,9 @@ export default function InvoicesPage() {
   return (
     <main className="min-h-screen p-6" style={{ backgroundColor: "#e1f8f7" }}>
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #16a34a" }}>
-          <h1 className="text-2xl font-bold text-black">Invoices</h1>
-          <p className="mt-1 text-sm text-black">
+        <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #16a34a" }}>
+          <h1 className="text-3xl font-bold text-black">Invoices</h1>
+          <p className="mt-2 text-base text-black">
             View your monthly invoices and charge breakdown, or download a printable PDF.
           </p>
         </div>
@@ -145,75 +148,126 @@ export default function InvoicesPage() {
           </div>
         )}
 
+        {/* Search */}
         <div className="rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #16a34a" }}>
-          {invoices.length === 0 ? (
-            <p className="text-black">No invoices found yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {invoices.map((invoice) => {
-                const colors = statusColor(invoice.status);
-                const isOpen = expanded === invoice.id;
-                return (
-                  <div key={invoice.id} className="rounded-lg border p-4">
-                    <button
-                      onClick={() => toggleExpand(invoice.id)}
-                      className="flex w-full items-center justify-between text-left"
-                    >
-                      <div>
-                        <p className="font-semibold text-black">
-                          {invoice.invoice_month || "Invoice"}
-                        </p>
-                        <p className="text-sm text-black">
-                          Due: {formatDate(invoice.due_date)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="rounded-full px-3 py-1 text-xs font-semibold"
-                          style={{ backgroundColor: colors.bg, color: colors.text }}
-                        >
-                          {invoice.status || "Pending"}
-                        </span>
-                        <span className="font-bold text-black">
-                          {formatMoney(invoice.total_amount)}
-                        </span>
-                      </div>
-                    </button>
+          <label style={{ fontSize: 13, fontWeight: 700, color: "#000", display: "block", marginBottom: 8 }}>
+            Search by month or year
+          </label>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="e.g. August, or 2026"
+            style={{
+              width: "100%",
+              border: "1.5px solid #d1d5db",
+              borderRadius: 8,
+              padding: "12px 14px",
+              fontSize: 15,
+            }}
+          />
+        </div>
 
-                    {isOpen && (
-                      <div className="mt-3 border-t pt-3">
-                        {(itemsByInvoice[invoice.id] || []).map((item) => (
-                          <div key={item.id} className="flex justify-between py-1 text-sm text-black">
-                            <span>{item.description || item.charge_type || "Charge"}</span>
-                            <span style={{ color: Number(item.amount || 0) < 0 ? "#16a34a" : undefined }}>
-                              {formatMoney(item.amount)}
-                            </span>
-                          </div>
-                        ))}
-                        <button
-                          onClick={() => downloadInvoicePdf(invoice.id)}
-                          disabled={downloadingId === invoice.id}
+        {/* Invoices — spacious cards */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {filteredInvoices.length === 0 ? (
+            <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #16a34a" }}>
+              <p className="text-black">
+                {invoices.length === 0 ? "No invoices found yet." : "No invoices match your search."}
+              </p>
+            </div>
+          ) : (
+            filteredInvoices.map((invoice) => {
+              const colors = statusColor(invoice.status);
+              const isOpen = expanded === invoice.id;
+              return (
+                <div
+                  key={invoice.id}
+                  className="rounded-xl bg-white shadow"
+                  style={{ border: "1px solid #16a34a", overflow: "hidden" }}
+                >
+                  <button
+                    onClick={() => toggleExpand(invoice.id)}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      textAlign: "left",
+                      padding: "24px 28px",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div>
+                      <p style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 6 }}>
+                        {invoice.invoice_month || "Invoice"}
+                      </p>
+                      <p style={{ fontSize: 14, color: "#4b5563" }}>Due: {formatDate(invoice.due_date)}</p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <span
+                        style={{
+                          borderRadius: 999,
+                          padding: "6px 16px",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          backgroundColor: colors.bg,
+                          color: colors.text,
+                        }}
+                      >
+                        {invoice.status || "Pending"}
+                      </span>
+                      <span style={{ fontSize: 22, fontWeight: 800, color: "#000" }}>
+                        {formatMoney(invoice.total_amount)}
+                      </span>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div style={{ borderTop: "1px solid #e5e7eb", padding: "20px 28px" }}>
+                      {(itemsByInvoice[invoice.id] || []).map((item) => (
+                        <div
+                          key={item.id}
                           style={{
-                            marginTop: 12,
-                            background: "#000",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: 6,
-                            padding: "8px 16px",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            cursor: downloadingId === invoice.id ? "default" : "pointer",
-                            opacity: downloadingId === invoice.id ? 0.7 : 1,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            padding: "10px 0",
+                            fontSize: 15,
+                            color: "#000",
+                            borderBottom: "1px solid #f3f4f6",
                           }}
                         >
-                          {downloadingId === invoice.id ? "Preparing..." : "⬇ Download PDF"}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                          <span>{item.description || item.charge_type || "Charge"}</span>
+                          <span style={{ fontWeight: 600, color: Number(item.amount || 0) < 0 ? "#16a34a" : "#000" }}>
+                            {formatMoney(item.amount)}
+                          </span>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => downloadInvoicePdf(invoice.id)}
+                        disabled={downloadingId === invoice.id}
+                        style={{
+                          marginTop: 20,
+                          background: "#000",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: 8,
+                          padding: "12px 24px",
+                          fontSize: 14,
+                          fontWeight: 700,
+                          cursor: downloadingId === invoice.id ? "default" : "pointer",
+                          opacity: downloadingId === invoice.id ? 0.7 : 1,
+                        }}
+                      >
+                        {downloadingId === invoice.id ? "Preparing..." : "⬇ Download PDF"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </div>

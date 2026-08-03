@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const { data: invoice } = await supabase
     .from("resident_invoices")
-    .select("id, resident_id, company_id, invoice_month, due_date, status, total_amount")
+    .select("id, resident_id, company_id, invoice_month, due_date, status, total_amount, created_at")
     .eq("id", invoiceId)
     .maybeSingle();
 
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const { data: resident } = await supabase
     .from("resident_accounts")
-    .select("full_name")
+    .select("full_name, rv_lots(lot_name)")
     .eq("id", residentId)
     .maybeSingle();
 
@@ -47,7 +47,9 @@ export async function GET(req: NextRequest) {
     companyAddress: company?.address || null,
     companyLogoUrl: company?.logo_url || null,
     residentName: resident?.full_name || "Resident",
+    residentLot: (resident as any)?.rv_lots?.lot_name || null,
     invoiceMonth: invoice.invoice_month || "Invoice",
+    issuedDate: invoice.created_at,
     dueDate: invoice.due_date,
     status: invoice.status,
     lineItems: (items || []).map((i) => ({
