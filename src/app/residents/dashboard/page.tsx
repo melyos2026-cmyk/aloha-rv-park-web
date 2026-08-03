@@ -35,8 +35,8 @@ export default function ResidentDashboard() {
   const router = useRouter();
 
   const [editingInfo, setEditingInfo] = useState(false);
-  const [formEmail, setFormEmail] = useState("");
   const [formPhone, setFormPhone] = useState("");
+  const [formEmail, setFormEmail] = useState("");
   const [formEmergencyName, setFormEmergencyName] = useState("");
   const [formEmergencyPhone, setFormEmergencyPhone] = useState("");
   const [formEmergencyRelationship, setFormEmergencyRelationship] = useState("");
@@ -279,6 +279,10 @@ export default function ResidentDashboard() {
 
   function openEditInfo() {
     setFormPhone(resident.phone || "");
+    setFormEmail(resident.email || "");
+    setFormEmergencyName(resident.emergency_contact_name || "");
+    setFormEmergencyPhone(resident.emergency_contact_phone || "");
+    setFormEmergencyRelationship(resident.emergency_contact_relationship || "");
     setEditingInfo(true);
   }
 
@@ -293,7 +297,14 @@ export default function ResidentDashboard() {
       const res = await fetch("/api/portal/save-resident-info", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ residentId: resident.id, phone: formPhone.trim() }),
+        body: JSON.stringify({
+          residentId: resident.id,
+          phone: formPhone.trim(),
+          email: formEmail.trim(),
+          emergencyContactName: formEmergencyName.trim(),
+          emergencyContactPhone: formEmergencyPhone.trim(),
+          emergencyContactRelationship: formEmergencyRelationship.trim(),
+        }),
       });
       const result = await res.json();
       if (!res.ok) {
@@ -591,14 +602,16 @@ export default function ResidentDashboard() {
               <div style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <h2 style={{ fontWeight: 900, fontSize: 18 }}>Resident Information</h2>
-                  <button onClick={openEditInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit Phone</button>
+                  <button onClick={openEditInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
                 </div>
                 <p><strong>Email:</strong> {resident.email || "No email"}</p>
-                <p style={{ fontSize: 11, color: "var(--gray)" }}>To change your email, please contact park management.</p>
                 <p style={{ marginTop: 8 }}><strong>Phone:</strong> {resident.phone || "No phone"}</p>
               </div>
               <div style={card}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Emergency Contact</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <h2 style={{ fontWeight: 900, fontSize: 18 }}>Emergency Contact</h2>
+                  <button onClick={openEditInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                </div>
                 <p><strong>Name:</strong> {resident.emergency_contact_name || "None"}</p>
                 <p><strong>Phone:</strong> {resident.emergency_contact_phone || "None"}</p>
                 <p><strong>Relationship:</strong> {resident.emergency_contact_relationship || "None"}</p>
@@ -606,8 +619,30 @@ export default function ResidentDashboard() {
             </div>
           ) : (
             <div style={card}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Phone Number</h2>
-              <input placeholder="Phone" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit My Information</h2>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Email</label>
+                  <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Phone</label>
+                  <input placeholder="Phone" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Emergency Contact Name</label>
+                  <input placeholder="Name" value={formEmergencyName} onChange={e => setFormEmergencyName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Emergency Contact Phone</label>
+                  <input placeholder="Phone" value={formEmergencyPhone} onChange={e => setFormEmergencyPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                </div>
+                <div style={{ gridColumn: "span 2" }}>
+                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Emergency Contact Relationship</label>
+                  <input placeholder="e.g. Mother, Spouse, Friend" value={formEmergencyRelationship} onChange={e => setFormEmergencyRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                </div>
+              </div>
+              <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
               <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                 <button onClick={saveResidentInfo} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
                 {residentInfoMessage && <p style={{ fontSize: 13, marginTop: 8, color: residentInfoMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{residentInfoMessage}</p>}
