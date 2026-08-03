@@ -101,7 +101,7 @@ export default function ResidentDashboard() {
 
     const { data: residentData, error: residentError } = await supabase
       .from("resident_accounts")
-      .select("*, rv_lots(lot_name)")
+      .select("*, rv_lots(lot_name), companies(company_name)")
       .eq("id", residentId)
       .single();
 
@@ -547,7 +547,7 @@ export default function ResidentDashboard() {
           <div>
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#d3f8e2", fontWeight: 600, marginBottom: 8 }}>Resident Portal</div>
             <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, marginBottom: 4 }}>Welcome, {resident.full_name}</h1>
-            <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : "Aloha RV Park"}</p>
+            <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : (resident.companies?.company_name || "")}</p>
           </div>
           <button onClick={logout} style={{ background: "transparent", border: "1.5px solid #000000", color: "#000000", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
             Sign Out
