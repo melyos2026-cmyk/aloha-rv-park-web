@@ -40,10 +40,10 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    // Default to true (allow online payments) when this hasn't been
-    // explicitly configured, so we never silently hide an already-working
-    // Pay Now button for a company that just hasn't touched Fee Settings.
-    acceptOnlinePayments: feeSettings ? !!feeSettings.accept_online_payments : true,
+    // Online payments are always accepted (Aug 3) — no longer a toggle in
+    // admin's Fee Settings, so this ignores whatever's stored in the
+    // column and is just always true.
+    acceptOnlinePayments: true,
     autopayAvailable: !!feeSettings?.autopay_available,
   });
 }
