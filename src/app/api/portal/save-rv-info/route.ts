@@ -3,12 +3,12 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
 
 // POST /api/portal/save-rv-info
-// Body: { residentId, rvMake, rvModel, rvYear, rvLengthFt, rvVinOrTag }
+// Body: { residentId, rvType, rvMake, rvModel, rvYear, rvLengthFt, rvVinOrTag }
 // Replaces a direct client-side Supabase write in
 // residents/dashboard/page.tsx (saveRvInfo) found during the final sweep
 // for this table — same pattern as save-resident-info.
 export async function POST(req: NextRequest) {
-  const { residentId, rvMake, rvModel, rvYear, rvLengthFt, rvVinOrTag } = await req.json();
+  const { residentId, rvType, rvMake, rvModel, rvYear, rvLengthFt, rvVinOrTag } = await req.json();
 
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase
     .from("resident_accounts")
     .update({
+      rv_type: rvType || "RV",
       rv_make: (rvMake || "").trim() || null,
       rv_model: (rvModel || "").trim() || null,
       rv_year: (rvYear || "").trim() || null,

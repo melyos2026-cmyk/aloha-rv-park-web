@@ -60,6 +60,7 @@ export default function ResidentDashboard() {
   const [vehState, setVehState] = useState("");
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
 
+  const [rvType, setRvType] = useState("RV");
   const [rvMake, setRvMake] = useState("");
   const [rvModel, setRvModel] = useState("");
   const [rvYear, setRvYear] = useState("");
@@ -107,6 +108,7 @@ export default function ResidentDashboard() {
     setResidentId(residentId);
     setAutopayEnabled(!!residentData?.autopay_enabled);
     setAutopayCardLast4(residentData?.autopay_card_last4 || null);
+    setRvType(residentData?.rv_type || "RV");
     setRvMake(residentData?.rv_make || "");
     setRvModel(residentData?.rv_model || "");
     setRvYear(residentData?.rv_year || "");
@@ -495,6 +497,7 @@ export default function ResidentDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           residentId: resident.id,
+          rvType,
           rvMake: rvMake.trim(),
           rvModel: rvModel.trim(),
           rvYear: rvYear.trim(),
@@ -889,9 +892,9 @@ export default function ResidentDashboard() {
                 <p style={{ fontWeight: 700 }}>{person.full_name}</p>
                 <p style={{ fontSize: 13 }}>{person.relationship}</p>
                 <p style={{ color: "var(--gray)", fontSize: 13 }}>{person.phone} {person.email}</p>
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <button onClick={() => startEditVisitor(person)} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Edit</button>
-                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "#fff", color: "#dc2626", border: "1px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Remove</button>
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
+                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
                 </div>
               </div>
             ))}
@@ -941,9 +944,9 @@ export default function ResidentDashboard() {
                     Stay: {person.stay_start_date || "?"} to {person.stay_end_date || "?"}
                   </p>
                 )}
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <button onClick={() => startEditVisitor(person)} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Edit</button>
-                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "#fff", color: "#dc2626", border: "1px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer" }}>Remove</button>
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
+                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
                 </div>
               </div>
             ))}
@@ -1013,7 +1016,7 @@ export default function ResidentDashboard() {
 
           <div style={{ ...card, marginTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18 }}>🚐 RV Info</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>🏠 Home/Unit Info</h2>
               {!editingRvInfo && (
                 <button
                   onClick={() => { setEditingRvInfo(true); setRvMessage(""); }}
@@ -1027,9 +1030,15 @@ export default function ResidentDashboard() {
             {editingRvInfo ? (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                  <input placeholder="RV Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="RV Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="RV Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <select value={rvType} onChange={e => setRvType(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }}>
+                    <option value="RV">RV</option>
+                    <option value="Park Model">Park Model</option>
+                    <option value="Mobile Home">Mobile Home</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <input placeholder="Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
                 </div>
@@ -1039,14 +1048,15 @@ export default function ResidentDashboard() {
                     disabled={savingRvInfo}
                     style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: savingRvInfo ? "default" : "pointer", opacity: savingRvInfo ? 0.7 : 1 }}
                   >
-                    {savingRvInfo ? "Saving..." : "Save RV Info"}
+                    {savingRvInfo ? "Saving..." : "Save"}
                   </button>
                   {/* Only offer Cancel once there's actually saved data to fall back to
-                      — a resident entering RV info for the first time has nothing to
+                      — a resident entering this info for the first time has nothing to
                       cancel back to, so forcing them into view mode would just show blanks. */}
                   {(resident?.rv_make || resident?.rv_model || resident?.rv_vin_or_tag) && (
                     <button
                       onClick={() => {
+                        setRvType(resident?.rv_type || "RV");
                         setRvMake(resident?.rv_make || "");
                         setRvModel(resident?.rv_model || "");
                         setRvYear(resident?.rv_year || "");
@@ -1064,12 +1074,10 @@ export default function ResidentDashboard() {
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: 14, lineHeight: 1.8 }}>
-                <p><strong>Make:</strong> {rvMake || "—"}</p>
-                <p><strong>Model:</strong> {rvModel || "—"}</p>
-                <p><strong>Year:</strong> {rvYear || "—"}</p>
-                <p><strong>Length:</strong> {rvLengthFt ? `${rvLengthFt} ft` : "—"}</p>
-                <p><strong>VIN / Tag #:</strong> {rvVinOrTag || "—"}</p>
+              <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12 }}>
+                <p style={{ fontWeight: 700 }}>{rvType || "RV"} — {rvYear} {rvMake} {rvModel}</p>
+                <p style={{ fontSize: 13 }}>{rvLengthFt ? `${rvLengthFt} ft` : "Length not set"}</p>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>VIN / Tag #: {rvVinOrTag || "—"}</p>
               </div>
             )}
             {rvMessage && <p style={{ fontSize: 13, marginTop: 8, color: rvMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{rvMessage}</p>}
