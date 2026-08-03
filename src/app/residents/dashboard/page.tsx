@@ -172,17 +172,18 @@ export default function ResidentDashboard() {
     setMoveOutDate(lease?.requested_move_out_date || "");
     setMoveOutNote(lease?.requested_move_out_note || "");
 
-    const { data: occs } = await supabase
-      .from("resident_occupants")
-      .select("*")
-      .eq("resident_id", residentId);
-    setOccupants(occs || []);
-
-    const { data: cars } = await supabase
-      .from("resident_vehicles")
-      .select("*")
-      .eq("resident_id", residentId);
-    setVehicles(cars || []);
+    // FOUND THE ROOT CAUSE (Aug 3): resident_occupants and resident_vehicles
+    // both have a deny-all RLS policy, so these direct anon-key reads
+    // always silently returned zero rows — even right after a successful
+    // save via the new session-guarded routes — making saves look like
+    // they never happened. Moved to a server route (Service Role Key).
+    const occVehData = await fetch(
+      `/api/portal/occupants-vehicles?residentId=${residentId}`
+    )
+      .then((r) => r.json())
+      .catch(() => null);
+    setOccupants(occVehData?.occupants || []);
+    setVehicles(occVehData?.vehicles || []);
 
     const { data: pays } = await supabase
       .from("resident_payments")
