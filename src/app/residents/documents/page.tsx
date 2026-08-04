@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type Lease = {
   id: string;
@@ -52,6 +53,13 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Resident self-upload (Aug 3, per Mely): lets a resident add their own
+  // documents (ID, insurance, registration, etc.) so the admin can view
+  // them if ever needed.
+  const [uploadType, setUploadType] = useState("id");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
 
   useEffect(() => {
     loadDocuments();
@@ -83,6 +91,66 @@ export default function DocumentsPage() {
       setMessage("Could not load your documents (unexpected error): " + (err?.message || err));
     }
     setLoading(false);
+  }
+
+  async function uploadDocument() {
+    if (!uploadFile) {
+      setUploadMessage("Please choose a file first.");
+      return;
+    }
+
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) {
+      setUploadMessage("Please log in again.");
+      return;
+    }
+
+    setUploading(true);
+    setUploadMessage("");
+
+    try {
+      const cleanFileName = uploadFile.name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9._-]/g, "_");
+      const filePath = `residents/${residentId}/${Date.now()}-${cleanFileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("company-assets")
+        .upload(filePath, uploadFile);
+
+      if (uploadError) {
+        setUploadMessage("Could not upload file: " + uploadError.message);
+        setUploading(false);
+        return;
+      }
+
+      const { data: urlData } = supabase.storage.from("company-assets").getPublicUrl(filePath);
+
+      const res = await fetch("/api/portal/upload-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId,
+          fileName: uploadFile.name,
+          fileUrl: urlData.publicUrl,
+          documentType: uploadType,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setUploadMessage("Could not save document: " + (result?.error || res.status));
+        setUploading(false);
+        return;
+      }
+
+      setUploadMessage("✅ Document uploaded.");
+      setUploadFile(null);
+      loadDocuments();
+    } catch (err: any) {
+      setUploadMessage("Could not upload document (unexpected error): " + (err?.message || err));
+    }
+    setUploading(false);
   }
 
   const cardStyle = {
@@ -198,9 +266,60 @@ export default function DocumentsPage() {
           )}
         </div>
 
-        {otherDocuments.length > 0 && (
-          <div style={cardStyle}>
-            <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>OTHER DOCUMENTS</p>
+        <div style={cardStyle}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>OTHER DOCUMENTS</p>
+
+          <div style={{ borderRadius: 10, border: "1px dashed #d1d5db", padding: 20, marginBottom: 20 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 12 }}>
+              Upload a document (ID, insurance, registration, etc.)
+            </p>
+            <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
+              The park office can view anything you upload here, in case it's ever needed.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <select
+                value={uploadType}
+                onChange={(e) => setUploadType(e.target.value)}
+                style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "10px 12px", fontSize: 14 }}
+              >
+                <option value="id">ID</option>
+                <option value="insurance">Insurance</option>
+                <option value="registration">Registration</option>
+                <option value="general">General</option>
+              </select>
+              <input
+                type="file"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                style={{ fontSize: 14 }}
+              />
+              <button
+                onClick={uploadDocument}
+                disabled={uploading}
+                style={{
+                  background: "#000",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "10px 18px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: uploading ? "default" : "pointer",
+                  opacity: uploading ? 0.7 : 1,
+                }}
+              >
+                {uploading ? "Uploading..." : "Upload"}
+              </button>
+            </div>
+            {uploadMessage && (
+              <p style={{ fontSize: 13, marginTop: 10, color: uploadMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>
+                {uploadMessage}
+              </p>
+            )}
+          </div>
+
+          {otherDocuments.length === 0 ? (
+            <p style={{ color: "#6b7280", fontSize: 14 }}>No documents uploaded yet.</p>
+          ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {otherDocuments.map((doc) => (
                 <div
@@ -234,8 +353,8 @@ export default function DocumentsPage() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );
