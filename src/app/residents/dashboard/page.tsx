@@ -34,12 +34,18 @@ export default function ResidentDashboard() {
   const [moveOutMessage, setMoveOutMessage] = useState("");
   const router = useRouter();
 
-  const [editingInfo, setEditingInfo] = useState(false);
+  // Split into two independent edit toggles (Aug 4) so clicking Edit on
+  // Resident Information no longer also opens/shows Emergency Contact's
+  // fields, and vice versa — previously both Edit buttons shared one
+  // combined editingInfo form.
+  const [editingResidentInfo, setEditingResidentInfo] = useState(false);
+  const [editingEmergencyContact, setEditingEmergencyContact] = useState(false);
   const [formPhone, setFormPhone] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formEmergencyName, setFormEmergencyName] = useState("");
   const [formEmergencyPhone, setFormEmergencyPhone] = useState("");
   const [formEmergencyRelationship, setFormEmergencyRelationship] = useState("");
+  const [emergencyContactMessage, setEmergencyContactMessage] = useState("");
 
   const [addingOccupant, setAddingOccupant] = useState(false);
   const [occType, setOccType] = useState("household");
@@ -278,22 +284,31 @@ export default function ResidentDashboard() {
     setMoveOutSubmitting(false);
   }
 
-  function openEditInfo() {
+  function openEditResidentInfo() {
     setFormPhone(resident.phone || "");
     setFormEmail(resident.email || "");
+    setResidentInfoMessage("");
+    setEditingResidentInfo(true);
+  }
+
+  function openEditEmergencyContact() {
     setFormEmergencyName(resident.emergency_contact_name || "");
     setFormEmergencyPhone(resident.emergency_contact_phone || "");
     setFormEmergencyRelationship(resident.emergency_contact_relationship || "");
-    setEditingInfo(true);
+    setEmergencyContactMessage("");
+    setEditingEmergencyContact(true);
   }
 
+  // SECURITY (Aug 2): moved from a direct client-side Supabase update to a
+  // session-guarded server route — see /api/portal/save-resident-info.
+  // Uses an inline message instead of alert() (Aug 2 debugging) — alert()
+  // can be silently suppressed by some mobile browsers/in-app webviews,
+  // which made earlier failures look like "nothing happened."
+  // Split (Aug 4) into two independent saves — each only sends its own
+  // section's fields; the route already fills in the other side's current
+  // values when a field is omitted, so neither save can clobber the other.
   async function saveResidentInfo() {
     setResidentInfoMessage("");
-    // SECURITY (Aug 2): moved from a direct client-side Supabase update to
-    // a session-guarded server route — see /api/portal/save-resident-info.
-    // Uses an inline message instead of alert() (Aug 2 debugging) — alert()
-    // can be silently suppressed by some mobile browsers/in-app webviews,
-    // which made earlier failures look like "nothing happened."
     try {
       const res = await fetch("/api/portal/save-resident-info", {
         method: "POST",
@@ -302,9 +317,6 @@ export default function ResidentDashboard() {
           residentId: resident.id,
           phone: formPhone.trim(),
           email: formEmail.trim(),
-          emergencyContactName: formEmergencyName.trim(),
-          emergencyContactPhone: formEmergencyPhone.trim(),
-          emergencyContactRelationship: formEmergencyRelationship.trim(),
         }),
       });
       const result = await res.json();
@@ -313,10 +325,36 @@ export default function ResidentDashboard() {
         return;
       }
 
-      setEditingInfo(false);
+      setEditingResidentInfo(false);
       loadResidentDashboard();
     } catch (err: any) {
       setResidentInfoMessage("Could not save changes (unexpected error): " + (err?.message || err));
+    }
+  }
+
+  async function saveEmergencyContact() {
+    setEmergencyContactMessage("");
+    try {
+      const res = await fetch("/api/portal/save-resident-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId: resident.id,
+          emergencyContactName: formEmergencyName.trim(),
+          emergencyContactPhone: formEmergencyPhone.trim(),
+          emergencyContactRelationship: formEmergencyRelationship.trim(),
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setEmergencyContactMessage("Could not save changes: " + (result?.error || res.status));
+        return;
+      }
+
+      setEditingEmergencyContact(false);
+      loadResidentDashboard();
+    } catch (err: any) {
+      setEmergencyContactMessage("Could not save changes (unexpected error): " + (err?.message || err));
     }
   }
 
@@ -597,60 +635,76 @@ export default function ResidentDashboard() {
             </div>
           )}
 
-          {/* Resident + Emergency info */}
-          {!editingInfo ? (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {/* Resident + Emergency info — each card edits independently (Aug 4):
+              opening one no longer shows or affects the other's fields. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {!editingResidentInfo ? (
               <div style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <h2 style={{ fontWeight: 900, fontSize: 18 }}>Resident Information</h2>
-                  <button onClick={openEditInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                  <button onClick={openEditResidentInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
                 </div>
                 <p><strong>Email:</strong> {resident.email || "No email"}</p>
                 <p style={{ marginTop: 8 }}><strong>Phone:</strong> {resident.phone || "No phone"}</p>
               </div>
+            ) : (
+              <div style={card}>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Resident Information</h2>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Email</label>
+                    <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Phone</label>
+                    <input placeholder="Phone" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                  </div>
+                </div>
+                <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
+                <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+                  <button onClick={saveResidentInfo} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                  <button onClick={() => setEditingResidentInfo(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                  {residentInfoMessage && <p style={{ fontSize: 13, color: residentInfoMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{residentInfoMessage}</p>}
+                </div>
+              </div>
+            )}
+
+            {!editingEmergencyContact ? (
               <div style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <h2 style={{ fontWeight: 900, fontSize: 18 }}>Emergency Contact</h2>
-                  <button onClick={openEditInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                  <button onClick={openEditEmergencyContact} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
                 </div>
                 <p><strong>Name:</strong> {resident.emergency_contact_name || "None"}</p>
                 <p><strong>Phone:</strong> {resident.emergency_contact_phone || "None"}</p>
                 <p><strong>Relationship:</strong> {resident.emergency_contact_relationship || "None"}</p>
               </div>
-            </div>
-          ) : (
-            <div style={card}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit My Information</h2>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Email</label>
-                  <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+            ) : (
+              <div style={card}>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Emergency Contact</h2>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Name</label>
+                    <input placeholder="Name" value={formEmergencyName} onChange={e => setFormEmergencyName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Phone</label>
+                    <input placeholder="Phone" value={formEmergencyPhone} onChange={e => setFormEmergencyPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Relationship</label>
+                    <input placeholder="e.g. Mother, Spouse, Friend" value={formEmergencyRelationship} onChange={e => setFormEmergencyRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                  </div>
                 </div>
-                <div>
-                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Phone</label>
-                  <input placeholder="Phone" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Emergency Contact Name</label>
-                  <input placeholder="Name" value={formEmergencyName} onChange={e => setFormEmergencyName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Emergency Contact Phone</label>
-                  <input placeholder="Phone" value={formEmergencyPhone} onChange={e => setFormEmergencyPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
-                </div>
-                <div style={{ gridColumn: "span 2" }}>
-                  <label style={{ fontSize: 12, color: "var(--gray)" }}>Emergency Contact Relationship</label>
-                  <input placeholder="e.g. Mother, Spouse, Friend" value={formEmergencyRelationship} onChange={e => setFormEmergencyRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
+                <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+                  <button onClick={saveEmergencyContact} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                  <button onClick={() => setEditingEmergencyContact(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                  {emergencyContactMessage && <p style={{ fontSize: 13, color: emergencyContactMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{emergencyContactMessage}</p>}
                 </div>
               </div>
-              <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
-              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <button onClick={saveResidentInfo} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
-                {residentInfoMessage && <p style={{ fontSize: 13, marginTop: 8, color: residentInfoMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{residentInfoMessage}</p>}
-                <button onClick={() => setEditingInfo(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Rent / Balance */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
