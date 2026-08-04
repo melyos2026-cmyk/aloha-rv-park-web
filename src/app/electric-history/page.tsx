@@ -48,9 +48,22 @@ export default function ElectricHistoryPage() {
     setMessage("");
   }
 
-  const filteredReadings = readings.filter(r =>
-    (r.billing_month || "").toLowerCase().includes(searchMonth.toLowerCase())
-  );
+  // Per Mely (Aug 4): same year-end archiving pattern already used for
+  // Invoices/Payment History — the list only shows the CURRENT year by
+  // default; once a year ends, its entries stay accessible but only via
+  // search, keeping the panel clean for the new year. Computed from
+  // today's actual date so it repeats correctly every Dec 31 → Jan 1
+  // with no code changes needed, until the resident's account eventually
+  // closes (they move out) and everything is deleted for good.
+  const currentYear = String(new Date().getFullYear());
+  const isSearching = searchMonth.trim().length > 0;
+  const filteredReadings = readings.filter(r => {
+    const month = (r.billing_month || "").toLowerCase();
+    if (isSearching) {
+      return month.includes(searchMonth.trim().toLowerCase());
+    }
+    return month.includes(currentYear);
+  });
 
   const currentMonthName = new Date().toLocaleString("en-US", { month: "long" });
 
@@ -89,6 +102,11 @@ export default function ElectricHistoryPage() {
             onChange={e => setSearchMonth(e.target.value)}
             style={{ width: "100%", border: "1.5px solid var(--border)", borderRadius: 6, padding: "12px 14px", fontSize: 14, outline: "none" }}
           />
+          {!isSearching && (
+            <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10 }}>
+              Showing readings for {currentYear}. Search above to find a different month or year.
+            </p>
+          )}
         </div>
 
         <div style={card}>
@@ -113,7 +131,13 @@ export default function ElectricHistoryPage() {
 
         <div style={card}>
           {filteredReadings.length === 0 ? (
-            <p style={{ color: "var(--gray)", fontSize: 14 }}>No electric history found.</p>
+            <p style={{ color: "var(--gray)", fontSize: 14 }}>
+              {readings.length === 0
+                ? "No electric history found."
+                : isSearching
+                ? "No readings match your search."
+                : `No electric readings for ${currentYear} yet.`}
+            </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {filteredReadings.map(reading => (
