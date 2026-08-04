@@ -118,9 +118,21 @@ export default function InvoicesPage() {
     return { bg: "#f3f4f6", text: "#374151" };
   }
 
-  const filteredInvoices = invoices.filter((inv) =>
-    (inv.invoice_month || "").toLowerCase().includes(search.trim().toLowerCase())
-  );
+  // Per Mely (Aug 3): the main screen should only show the CURRENT year's
+  // invoices by default — once a year ends, its invoices stay accessible
+  // but only by searching for that month/year, not shown up front. This is
+  // computed from today's actual date, so it repeats correctly every year
+  // with no code changes needed, all the way until the resident's account
+  // eventually closes (they move out).
+  const currentYear = String(new Date().getFullYear());
+  const isSearching = search.trim().length > 0;
+  const filteredInvoices = invoices.filter((inv) => {
+    const month = (inv.invoice_month || "").toLowerCase();
+    if (isSearching) {
+      return month.includes(search.trim().toLowerCase());
+    }
+    return month.includes(currentYear);
+  });
 
   if (loading) {
     return (
@@ -166,6 +178,11 @@ export default function InvoicesPage() {
               fontSize: 15,
             }}
           />
+          {!isSearching && (
+            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 10 }}>
+              Showing invoices for {currentYear}. Search above to find invoices from a different month or year.
+            </p>
+          )}
         </div>
 
         {/* Invoices — spacious cards */}
@@ -173,7 +190,11 @@ export default function InvoicesPage() {
           {filteredInvoices.length === 0 ? (
             <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
               <p className="text-black">
-                {invoices.length === 0 ? "No invoices found yet." : "No invoices match your search."}
+                {invoices.length === 0
+                  ? "No invoices found yet."
+                  : isSearching
+                  ? "No invoices match your search."
+                  : `No invoices for ${currentYear} yet.`}
               </p>
             </div>
           ) : (
