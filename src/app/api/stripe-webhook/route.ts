@@ -41,6 +41,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    if (session.metadata?.type === "occupant_background_check") {
+      await handleOccupantBackgroundCheckPaid(session);
+      return NextResponse.json({ received: true });
+    }
+
     if (session.metadata?.productId) {
       await handlePropanePaid(session);
       return NextResponse.json({ received: true });
@@ -606,6 +611,75 @@ async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
         message: `${application.full_name || "An applicant"} paid their Rent-to-Own deposit — $${amountPaid.toFixed(2)}.`,
       });
     }
+  }
+}
+
+// Aug 4 (per Mely): reuses the same real Checkr integration already built
+// for lease-application occupants — creates a real Checkr candidate +
+// invitation (email sent automatically by Checkr) for each Household
+// Occupant paid for in this checkout, one charge covering however many
+// were selected on /residents/background-checks.
+async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Session) {
+  const occupantIdsRaw = session.metadata?.occupant_ids || "";
+  const occupantIds = occupantIdsRaw.split(",").filter(Boolean);
+
+  if (occupantIds.length === 0) {
+    console.log("Occupant background check webhook missing occupant_ids metadata");
+    return;
+  }
+
+  const { data: occupants, error } = await supabase
+    .from("resident_occupants")
+    .select("id, full_name, email, resident_id, company_id")
+    .in("id", occupantIds);
+
+  if (error || !occupants || occupants.length === 0) {
+    console.log("Occupant background check webhook: could not load occupants", error?.message);
+    return;
+  }
+
+  const { data: resident } = await supabase
+    .from("resident_accounts")
+    .select("full_name, email, company_id")
+    .eq("id", occupants[0].resident_id)
+    .maybeSingle();
+
+  for (const occupant of occupants) {
+    try {
+      // customId format "occupant::<occupantId>" — distinguishes this
+      // from the "<applicationId>::<personKey>" format used for lease
+      // applications, so the Checkr webhook can tell which table to
+      // update when results come back.
+      const { candidateId } = await createCheckrInvitation({
+        applicationId: "occupant",
+        personKey: occupant.id,
+        email: occupant.email || resident?.email || "",
+        fullName: occupant.full_name,
+      });
+
+      await supabase
+        .from("resident_occupants")
+        .update({
+          checkr_candidate_id: candidateId,
+          background_check_status: "invitation_sent",
+          background_check_fee_paid: true,
+        })
+        .eq("id", occupant.id);
+    } catch (err: any) {
+      console.log(`Could not create Checkr invitation for occupant ${occupant.id}:`, err.message);
+    }
+  }
+
+  if (resident?.company_id) {
+    await supabase.from("resident_update_notifications").insert({
+      company_id: resident.company_id,
+      resident_id: occupants[0].resident_id,
+      resident_name: resident.full_name || null,
+      update_type: "occupant_background_check_paid",
+      message: `${resident.full_name || "A resident"} paid for a background check for: ${occupants
+        .map((o) => o.full_name)
+        .join(", ")}.`,
+    });
   }
 }
 

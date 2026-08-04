@@ -25,6 +25,21 @@ function billingMonthKey(label: string): number {
   return year * 12 + idx;
 }
 
+// Aug 4 (per Mely): same age calculation already used server-side for
+// lease-application occupants (src/app/api/stripe-webhook/route.ts) —
+// duplicated here (null-safe) since Household Occupants' age needs to be
+// shown live in the UI, not just checked at payment time.
+function calculateAge(dateOfBirth: string | null | undefined): number | null {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  if (isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 export default function ResidentDashboard() {
   const [resident, setResident] = useState<any>(null);
   const [occupants, setOccupants] = useState<any[]>([]);
@@ -75,6 +90,11 @@ export default function ResidentDashboard() {
   const [occEmail, setOccEmail] = useState("");
   const [occStayStart, setOccStayStart] = useState("");
   const [occStayEnd, setOccStayEnd] = useState("");
+  // Household Occupants — Date of Birth (Aug 4, per Mely): required so the
+  // system can tell whether an occupant is 18+ and therefore needs a
+  // background check before move-in is compliant (skipping it risks lease
+  // termination, per Mely). Visitors don't need this.
+  const [occDateOfBirth, setOccDateOfBirth] = useState("");
   const [editingVisitorId, setEditingVisitorId] = useState<string | null>(null);
 
   const [addingVehicle, setAddingVehicle] = useState(false);
@@ -409,6 +429,13 @@ export default function ResidentDashboard() {
       setOccupantMessage("Please enter both a Stay Start Date and Stay End Date.");
       return;
     }
+    // Aug 4 (per Mely): Date of Birth is required for Household Occupants
+    // — it's how the system knows whether a background check is legally
+    // required (18+) before move-in is compliant.
+    if (occType === "household" && !occDateOfBirth) {
+      setOccupantMessage("Please enter this person's Date of Birth.");
+      return;
+    }
 
     // SECURITY (Aug 2): moved from direct client-side Supabase
     // insert/update to a session-guarded server route — see
@@ -430,6 +457,7 @@ export default function ResidentDashboard() {
           email: occEmail.trim().toLowerCase(),
           stayStart: occStayStart || null,
           stayEnd: occStayEnd || null,
+          dateOfBirth: occType === "household" ? occDateOfBirth || null : null,
         }),
       });
       const result = await res.json();
@@ -444,6 +472,7 @@ export default function ResidentDashboard() {
       setOccEmail("");
       setOccStayStart("");
       setOccStayEnd("");
+      setOccDateOfBirth("");
       setOccType("household");
       setEditingVisitorId(null);
       setAddingOccupant(false);
@@ -466,6 +495,7 @@ export default function ResidentDashboard() {
     setOccEmail(person.email || "");
     setOccStayStart(person.stay_start_date || "");
     setOccStayEnd(person.stay_end_date || "");
+    setOccDateOfBirth(person.date_of_birth || "");
     setOccType(person.occupant_type === "visitor" ? "visitor" : "household");
     setAddingOccupant(true);
   }
@@ -994,11 +1024,11 @@ export default function ResidentDashboard() {
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18 }}>Household Occupants</h2>
-              <button onClick={() => { setOccType("household"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setAddingOccupant(!addingOccupant || occType !== "household"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={() => { setOccType("household"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setOccDateOfBirth(""); setAddingOccupant(!addingOccupant || occType !== "household"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                 {addingOccupant && occType === "household" ? "Cancel" : "+ Add"}
               </button>
             </div>
-            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>People living here permanently.</p>
+            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>People living here permanently. Anyone 18 or older requires a background check.</p>
 
             {addingOccupant && occType === "household" && (
               <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 16, marginBottom: 12 }}>
@@ -1007,6 +1037,10 @@ export default function ResidentDashboard() {
                   <input placeholder="Relationship" value={occRelationship} onChange={e => setOccRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Phone" value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Email" value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <div style={{ gridColumn: "span 2" }}>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Date of Birth (required)</label>
+                    <input type="date" value={occDateOfBirth} onChange={e => setOccDateOfBirth(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                  </div>
                 </div>
                 <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
                   {editingVisitorId ? "Update Occupant" : "Save"}
@@ -1015,17 +1049,50 @@ export default function ResidentDashboard() {
               </div>
             )}
 
-            {occupants.filter(p => p.occupant_type !== "visitor").map(person => (
-              <div key={person.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginBottom: 8 }}>
-                <p style={{ fontWeight: 700 }}>{person.full_name}</p>
-                <p style={{ fontSize: 13 }}>{person.relationship}</p>
-                <p style={{ color: "var(--gray)", fontSize: 13 }}>{person.phone} {person.email}</p>
-                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                  <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
-                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
+            {occupants.filter(p => p.occupant_type !== "visitor").map(person => {
+              const age = calculateAge(person.date_of_birth);
+              const needsBackgroundCheck = age !== null && age >= 18;
+              const bgStatus = person.background_check_status;
+              const bgDone = bgStatus === "Passed" || bgStatus === "in_progress" || bgStatus === "invitation_sent" || bgStatus === "Needs Review";
+              return (
+                <div key={person.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginBottom: 8 }}>
+                  <p style={{ fontWeight: 700 }}>{person.full_name}</p>
+                  <p style={{ fontSize: 13 }}>{person.relationship}</p>
+                  <p style={{ color: "var(--gray)", fontSize: 13 }}>{person.phone} {person.email}</p>
+                  {age !== null && <p style={{ color: "var(--gray)", fontSize: 12 }}>Age: {age}</p>}
+                  <div style={{ display: "flex", gap: 12, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
+                    <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
+                  </div>
+                  {needsBackgroundCheck && (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: bgDone ? "#f0fdf4" : "#fff7ed", border: bgDone ? "1px solid #bbf7d0" : "1px solid #fed7aa" }}>
+                      {bgDone ? (
+                        <p style={{ fontSize: 12, color: "#166534", fontWeight: 700 }}>
+                          Background check: {bgStatus === "Passed" ? "Passed" : bgStatus === "Needs Review" ? "Needs Review" : "In progress"}
+                        </p>
+                      ) : (
+                        <>
+                          <p style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, marginBottom: 6 }}>
+                            This person is 18 or older — a background check is required before move-in is compliant.
+                          </p>
+                          <p style={{ fontSize: 12, color: "#9a3412", marginBottom: 8 }}>
+                            Please upload a photo ID in Documents, then proceed with the background check.
+                          </p>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <button onClick={() => router.push("/residents/documents")} style={{ background: "#fff", border: "1.5px solid #9a3412", color: "#9a3412", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                              Upload ID
+                            </button>
+                            <button onClick={() => router.push("/residents/background-checks")} style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                              Proceed with Background Check
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {occupants.filter(p => p.occupant_type !== "visitor").length === 0 && <p style={{ color: "var(--gray)" }}>No household occupants listed.</p>}
           </div>
 

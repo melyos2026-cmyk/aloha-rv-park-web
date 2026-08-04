@@ -49,6 +49,28 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
   }
   const { applicationId, personKey } = resolved;
 
+  // Aug 4 (per Mely): Household Occupants added post-move-in use the
+  // customId format "occupant::<occupantId>" (see
+  // handleOccupantBackgroundCheckPaid in stripe-webhook) instead of the
+  // "<applicationId>::<personKey>" format lease-application occupants
+  // use — each occupant is its own row here, so no aggregate/multi-
+  // person logic is needed, just a direct status update.
+  if (applicationId === "occupant") {
+    const occupantId = personKey;
+    const { error: occError } = await supabase
+      .from("resident_occupants")
+      .update({ background_check_status: status })
+      .eq("id", occupantId);
+
+    if (occError) {
+      console.log(`Checkr webhook: could not update occupant ${occupantId}:`, occError.message);
+      return;
+    }
+
+    console.log(`Household Occupant ${occupantId} -> ${status}`);
+    return;
+  }
+
   const { data: application, error } = await supabase
     .from("resident_applications")
     .select("checkr_results")

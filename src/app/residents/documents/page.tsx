@@ -60,10 +60,30 @@ export default function DocumentsPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
+  // Aug 4 (per Mely): lets a resident tag an uploaded ID as belonging to
+  // a specific Household Occupant (needed for the 18+ background check
+  // requirement), instead of it just sitting in a generic pile with no
+  // link to who it's actually for.
+  const [occupants, setOccupants] = useState<any[]>([]);
+  const [uploadForOccupantId, setUploadForOccupantId] = useState("");
 
   useEffect(() => {
     loadDocuments();
+    loadOccupants();
   }, []);
+
+  async function loadOccupants() {
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) return;
+    try {
+      const res = await fetch(`/api/portal/occupants-vehicles?residentId=${residentId}`);
+      const result = await res.json();
+      setOccupants((result.occupants || []).filter((o: any) => o.occupant_type !== "visitor"));
+    } catch {
+      // Non-critical — the "For" selector just won't have occupant
+      // options if this fails; the upload itself still works.
+    }
+  }
 
   async function loadDocuments() {
     setLoading(true);
@@ -135,6 +155,7 @@ export default function DocumentsPage() {
           fileName: uploadFile.name,
           fileUrl: urlData.publicUrl,
           documentType: uploadType,
+          relatedOccupantId: uploadForOccupantId || null,
         }),
       });
       const result = await res.json();
@@ -146,6 +167,7 @@ export default function DocumentsPage() {
 
       setUploadMessage("✅ Document uploaded.");
       setUploadFile(null);
+      setUploadForOccupantId("");
       loadDocuments();
     } catch (err: any) {
       setUploadMessage("Could not upload document (unexpected error): " + (err?.message || err));
@@ -303,6 +325,20 @@ export default function DocumentsPage() {
               The park office can view anything you upload here, in case it's ever needed.
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              {occupants.length > 0 && (
+                <select
+                  value={uploadForOccupantId}
+                  onChange={(e) => setUploadForOccupantId(e.target.value)}
+                  style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "10px 12px", fontSize: 14 }}
+                >
+                  <option value="">This is for: Myself</option>
+                  {occupants.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      This is for: {o.full_name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <select
                 value={uploadType}
                 onChange={(e) => setUploadType(e.target.value)}

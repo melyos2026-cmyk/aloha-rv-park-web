@@ -4,7 +4,7 @@ import { requireMatchingSession } from "@/lib/portalSession";
 
 // POST /api/portal/save-occupant
 // Body: { residentId, occupantId?, occupantType, fullName, relationship,
-//         phone, email, stayStart, stayEnd }
+//         phone, email, stayStart, stayEnd, dateOfBirth }
 // Replaces the previous direct client-side Supabase inserts/updates to
 // resident_occupants in residents/dashboard/page.tsx (addOccupant), which
 // were protected only by RLS (if any) rather than by the real session
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     email,
     stayStart,
     stayEnd,
+    dateOfBirth,
   } = await req.json();
 
   if (!residentId || !fullName || !fullName.trim()) {
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest) {
         email: (email || "").trim().toLowerCase(),
         stay_start_date: stayStart || null,
         stay_end_date: stayEnd || null,
+        ...(dateOfBirth !== undefined ? { date_of_birth: dateOfBirth || null } : {}),
       })
       .eq("id", occupantId);
 
@@ -92,6 +94,7 @@ export async function POST(req: NextRequest) {
     email: (email || "").trim().toLowerCase(),
     stay_start_date: occupantType === "visitor" ? stayStart || null : null,
     stay_end_date: occupantType === "visitor" ? stayEnd || null : null,
+    date_of_birth: occupantType === "household" ? dateOfBirth || null : null,
   });
 
   if (error) {
