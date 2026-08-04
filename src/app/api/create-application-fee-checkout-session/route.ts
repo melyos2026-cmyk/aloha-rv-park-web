@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { resolveConnectSplit } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     const { data: application, error } = await supabase
       .from("resident_applications")
       .select(
-        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount"
+        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total"
       )
       .eq("id", applicationId)
       .single();
@@ -108,11 +109,29 @@ export async function POST(req: Request) {
       });
     }
 
+    // Aug 4 (per Mely, Phase 2): Aloha's share is their already-computed
+    // park_share_total from this application, PLUS the full stay amount
+    // (that's rent revenue, 100% the park's). MelyOS keeps the rest of
+    // the application fee. No split if not connected yet.
+    const totalChargeAmount = feeAmount + stayAmountNum;
+    const alohaShare = (Number(application.park_share_total) || 0) + stayAmountNum;
+    const connectSplit = application.company_id
+      ? await resolveConnectSplit(application.company_id, totalChargeAmount, alohaShare)
+      : null;
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: application.email || undefined,
       line_items: lineItems,
+      ...(connectSplit
+        ? {
+            payment_intent_data: {
+              application_fee_amount: connectSplit.applicationFeeAmountCents,
+              transfer_data: { destination: connectSplit.connectedAccountId },
+            },
+          }
+        : {}),
       metadata: {
         type: "application_fee",
         application_id: application.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const MAX_QTY: Record<string, number> = { "20lb": 20, "30lb": 20, "40lb": 20, forklift: 20, motorhome: 200 };
@@ -72,9 +73,12 @@ export async function POST(req: NextRequest) {
     const lineItemAmount = isGallon ? Math.round(unitAmount * rawQty) : unitAmount;
     const lineItemQty = isGallon ? 1 : rawQty;
 
-    // 4% card processing fee — separate charge, not a tax.
+    // Processing fee — 4% or a fixed minimum, whichever is greater (Aug 4,
+    // per Mely): a flat 4% barely covers Stripe's own 2.9%+$0.30 cut (plus
+    // Connect's payout fee once split) on small orders — propane starts as
+    // low as $18, where a bare 4% actually loses money. See src/lib/platformFee.ts.
     const subtotalCents = lineItemAmount * lineItemQty;
-    const processingFeeCents = Math.round(subtotalCents * 0.04);
+    const processingFeeCents = Math.round(calculateProcessingFee(subtotalCents / 100) * 100);
 
     // Sales tax — per-company rate (works for any state, not hardcoded).
     // tax_mode overrides the product's default "taxable" rule when set:
@@ -125,11 +129,29 @@ export async function POST(req: NextRequest) {
       quantity: 1,
     });
 
+    // Aug 4 (per Mely, Phase 2): if this company has connected their own
+    // Stripe account, split the charge automatically — Aloha's share is
+    // the FULL propane sale (subtotal + tax, their real product revenue);
+    // MelyOS keeps only the processing fee. If not connected yet, charge
+    // normally with no split (doesn't block a company from taking
+    // payments before they've connected).
+    const totalChargeAmount = (subtotalCents + taxCents + processingFeeCents) / 100;
+    const alohaShare = (subtotalCents + taxCents) / 100;
+    const connectSplit = await resolveConnectSplit(company.id, totalChargeAmount, alohaShare);
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: customerEmail || undefined,
       line_items: lineItems,
+      ...(connectSplit
+        ? {
+            payment_intent_data: {
+              application_fee_amount: connectSplit.applicationFeeAmountCents,
+              transfer_data: { destination: connectSplit.connectedAccountId },
+            },
+          }
+        : {}),
       metadata: {
         productId,
         quantity: String(rawQty),

@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { resolveConnectSplit } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+
+// Aug 4 (per Mely): same fixed park share as at original application time
+// (parkSharePerAdditional in src/app/apply/page.tsx) — kept as one constant
+// so both places always agree.
+const PARK_SHARE_PER_OCCUPANT = 5.0;
 
 // POST /api/create-occupant-background-check-checkout-session
 // Body: { residentId, occupantIds: string[] }
@@ -74,6 +80,13 @@ export async function POST(req: Request) {
     const protocol = hostHeader.includes("localhost") ? "http" : "https";
     const siteUrl = `${protocol}://${hostHeader}`;
 
+    // Aug 4 (per Mely, Phase 2): Aloha's share is the fixed $5/occupant;
+    // MelyOS keeps the rest of what the resident paid. No split at all if
+    // this company hasn't connected their own Stripe account yet.
+    const totalChargeAmount = feeAmount * validOccupants.length;
+    const alohaShare = PARK_SHARE_PER_OCCUPANT * validOccupants.length;
+    const connectSplit = await resolveConnectSplit(resident.company_id, totalChargeAmount, alohaShare);
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -93,6 +106,14 @@ export async function POST(req: Request) {
           },
         },
       ],
+      ...(connectSplit
+        ? {
+            payment_intent_data: {
+              application_fee_amount: connectSplit.applicationFeeAmountCents,
+              transfer_data: { destination: connectSplit.connectedAccountId },
+            },
+          }
+        : {}),
       metadata: {
         type: "occupant_background_check",
         resident_id: residentId,

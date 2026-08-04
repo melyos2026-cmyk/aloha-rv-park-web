@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { resolveConnectSplit } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
 
     const { data: application, error } = await supabase
       .from("resident_applications")
-      .select("id, full_name, email, rent_to_own_deposit, rent_to_own_deposit_paid")
+      .select("id, full_name, email, rent_to_own_deposit, rent_to_own_deposit_paid, company_id")
       .eq("id", applicationId)
       .single();
 
@@ -40,6 +41,15 @@ export async function POST(req: Request) {
     const protocol = hostHeader.includes("localhost") ? "http" : "https";
     const siteUrl = `${protocol}://${hostHeader}`;
 
+    // Aug 4 (per Mely, Phase 2): this deposit is 100% the park's money
+    // (goes straight toward the resident's Rent-to-Own balance) — no
+    // processing fee is charged on it today, so MelyOS keeps $0 of it.
+    // Still routes to Aloha's connected account once they've connected,
+    // instead of sitting in MelyOS's account needing a manual transfer.
+    const connectSplit = application.company_id
+      ? await resolveConnectSplit(application.company_id, depositAmount, depositAmount)
+      : null;
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -57,6 +67,14 @@ export async function POST(req: Request) {
           },
         },
       ],
+      ...(connectSplit
+        ? {
+            payment_intent_data: {
+              application_fee_amount: connectSplit.applicationFeeAmountCents,
+              transfer_data: { destination: connectSplit.connectedAccountId },
+            },
+          }
+        : {}),
       metadata: {
         type: "rent_to_own_deposit",
         application_id: application.id,
