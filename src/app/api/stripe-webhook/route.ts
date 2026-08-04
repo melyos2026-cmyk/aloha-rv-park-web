@@ -663,6 +663,13 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
           checkr_candidate_id: candidateId,
           background_check_status: "invitation_sent",
           background_check_fee_paid: true,
+          // Aug 4 (per Mely): same park revenue-share model already used
+          // for the initial lease application's additional-occupant
+          // background checks ($5 fixed per person, parkSharePerAdditional
+          // in src/app/apply/page.tsx) — the rest of what the resident
+          // paid is MelyOS's revenue for providing the screening service.
+          park_share_amount: 5.0,
+          park_share_paid_out: false,
         })
         .eq("id", occupant.id);
     } catch (err: any) {
