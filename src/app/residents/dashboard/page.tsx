@@ -656,8 +656,13 @@ export default function ResidentDashboard() {
           )}
 
           {/* Resident + Emergency info — each card edits independently (Aug 4):
-              opening one no longer shows or affects the other's fields. */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              opening one no longer shows or affects the other's fields.
+              Responsive grid (Aug 4): stacks to a single column on narrow
+              (mobile) screens instead of squeezing both cards side by side
+              — auto-fit/minmax handles this in pure CSS, no JS/media-query
+              needed, since Tailwind's responsive utility classes don't
+              generate CSS in production on this app. */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
             {!editingResidentInfo ? (
               <div style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
