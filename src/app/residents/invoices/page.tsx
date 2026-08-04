@@ -145,11 +145,11 @@ export default function InvoicesPage() {
   }
 
   return (
-    <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
-      <div className="mx-auto max-w-xl space-y-6">
+    <main className="min-h-screen p-8" style={{ backgroundColor: "#f5f6f8" }}>
+      <div className="mx-auto max-w-xl space-y-8">
         <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
           <h1 className="text-3xl font-bold text-black">Invoices</h1>
-          <p className="mt-2 text-base text-black">
+          <p className="mt-3 text-base text-black">
             View your monthly invoices and charge breakdown, or download a printable PDF.
           </p>
         </div>
@@ -161,8 +161,8 @@ export default function InvoicesPage() {
         )}
 
         {/* Search */}
-        <div className="rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
-          <label style={{ fontSize: 13, fontWeight: 700, color: "#000", display: "block", marginBottom: 8 }}>
+        <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
+          <label style={{ fontSize: 13, fontWeight: 700, color: "#000", display: "block", marginBottom: 10 }}>
             Search by month or year
           </label>
           <input
@@ -204,11 +204,12 @@ export default function InvoicesPage() {
               return (
                 <div
                   key={invoice.id}
-                  className="rounded-xl bg-white shadow"
+                  className="rounded-xl bg-white shadow hover:shadow-md transition-shadow"
                   style={{ border: "1px solid #e5e7eb", overflow: "hidden" }}
                 >
                   <button
                     onClick={() => toggleExpand(invoice.id)}
+                    className="hover:bg-gray-50 active:scale-[0.99] transition-all"
                     style={{
                       width: "100%",
                       display: "flex",
