@@ -147,6 +147,20 @@ export default function ResidentDashboard() {
     loadResidentDashboard();
   }, []);
 
+  // Aug 4 (per Mely): arriving via /residents/dashboard#household-occupants
+  // (e.g. from the "+ Add Household Occupant" link on the Background
+  // Checks page) opens the Add form and scrolls straight to it, instead
+  // of leaving the resident to hunt for the section themselves.
+  useEffect(() => {
+    if (window.location.hash === "#household-occupants") {
+      setOccType("household");
+      setAddingOccupant(true);
+      setTimeout(() => {
+        document.getElementById("household-occupants")?.scrollIntoView({ behavior: "smooth" });
+      }, 300);
+    }
+  }, []);
+
   async function loadResidentDashboard() {
     const residentId = localStorage.getItem("resident_id");
     if (!residentId) {
@@ -1051,7 +1065,7 @@ export default function ResidentDashboard() {
           )}
 
           {/* Household Occupants */}
-          <div style={card}>
+          <div id="household-occupants" style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18 }}>Household Occupants</h2>
               <button onClick={() => { setOccType("household"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setOccDateOfBirth(""); setAddingOccupant(!addingOccupant || occType !== "household"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>

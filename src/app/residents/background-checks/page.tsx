@@ -100,6 +100,16 @@ function BackgroundChecksContent() {
 
         {message && <p style={{ color: message.startsWith("Could not") ? "#dc2626" : "var(--gray)" }}>{message}</p>}
 
+        <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <p style={{ fontSize: 13, color: "var(--gray)" }}>Need to add another household occupant before paying?</p>
+          <button
+            onClick={() => router.push("/residents/dashboard#household-occupants")}
+            style={{ background: "#fff", border: "1.5px solid #000", color: "#000", borderRadius: 6, padding: "8px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            + Add Household Occupant
+          </button>
+        </div>
+
         {pending.length === 0 && !message ? (
           <div style={card}>
             <p style={{ color: "var(--gray)" }}>No background checks are pending right now.</p>
