@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Lease = {
@@ -48,8 +48,15 @@ function documentTypeLabel(documentType: string) {
   );
 }
 
-export default function DocumentsPage() {
+function DocumentsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Aug 4 (per Mely): the reminder banner should ONLY show when the
+  // resident arrived here specifically via Household Occupants' "Upload
+  // ID" button (which links to /residents/documents?forOccupant=<id>) —
+  // not for every visit to Documents. Also pre-selects the "This is for"
+  // dropdown to that occupant, one less thing to get wrong.
+  const forOccupantId = searchParams.get("forOccupant") || "";
   const [leases, setLeases] = useState<Lease[]>([]);
   const [otherDocuments, setOtherDocuments] = useState<OtherDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +74,7 @@ export default function DocumentsPage() {
   // requirement), instead of it just sitting in a generic pile with no
   // link to who it's actually for.
   const [occupants, setOccupants] = useState<any[]>([]);
-  const [uploadForOccupantId, setUploadForOccupantId] = useState("");
+  const [uploadForOccupantId, setUploadForOccupantId] = useState(forOccupantId);
   // Aug 4 (per Mely): so a resident who came here to upload an ID doesn't
   // get lost afterward — a persistent banner points them back to
   // /residents/background-checks to actually pay for and start the
@@ -269,25 +276,6 @@ export default function DocumentsPage() {
           </div>
         )}
 
-        {pendingBgChecks.length > 0 && (
-          <div style={{ borderRadius: 8, background: "#fff7ed", border: "1.5px solid #fed7aa", padding: 16 }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#9a3412", marginBottom: 8 }}>
-              {pendingBgChecks.length === 1
-                ? "You still need to pay for and start 1 background check."
-                : `You still need to pay for and start ${pendingBgChecks.length} background checks.`}
-            </p>
-            <p style={{ fontSize: 13, color: "#9a3412", marginBottom: 12 }}>
-              Uploading an ID here doesn't start the check by itself — head back to Background Checks to finish it.
-            </p>
-            <button
-              onClick={() => router.push("/residents/background-checks")}
-              style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-            >
-              Continue to Background Check(s)
-            </button>
-          </div>
-        )}
-
         <div style={cardStyle}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>LEASE AGREEMENT(S)</p>
           {leases.length === 0 ? (
@@ -474,7 +462,7 @@ export default function DocumentsPage() {
           )}
         </div>
 
-        {pendingBgChecks.length > 0 && (
+        {forOccupantId && pendingBgChecks.length > 0 && (
           <div style={{ borderRadius: 8, background: "#fff7ed", border: "2px solid #fb923c", padding: 20 }}>
             <p style={{ fontSize: 15, fontWeight: 700, color: "#9a3412", marginBottom: 8 }}>
               ⚠️ {pendingBgChecks.length === 1
@@ -494,5 +482,21 @@ export default function DocumentsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function DocumentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
+          <div style={{ maxWidth: 640, margin: "0 auto" }}>
+            <p style={{ color: "#000" }}>Loading...</p>
+          </div>
+        </main>
+      }
+    >
+      <DocumentsContent />
+    </Suspense>
   );
 }

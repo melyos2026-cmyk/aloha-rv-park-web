@@ -1100,7 +1100,11 @@ export default function ResidentDashboard() {
                         <p style={{ fontSize: 12, color: "#166534", fontWeight: 700 }}>
                           Background check: {bgStatus === "Passed" ? "Passed" : bgStatus === "Needs Review" ? "Needs Review" : "In progress"}
                         </p>
-                      ) : (
+                      ) : !person.has_id_uploaded ? (
+                        // Aug 4 (per Mely): step 1 only — don't show
+                        // "Proceed with Background Check" until the ID is
+                        // actually uploaded, so the resident isn't
+                        // confused into thinking they can skip ahead.
                         <>
                           <p style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, marginBottom: 6 }}>
                             This person is 18 or older — a background check is required before move-in is compliant.
@@ -1108,14 +1112,19 @@ export default function ResidentDashboard() {
                           <p style={{ fontSize: 12, color: "#9a3412", marginBottom: 8 }}>
                             Please upload a photo ID in Documents, then proceed with the background check.
                           </p>
-                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                            <button onClick={() => router.push("/residents/documents")} style={{ background: "#fff", border: "1.5px solid #9a3412", color: "#9a3412", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                              Upload ID
-                            </button>
-                            <button onClick={() => router.push("/residents/background-checks")} style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                              Proceed with Background Check
-                            </button>
-                          </div>
+                          <button onClick={() => router.push(`/residents/documents?forOccupant=${person.id}`)} style={{ background: "#fff", border: "1.5px solid #9a3412", color: "#9a3412", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            Upload ID
+                          </button>
+                        </>
+                      ) : (
+                        // Step 2 — ID is on file, now they can proceed.
+                        <>
+                          <p style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, marginBottom: 8 }}>
+                            ID received. Now proceed with the background check.
+                          </p>
+                          <button onClick={() => router.push("/residents/background-checks")} style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                            Proceed with Background Check
+                          </button>
                         </>
                       )}
                     </div>

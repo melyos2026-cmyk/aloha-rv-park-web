@@ -31,6 +31,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: occError.message }, { status: 500 });
   }
 
+  // Aug 4 (per Mely): tells the dashboard whether each Household Occupant
+  // already has an ID uploaded, so it can show "Upload ID" first and only
+  // reveal "Proceed with Background Check" once that's actually done —
+  // showing both at the same time confused residents into thinking they
+  // could skip straight to paying.
+  const occupantIds = (occupants || []).map((o) => o.id);
+  let occupantsWithIdFlag = occupants || [];
+  if (occupantIds.length > 0) {
+    const { data: idDocs } = await supabase
+      .from("resident_documents")
+      .select("related_occupant_id")
+      .in("related_occupant_id", occupantIds);
+    const idsWithDocs = new Set((idDocs || []).map((d) => d.related_occupant_id));
+    occupantsWithIdFlag = (occupants || []).map((o) => ({
+      ...o,
+      has_id_uploaded: idsWithDocs.has(o.id),
+    }));
+  }
+
   const { data: vehicles, error: vehError } = await supabase
     .from("resident_vehicles")
     .select("*")
@@ -40,5 +59,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: vehError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ occupants: occupants || [], vehicles: vehicles || [] });
+  return NextResponse.json({ occupants: occupantsWithIdFlag, vehicles: vehicles || [] });
 }
