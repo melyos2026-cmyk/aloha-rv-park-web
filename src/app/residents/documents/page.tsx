@@ -153,6 +153,32 @@ export default function DocumentsPage() {
     setUploading(false);
   }
 
+  async function deleteDocument(documentId: string) {
+    if (!confirm("Remove this document?")) return;
+
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) {
+      setMessage("Please log in again.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/portal/delete-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId, documentId }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setMessage("Could not remove document: " + (result?.error || res.status));
+        return;
+      }
+      loadDocuments();
+    } catch (err: any) {
+      setMessage("Could not remove document (unexpected error): " + (err?.message || err));
+    }
+  }
+
   const cardStyle = {
     borderRadius: 12,
     background: "#fff",
@@ -334,22 +360,39 @@ export default function DocumentsPage() {
                       <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{documentTypeLabel(doc.document_type)}</div>
                     )}
                   </div>
-                  <a
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      background: "#000",
-                      color: "#fff",
-                      padding: "10px 18px",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      fontWeight: 700,
-                      textDecoration: "none",
-                    }}
-                  >
-                    📄 View
-                  </a>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <a
+                      href={doc.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        background: "#000",
+                        color: "#fff",
+                        padding: "10px 18px",
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                      }}
+                    >
+                      📄 View
+                    </a>
+                    <button
+                      onClick={() => deleteDocument(doc.id)}
+                      style={{
+                        background: "none",
+                        border: "1.5px solid #d1d5db",
+                        color: "#dc2626",
+                        padding: "10px 16px",
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
