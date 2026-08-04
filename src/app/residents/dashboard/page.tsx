@@ -9,6 +9,22 @@ const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)
 const label = { color: "var(--gray)", fontSize: 13, marginBottom: 4 };
 const bigNumber = { fontSize: 26, fontWeight: 900 };
 
+// Aug 4: parses a "Month Year" billing label (e.g. "July 2026") into a
+// sortable integer, so the resident's Electric Usage card can be ordered
+// by the real billing period instead of by when admin happened to save
+// it — see the note where this is used below.
+const BILLING_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+function billingMonthKey(label: string): number {
+  const [monthName, yearStr] = (label || "").split(" ");
+  const idx = BILLING_MONTH_NAMES.indexOf(monthName);
+  const year = Number(yearStr);
+  if (idx === -1 || !year) return -Infinity;
+  return year * 12 + idx;
+}
+
 export default function ResidentDashboard() {
   const [resident, setResident] = useState<any>(null);
   const [documents, setDocuments] = useState<any[]>([]);
@@ -170,7 +186,17 @@ export default function ResidentDashboard() {
       .eq("resident_id", residentId)
       .order("created_at", { ascending: false })
       .limit(12);
-    setElectricUsage(electricData || []);
+    // BUG FIX (Aug 4): ordering by created_at (save time) instead of the
+    // actual billing period broke once admin started backfilling past
+    // months — a "July 2026" reading saved AFTER an "August 2026" one has
+    // a LATER created_at, so it wrongly showed as "the current reading"
+    // here. Re-sort by the real month/year the reading is FOR so the most
+    // recent BILLING PERIOD is always shown first, regardless of the
+    // order things were entered in admin.
+    const sortedElectric = [...(electricData || [])].sort(
+      (a, b) => billingMonthKey(b.billing_month) - billingMonthKey(a.billing_month)
+    );
+    setElectricUsage(sortedElectric);
 
     const { data: docs } = await supabase
       .from("resident_documents")
