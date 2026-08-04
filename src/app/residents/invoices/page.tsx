@@ -137,7 +137,7 @@ export default function InvoicesPage() {
   if (loading) {
     return (
       <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
-        <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
+        <div className="mx-auto max-w-xl rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
           <p className="text-black">Loading invoices...</p>
         </div>
       </main>
@@ -146,7 +146,7 @@ export default function InvoicesPage() {
 
   return (
     <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="mx-auto max-w-xl space-y-6">
         <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
           <h1 className="text-3xl font-bold text-black">Invoices</h1>
           <p className="mt-2 text-base text-black">
@@ -186,7 +186,7 @@ export default function InvoicesPage() {
         </div>
 
         {/* Invoices — spacious cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 28 }}>
           {filteredInvoices.length === 0 ? (
             <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
               <p className="text-black">
