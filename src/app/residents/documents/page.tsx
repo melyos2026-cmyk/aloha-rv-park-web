@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Lease = {
@@ -48,6 +49,7 @@ function documentTypeLabel(documentType: string) {
 }
 
 export default function DocumentsPage() {
+  const router = useRouter();
   const [leases, setLeases] = useState<Lease[]>([]);
   const [otherDocuments, setOtherDocuments] = useState<OtherDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,11 +68,29 @@ export default function DocumentsPage() {
   // link to who it's actually for.
   const [occupants, setOccupants] = useState<any[]>([]);
   const [uploadForOccupantId, setUploadForOccupantId] = useState("");
+  // Aug 4 (per Mely): so a resident who came here to upload an ID doesn't
+  // get lost afterward — a persistent banner points them back to
+  // /residents/background-checks to actually pay for and start the
+  // check, since uploading the ID alone doesn't do that.
+  const [pendingBgChecks, setPendingBgChecks] = useState<any[]>([]);
 
   useEffect(() => {
     loadDocuments();
     loadOccupants();
+    loadPendingBackgroundChecks();
   }, []);
+
+  async function loadPendingBackgroundChecks() {
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) return;
+    try {
+      const res = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`);
+      const result = await res.json();
+      setPendingBgChecks(result.pending || []);
+    } catch {
+      // Non-critical — the reminder banner just won't show if this fails.
+    }
+  }
 
   async function loadOccupants() {
     const residentId = localStorage.getItem("resident_id");
@@ -246,6 +266,25 @@ export default function DocumentsPage() {
         {message && (
           <div style={{ borderRadius: 8, background: "#fefce8", padding: 16, fontSize: 14, color: "#854d0e" }}>
             {message}
+          </div>
+        )}
+
+        {pendingBgChecks.length > 0 && (
+          <div style={{ borderRadius: 8, background: "#fff7ed", border: "1.5px solid #fed7aa", padding: 16 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#9a3412", marginBottom: 8 }}>
+              {pendingBgChecks.length === 1
+                ? "You still need to pay for and start 1 background check."
+                : `You still need to pay for and start ${pendingBgChecks.length} background checks.`}
+            </p>
+            <p style={{ fontSize: 13, color: "#9a3412", marginBottom: 12 }}>
+              Uploading an ID here doesn't start the check by itself — head back to Background Checks to finish it.
+            </p>
+            <button
+              onClick={() => router.push("/residents/background-checks")}
+              style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+            >
+              Continue to Background Check(s)
+            </button>
           </div>
         )}
 

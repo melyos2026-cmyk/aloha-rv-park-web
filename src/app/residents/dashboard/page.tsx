@@ -44,6 +44,11 @@ export default function ResidentDashboard() {
   const [resident, setResident] = useState<any>(null);
   const [occupants, setOccupants] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
+  // Aug 4 (per Mely): a persistent reminder so a resident who added an
+  // occupant and got sidetracked (uploading an ID, etc.) doesn't lose
+  // track of finishing/paying for the background check — visible from
+  // the very first screen, not just tucked away in Household Occupants.
+  const [pendingBgChecks, setPendingBgChecks] = useState<any[]>([]);
   const [message, setMessage] = useState("Loading...");
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
@@ -198,6 +203,11 @@ export default function ResidentDashboard() {
       .catch(() => null);
     setAcceptOnlinePayments(feeSettingsData?.acceptOnlinePayments ?? true);
     setAutopayAvailable(!!feeSettingsData?.autopayAvailable);
+
+    const pendingBgData = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`)
+      .then((r) => r.json())
+      .catch(() => null);
+    setPendingBgChecks(pendingBgData?.pending || []);
 
     const { data: electricData } = await supabase
       .from("resident_electric_readings")
@@ -688,6 +698,26 @@ export default function ResidentDashboard() {
               <p style={{ color: "var(--gray)", fontSize: 13 }}>Buy and sell with your neighbors.</p>
             </button>
           </div>
+
+          {/* Background Check reminder (Aug 4, per Mely) — persistent
+              banner so a resident who added an occupant doesn't lose
+              track of finishing/paying for the required check. */}
+          {pendingBgChecks.length > 0 && (
+            <div style={{ ...card, border: "2px solid #fb923c", background: "#fff7ed" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6, color: "#9a3412" }}>⚠️ Background Check Needed</h2>
+              <p style={{ fontSize: 13, color: "#9a3412", marginBottom: 12 }}>
+                {pendingBgChecks.length === 1
+                  ? "1 household occupant still needs a background check paid for and started."
+                  : `${pendingBgChecks.length} household occupants still need a background check paid for and started.`}
+              </p>
+              <button
+                onClick={() => router.push("/residents/background-checks")}
+                style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                Continue to Background Check(s)
+              </button>
+            </div>
+          )}
 
           {/* Announcements */}
           {announcements.length > 0 && (
