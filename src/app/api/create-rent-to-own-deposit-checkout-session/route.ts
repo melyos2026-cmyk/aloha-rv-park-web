@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -41,32 +41,58 @@ export async function POST(req: Request) {
     const protocol = hostHeader.includes("localhost") ? "http" : "https";
     const siteUrl = `${protocol}://${hostHeader}`;
 
-    // Aug 4 (per Mely, Phase 2): this deposit is 100% the park's money
-    // (goes straight toward the resident's Rent-to-Own balance) — no
-    // processing fee is charged on it today, so MelyOS keeps $0 of it.
-    // Still routes to Aloha's connected account once they've connected,
-    // instead of sitting in MelyOS's account needing a manual transfer.
+    // Aug 4 (per Mely correction): this IS processed through Stripe, so it
+    // gets the same processing fee as every other card charge — 4% or the
+    // fixed minimum, whichever is greater, respecting the same
+    // pass_processing_fee_to_resident toggle as invoices/rent.
+    const { data: feeSettings } = await supabase
+      .from("company_fee_settings")
+      .select("pass_processing_fee_to_resident")
+      .eq("company_id", application.company_id || "")
+      .maybeSingle();
+
+    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
+    const processingFee = calculateProcessingFee(depositAmount);
+    const chargeAmount = passFeeToResident ? depositAmount + processingFee : depositAmount;
+
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
+      {
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(depositAmount * 100),
+          product_data: {
+            name: "Rent-to-Own Deposit",
+            description: `Deposit for ${application.full_name || "applicant"}`,
+          },
+        },
+      },
+    ];
+
+    if (passFeeToResident) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(processingFee * 100),
+          product_data: { name: "Card Processing Fee" },
+        },
+      });
+    }
+
+    // Aloha's full deposit amount goes to their balance either way; MelyOS
+    // keeps only the processing fee (from the resident if they're paying
+    // it, or out of the deposit itself if the park absorbs it).
+    const alohaShare = passFeeToResident ? depositAmount : depositAmount - processingFee;
     const connectSplit = application.company_id
-      ? await resolveConnectSplit(application.company_id, depositAmount, depositAmount)
+      ? await resolveConnectSplit(application.company_id, chargeAmount, alohaShare)
       : null;
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: application.email || undefined,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: Math.round(depositAmount * 100),
-            product_data: {
-              name: "Rent-to-Own Deposit",
-              description: `Deposit for ${application.full_name || "applicant"}`,
-            },
-          },
-        },
-      ],
+      line_items: lineItems,
       ...(connectSplit
         ? {
             payment_intent_data: {
