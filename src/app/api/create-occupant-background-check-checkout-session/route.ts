@@ -6,10 +6,12 @@ import { resolveConnectSplit } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
-// Aug 4 (per Mely): same fixed park share as at original application time
-// (parkSharePerAdditional in src/app/apply/page.tsx) — kept as one constant
-// so both places always agree.
-const PARK_SHARE_PER_OCCUPANT = 5.0;
+// Aug 4 (per Mely correction): matches the original application-time model
+// exactly — the FIRST background check ever paid for under a resident's
+// household is $10 to Aloha, every additional one after that is $5. Not a
+// flat $5 each.
+const PARK_SHARE_FIRST = 10.0;
+const PARK_SHARE_ADDITIONAL = 5.0;
 
 // POST /api/create-occupant-background-check-checkout-session
 // Body: { residentId, occupantIds: string[] }
@@ -80,11 +82,25 @@ export async function POST(req: Request) {
     const protocol = hostHeader.includes("localhost") ? "http" : "https";
     const siteUrl = `${protocol}://${hostHeader}`;
 
-    // Aug 4 (per Mely, Phase 2): Aloha's share is the fixed $5/occupant;
-    // MelyOS keeps the rest of what the resident paid. No split at all if
-    // this company hasn't connected their own Stripe account yet.
+    // Aug 4 (per Mely, Phase 2 + correction): Aloha's share is $10 for the
+    // FIRST background check ever paid for under this resident's
+    // household, $5 for each one after that — check whether this
+    // resident already has any PAID occupant (from an earlier, separate
+    // checkout) to know if the $10 slot is already used up.
+    const { data: alreadyPaid } = await supabase
+      .from("resident_occupants")
+      .select("id")
+      .eq("resident_id", residentId)
+      .eq("occupant_type", "household")
+      .eq("background_check_fee_paid", true);
+
+    const firstSlotAlreadyUsed = (alreadyPaid || []).length > 0;
+    const alohaShare = validOccupants.reduce((sum, _, index) => {
+      const isFirstOverall = !firstSlotAlreadyUsed && index === 0;
+      return sum + (isFirstOverall ? PARK_SHARE_FIRST : PARK_SHARE_ADDITIONAL);
+    }, 0);
+
     const totalChargeAmount = feeAmount * validOccupants.length;
-    const alohaShare = PARK_SHARE_PER_OCCUPANT * validOccupants.length;
     const connectSplit = await resolveConnectSplit(resident.company_id, totalChargeAmount, alohaShare);
 
     const session = await stripe.checkout.sessions.create({
