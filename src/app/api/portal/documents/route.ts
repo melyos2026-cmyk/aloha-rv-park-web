@@ -28,9 +28,8 @@ export async function GET(req: NextRequest) {
 
   const { data: otherDocuments, error: docsError } = await supabase
     .from("resident_documents")
-    .select("id, file_name, file_url, document_type, created_at")
-    .eq("resident_id", residentId)
-    .order("created_at", { ascending: false });
+    .select("id, file_name, file_url, document_type")
+    .eq("resident_id", residentId);
 
   if (docsError) {
     return NextResponse.json({ error: docsError.message }, { status: 500 });
