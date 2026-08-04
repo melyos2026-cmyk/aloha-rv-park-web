@@ -125,6 +125,9 @@ export async function generateInvoicePdf(params: {
   const colDesc = marginX;
   const colQty = marginX + contentWidth - 130;
   const colTotal = marginX + contentWidth - 60;
+  // SUBTOTAL / TOTAL DUE labels need more room to the left than "QTY" does
+  // — otherwise longer text like "TOTAL DUE" runs right into the amount.
+  const colSummaryLabel = marginX + contentWidth - 220;
 
   page.drawText("DESCRIPTION", { x: colDesc, y, size: 10, font: fontBold, color: gray });
   page.drawText("QTY", { x: colQty, y, size: 10, font: fontBold, color: gray });
@@ -164,14 +167,14 @@ export async function generateInvoicePdf(params: {
   y -= 26;
 
   const subtotal = params.lineItems.reduce((sum, i) => sum + Number(i.amount || 0), 0);
-  page.drawText("SUBTOTAL", { x: colQty, y, size: 10, font, color: gray });
+  page.drawText("SUBTOTAL", { x: colSummaryLabel, y, size: 10, font, color: gray });
   page.drawText(`$${Math.abs(subtotal).toFixed(2)}`, { x: colTotal, y, size: 10, font, color: black });
   y -= 26;
 
   // Final total line — "PAID" in green if settled, "TOTAL DUE" otherwise.
   const totalLabel = isPaid ? "PAID" : "TOTAL DUE";
   const totalColor = isPaid ? green : black;
-  page.drawText(totalLabel, { x: colQty, y, size: 14, font: fontBold, color: totalColor });
+  page.drawText(totalLabel, { x: colSummaryLabel, y, size: 14, font: fontBold, color: totalColor });
   page.drawText(`$${Math.abs(params.totalAmount).toFixed(2)}`, {
     x: colTotal,
     y,
