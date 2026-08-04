@@ -473,6 +473,25 @@ export default function DocumentsPage() {
             </div>
           )}
         </div>
+
+        {pendingBgChecks.length > 0 && (
+          <div style={{ borderRadius: 8, background: "#fff7ed", border: "2px solid #fb923c", padding: 20 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: "#9a3412", marginBottom: 8 }}>
+              ⚠️ {pendingBgChecks.length === 1
+                ? "You still need to pay for and start 1 background check."
+                : `You still need to pay for and start ${pendingBgChecks.length} background checks.`}
+            </p>
+            <p style={{ fontSize: 13, color: "#9a3412", marginBottom: 12 }}>
+              Uploading an ID here doesn't start the check by itself — head to Background Checks to finish it.
+            </p>
+            <button
+              onClick={() => router.push("/residents/background-checks")}
+              style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "12px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+            >
+              Continue to Background Check(s)
+            </button>
+          </div>
+        )}
       </div>
     </main>
   );
