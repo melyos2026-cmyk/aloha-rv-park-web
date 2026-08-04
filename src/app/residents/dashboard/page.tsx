@@ -950,9 +950,9 @@ export default function ResidentDashboard() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div><p style={label}>Billing Month</p><p style={bigNumber}>{electricUsage[0]?.billing_month || "N/A"}</p></div>
                 <div><p style={label}>Meter Number</p><p style={bigNumber}>{electricUsage[0]?.meter_number || "N/A"}</p></div>
-                <div><p style={label}>Current Reading</p><p style={bigNumber}>{electricUsage[0]?.current_reading || 0}</p></div>
-                <div><p style={label}>Previous Reading</p><p style={bigNumber}>{electricUsage[0]?.previous_reading || 0}</p></div>
-                <div><p style={label}>Total Usage</p><p style={bigNumber}>{electricUsage[0]?.usage_kwh || 0} kWh</p></div>
+                <div><p style={label}>This Month's Usage</p><p style={bigNumber}>{electricUsage[0]?.current_reading || 0} kWh</p></div>
+                <div><p style={label}>Last Month's Usage</p><p style={bigNumber}>{electricUsage[0]?.previous_reading || 0} kWh</p></div>
+                <div><p style={label}>Days of Service</p><p style={bigNumber}>{electricUsage[0]?.days_of_service ?? "N/A"}</p></div>
                 <div><p style={label}>Included kWh</p><p style={bigNumber}>{electricUsage[0]?.included_kwh || 0} kWh</p></div>
                 <div><p style={label}>Billable kWh</p><p style={bigNumber}>{electricUsage[0]?.billable_kwh || 0} kWh</p></div>
                 <div><p style={label}>Rate per kWh</p><p style={bigNumber}>${Number(electricUsage[0]?.rate_per_kwh || 0).toFixed(2)}</p></div>
