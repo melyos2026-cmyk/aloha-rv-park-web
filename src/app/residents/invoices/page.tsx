@@ -28,6 +28,10 @@ export default function InvoicesPage() {
   // Search by month name or year (Aug 3, per Mely's request) — invoice_month
   // is stored like "August 2026", so a plain substring match covers both.
   const [search, setSearch] = useState("");
+  // Explicit inline-style hover state (Aug 3, per Mely) — Tailwind's
+  // hover:/active: classes were too subtle/unreliable to notice, so this
+  // drives the hover effect directly instead, guaranteed to show.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   useEffect(() => {
     loadInvoices();
@@ -145,11 +149,11 @@ export default function InvoicesPage() {
   }
 
   return (
-    <main className="min-h-screen p-8" style={{ backgroundColor: "#f5f6f8" }}>
-      <div className="mx-auto max-w-xl space-y-8">
-        <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
-          <h1 className="text-3xl font-bold text-black">Invoices</h1>
-          <p className="mt-3 text-base text-black">
+    <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
+      <div style={{ maxWidth: 576, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
+          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Invoices</h1>
+          <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
             View your monthly invoices and charge breakdown, or download a printable PDF.
           </p>
         </div>
@@ -161,7 +165,7 @@ export default function InvoicesPage() {
         )}
 
         {/* Search */}
-        <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
+        <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
           <label style={{ fontSize: 13, fontWeight: 700, color: "#000", display: "block", marginBottom: 10 }}>
             Search by month or year
           </label>
@@ -186,9 +190,9 @@ export default function InvoicesPage() {
         </div>
 
         {/* Invoices — spacious cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 28 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {filteredInvoices.length === 0 ? (
-            <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
+            <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
               <p className="text-black">
                 {invoices.length === 0
                   ? "No invoices found yet."
@@ -201,15 +205,26 @@ export default function InvoicesPage() {
             filteredInvoices.map((invoice) => {
               const colors = statusColor(invoice.status);
               const isOpen = expanded === invoice.id;
+              const isHovered = hoveredId === invoice.id;
               return (
                 <div
                   key={invoice.id}
-                  className="rounded-xl bg-white shadow hover:shadow-md transition-shadow"
-                  style={{ border: "1px solid #e5e7eb", overflow: "hidden" }}
+                  onMouseEnter={() => setHoveredId(invoice.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  style={{
+                    borderRadius: 12,
+                    background: "#fff",
+                    overflow: "hidden",
+                    border: isHovered ? "1.5px solid #9ca3af" : "1px solid #e5e7eb",
+                    boxShadow: isHovered
+                      ? "0 6px 16px rgba(0,0,0,0.12)"
+                      : "0 1px 3px rgba(0,0,0,0.08)",
+                    transform: isHovered ? "translateY(-2px)" : "translateY(0)",
+                    transition: "all 0.15s ease",
+                  }}
                 >
                   <button
                     onClick={() => toggleExpand(invoice.id)}
-                    className="hover:bg-gray-50 active:scale-[0.99] transition-all"
                     style={{
                       width: "100%",
                       display: "flex",
@@ -217,9 +232,10 @@ export default function InvoicesPage() {
                       justifyContent: "space-between",
                       textAlign: "left",
                       padding: "24px 28px",
-                      background: "none",
+                      background: isHovered ? "#f3f4f6" : "none",
                       border: "none",
                       cursor: "pointer",
+                      transition: "background 0.15s ease",
                     }}
                   >
                     <div>
