@@ -140,8 +140,9 @@ function DocumentsContent() {
     setLoading(false);
   }
 
-  async function uploadDocument() {
-    if (!uploadFile) {
+  async function uploadDocument(fileArg?: File) {
+    const file = fileArg || uploadFile;
+    if (!file) {
       setUploadMessage("Please choose a file first.");
       return;
     }
@@ -156,7 +157,7 @@ function DocumentsContent() {
     setUploadMessage("");
 
     try {
-      const cleanFileName = uploadFile.name
+      const cleanFileName = file.name
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -164,7 +165,7 @@ function DocumentsContent() {
 
       const { error: uploadError } = await supabase.storage
         .from("company-assets")
-        .upload(filePath, uploadFile);
+        .upload(filePath, file);
 
       if (uploadError) {
         setUploadMessage("Could not upload file: " + uploadError.message);
@@ -179,7 +180,7 @@ function DocumentsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           residentId,
-          fileName: uploadFile.name,
+          fileName: file.name,
           fileUrl: urlData.publicUrl,
           documentType: uploadType,
           relatedOccupantId: uploadForOccupantId || null,
@@ -349,7 +350,7 @@ function DocumentsContent() {
               Upload a document (ID, insurance, registration, etc.)
             </p>
             <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-              The park office can view anything you upload here, in case it's ever needed.
+              Choose the type below, then choose a file — it uploads automatically, no extra button to click.
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               {occupants.length > 0 && (
@@ -378,26 +379,20 @@ function DocumentsContent() {
               </select>
               <input
                 type="file"
-                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                onChange={(e) => {
+                  // Aug 4 (per Mely): uploads immediately on file selection
+                  // instead of requiring a separate click on "Upload" —
+                  // residents were choosing a file and stopping there,
+                  // not realizing the upload wasn't done yet.
+                  const file = e.target.files?.[0] || null;
+                  setUploadFile(file);
+                  if (file) uploadDocument(file);
+                }}
                 style={{ fontSize: 14 }}
               />
-              <button
-                onClick={uploadDocument}
-                disabled={uploading}
-                style={{
-                  background: "#000",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "10px 18px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: uploading ? "default" : "pointer",
-                  opacity: uploading ? 0.7 : 1,
-                }}
-              >
-                {uploading ? "Uploading..." : "Upload"}
-              </button>
+              {uploading && (
+                <span style={{ fontSize: 13, color: "#6b7280" }}>Uploading...</span>
+              )}
             </div>
             {uploadMessage && (
               <p style={{ fontSize: 13, marginTop: 10, color: uploadMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>
