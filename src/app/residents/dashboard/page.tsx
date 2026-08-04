@@ -27,7 +27,6 @@ function billingMonthKey(label: string): number {
 
 export default function ResidentDashboard() {
   const [resident, setResident] = useState<any>(null);
-  const [documents, setDocuments] = useState<any[]>([]);
   const [occupants, setOccupants] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [message, setMessage] = useState("Loading...");
@@ -197,12 +196,6 @@ export default function ResidentDashboard() {
       (a, b) => billingMonthKey(b.billing_month) - billingMonthKey(a.billing_month)
     );
     setElectricUsage(sortedElectric);
-
-    const { data: docs } = await supabase
-      .from("resident_documents")
-      .select("*")
-      .eq("resident_id", residentId);
-    setDocuments(docs || []);
 
     const { data: lease } = await supabase
       .from("resident_leases")
@@ -996,18 +989,6 @@ export default function ResidentDashboard() {
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View monthly electric readings, charges, and usage history.</p>
             </button>
           )}
-
-          {/* Documents */}
-          <div style={card}>
-            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Documents</h2>
-            {documents.map(doc => (
-              <div key={doc.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginBottom: 8 }}>
-                <p style={{ fontWeight: 700 }}>{doc.file_name}</p>
-                <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{ color: "#1e40af", fontSize: 13 }}>Open Document</a>
-              </div>
-            ))}
-            {documents.length === 0 && <p style={{ color: "var(--gray)" }}>No documents available.</p>}
-          </div>
 
           {/* Household Occupants */}
           <div style={card}>
