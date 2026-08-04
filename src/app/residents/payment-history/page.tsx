@@ -102,17 +102,6 @@ export default function PaymentHistoryPage() {
     return sum + Number(payment.total_due || payment.amount || 0);
   }, 0);
 
-  const filterButtonStyle = (active: boolean) => ({
-    padding: "8px 16px",
-    borderRadius: 8,
-    border: "1.5px solid " + (active ? "#000" : "#d1d5db"),
-    background: active ? "#000" : "#fff",
-    color: active ? "#fff" : "#000",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
-  });
-
   const cardStyle = {
     borderRadius: 12,
     background: "#fff",
@@ -147,7 +136,7 @@ export default function PaymentHistoryPage() {
         <div className="no-print" style={cardStyle}>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Payment History</h1>
           <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
-            A statement of your completed payments — like a bank statement for your account.
+            View a statement of your completed payments.
           </p>
         </div>
 
@@ -160,54 +149,52 @@ export default function PaymentHistoryPage() {
         {/* Filters — hidden when printing */}
         <div className="no-print" style={cardStyle}>
           <p style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 14 }}>Show transactions from:</p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
-            {["30", "60", "90", "180"].map((d) => (
-              <button
-                key={d}
-                onClick={() => {
-                  setFilterMode("days");
-                  setDays(d);
-                }}
-                style={filterButtonStyle(filterMode === "days" && days === d)}
-              >
-                Last {d} days
-              </button>
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <button
-                onClick={() => setFilterMode("month")}
-                style={filterButtonStyle(filterMode === "month")}
-              >
-                Specific Month
-              </button>
-              {filterMode === "month" && (
-                <input
-                  type="month"
-                  value={month}
-                  onChange={(e) => setMonth(e.target.value)}
-                  style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "8px 12px" }}
-                />
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <button
-                onClick={() => setFilterMode("year")}
-                style={filterButtonStyle(filterMode === "year")}
-              >
-                Specific Year
-              </button>
-              {filterMode === "year" && (
-                <input
-                  type="number"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "8px 12px", width: 100 }}
-                />
-              )}
-            </div>
-          </div>
+          <select
+            value={filterMode === "days" ? `days-${days}` : filterMode}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value.startsWith("days-")) {
+                setFilterMode("days");
+                setDays(value.replace("days-", ""));
+              } else {
+                setFilterMode(value as FilterMode);
+              }
+            }}
+            style={{
+              border: "1.5px solid #d1d5db",
+              borderRadius: 8,
+              padding: "10px 14px",
+              fontSize: 15,
+              color: "#000",
+              background: "#fff",
+              width: "100%",
+              maxWidth: 260,
+            }}
+          >
+            <option value="days-30">Last 30 days</option>
+            <option value="days-60">Last 60 days</option>
+            <option value="days-90">Last 90 days</option>
+            <option value="days-180">Last 180 days</option>
+            <option value="month">Specific Month</option>
+            <option value="year">Specific Year</option>
+          </select>
+
+          {filterMode === "month" && (
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+              style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "10px 14px", marginTop: 14 }}
+            />
+          )}
+          {filterMode === "year" && (
+            <input
+              type="number"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "10px 14px", marginTop: 14, width: 120 }}
+            />
+          )}
         </div>
 
         {/* Statement — this is what actually prints */}
