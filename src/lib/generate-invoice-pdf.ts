@@ -7,9 +7,11 @@ export type InvoiceLineItem = {
 
 // Generates a printable/downloadable PDF for a resident's monthly invoice,
 // matching Mely's requested layout (Aug 3): INVOICE title, company
-// logo/name/address, ISSUED TO / DATE / DUE DATE, PAY TO, a
+// logo/name/address, ISSUED TO / DATE / DUE DATE, a
 // DESCRIPTION/QTY/TOTAL table, SUBTOTAL, and a final total line that reads
 // "PAID" (green) if the invoice is already paid, or "TOTAL DUE" otherwise.
+// (PAY TO section removed per Mely's request — redundant with the
+// company name/address already shown at the top.)
 export async function generateInvoicePdf(params: {
   companyName: string;
   companyAddress: string | null;
@@ -55,7 +57,7 @@ export async function generateInvoicePdf(params: {
       const bytes = new Uint8Array(await res.arrayBuffer());
       const contentType = res.headers.get("content-type") || "";
       const image = contentType.includes("png") ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      const maxDim = 56;
+      const maxDim = 72;
       const scale = Math.min(maxDim / image.width, maxDim / image.height, 1);
       const w = image.width * scale;
       const h = image.height * scale;
@@ -104,18 +106,6 @@ export async function generateInvoicePdf(params: {
   }
 
   y = Math.min(y, issuedToTop - 48) - 24;
-
-  // PAY TO
-  page.drawText("PAY TO:", { x: marginX, y, size: 10, font: fontBold, color: black });
-  y -= 16;
-  page.drawText(params.companyName, { x: marginX, y, size: 10, font, color: black });
-  y -= 14;
-  if (params.companyAddress) {
-    page.drawText(params.companyAddress, { x: marginX, y, size: 10, font, color: black });
-    y -= 14;
-  }
-
-  y -= 26;
 
   // Thick divider bar, matching the sample's bold rule above the table.
   page.drawLine({ start: { x: marginX + contentWidth / 2 - 100, y }, end: { x: marginX + contentWidth / 2 + 100, y }, thickness: 3, color: black });
