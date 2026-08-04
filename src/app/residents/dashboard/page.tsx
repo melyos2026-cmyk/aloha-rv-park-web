@@ -16,8 +16,13 @@ export default function ResidentDashboard() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [message, setMessage] = useState("Loading...");
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
+  // Line items per pending invoice (Aug 4) — e.g. "Monthly Rent $500",
+  // "Wifi $35", "Electric Service $X" — fetched via the same
+  // /api/portal/invoice-items route the Invoices page already uses, so the
+  // dashboard's Outstanding Charges shows the real itemized breakdown
+  // instead of one flat "Monthly Invoice" line.
+  const [invoiceItemsByInvoice, setInvoiceItemsByInvoice] = useState<Record<string, any[]>>({});
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
   const [nextPaymentDate, setNextPaymentDate] = useState<string | null>(null);
@@ -86,13 +91,17 @@ export default function ResidentDashboard() {
   const [vehicleMessage, setVehicleMessage] = useState("");
   const [rvMessage, setRvMessage] = useState("");
 
-  const outstandingBalance =
-    payments.reduce((sum, payment) => {
-      if (payment.status === "Pending" || payment.status === "Late" || payment.status === "Partial") {
-        return sum + Number(payment.total_due || payment.amount || 0);
-      }
-      return sum;
-    }, 0) + pendingInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
+  // Aug 4: resident_payments (the legacy billing table) was fully unified
+  // into resident_invoices — /api/create-checkout-session only ever charges
+  // pending invoices already, but this dashboard was still fetching and
+  // adding the old resident_payments rows on top, making the same charge
+  // appear twice (once as a leftover "Invoice" row, once as the real
+  // "Monthly Invoice") and doubling the displayed Total Due. Invoices are
+  // now the single source of truth here, matching what's actually charged.
+  const outstandingBalance = pendingInvoices.reduce(
+    (sum, inv) => sum + Number(inv.total_amount || 0),
+    0
+  );
 
   useEffect(() => {
     loadResidentDashboard();
@@ -194,14 +203,6 @@ export default function ResidentDashboard() {
     setOccupants(occVehData?.occupants || []);
     setVehicles(occVehData?.vehicles || []);
 
-    const { data: pays } = await supabase
-      .from("resident_payments")
-      .select("*")
-      .eq("resident_id", residentId)
-      .in("status", ["Pending", "Late", "Partial"])
-      .order("due_date", { ascending: true });
-    setPayments(pays || []);
-
     const { data: invs } = await supabase
       .from("resident_invoices")
       .select("*")
@@ -209,6 +210,25 @@ export default function ResidentDashboard() {
       .eq("status", "Pending")
       .order("due_date", { ascending: true });
     setPendingInvoices(invs || []);
+
+    // Fetch each pending invoice's itemized line items (Rent, Wifi,
+    // Electric, Maintenance, etc.) via the same route the Invoices page
+    // uses, so Outstanding Charges can show the real breakdown per charge.
+    if (invs && invs.length > 0) {
+      const itemsEntries = await Promise.all(
+        invs.map(async (inv) => {
+          const res = await fetch(
+            `/api/portal/invoice-items?invoiceId=${inv.id}&residentId=${residentId}`
+          )
+            .then((r) => r.json())
+            .catch(() => ({ items: [] }));
+          return [inv.id, res.items || []] as [string, any[]];
+        })
+      );
+      setInvoiceItemsByInvoice(Object.fromEntries(itemsEntries));
+    } else {
+      setInvoiceItemsByInvoice({});
+    }
 
     const { data: anns } = await supabase
       .from("announcements")
@@ -818,8 +838,13 @@ export default function ResidentDashboard() {
             </div>
           )}
 
-          {/* Outstanding charges list */}
-          {(payments.length > 0 || pendingInvoices.length > 0) && (
+          {/* Outstanding charges list — itemized per invoice (Aug 4).
+              resident_payments (legacy, caused the "$235 Invoice" +
+              "$235 Monthly Invoice" duplicate) is no longer shown here at
+              all; resident_invoices + resident_invoice_items is the single
+              source of truth, same as the Invoices page and what's
+              actually charged via Pay Online. */}
+          {pendingInvoices.length > 0 && (
             <div style={card}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Outstanding Charges</h2>
               {nextPaymentDate && (
@@ -827,31 +852,31 @@ export default function ResidentDashboard() {
                   Next Payment (Due Date): <strong>{nextPaymentDate}</strong>
                 </p>
               )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {payments.map(p => (
-                  <div key={p.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, display: "flex", justifyContent: "space-between" }}>
-                    <div>
-                      <p style={{ fontWeight: 700 }}>{p.custom_charge_name || p.charge_type || "Charge"}</p>
-                      <p style={{ color: "var(--gray)", fontSize: 12 }}>{p.notes || "No notes"}</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {pendingInvoices.map(inv => {
+                  const items = invoiceItemsByInvoice[inv.id] || [];
+                  return (
+                    <div key={inv.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12 }}>
+                      <p style={{ fontWeight: 700, marginBottom: 8 }}>Invoice — {inv.invoice_month}</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {items.length > 0 ? (
+                          items.map(item => (
+                            <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
+                              <span style={{ color: "var(--gray)" }}>{item.description || item.charge_type || "Charge"}</span>
+                              <span style={{ fontWeight: 700 }}>${Number(item.amount || 0).toFixed(2)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <p style={{ color: "var(--gray)", fontSize: 13 }}>Rent + any recurring charges</p>
+                        )}
+                      </div>
+                      <div style={{ borderTop: "1.5px solid var(--border)", marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ fontWeight: 700 }}>Invoice Total</span>
+                        <span style={{ fontWeight: 900 }}>${Number(inv.total_amount || 0).toFixed(2)}</span>
+                      </div>
                     </div>
-                    <div style={{ textAlign: "right" }}>
-                      <p style={{ fontWeight: 900 }}>${Number(p.total_due || p.amount || 0).toFixed(2)}</p>
-                      <p style={{ color: "var(--gray)", fontSize: 12 }}>{p.status}</p>
-                    </div>
-                  </div>
-                ))}
-                {pendingInvoices.map(inv => (
-                  <div key={inv.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, display: "flex", justifyContent: "space-between" }}>
-                    <div>
-                      <p style={{ fontWeight: 700 }}>Monthly Invoice — {inv.invoice_month}</p>
-                      <p style={{ color: "var(--gray)", fontSize: 12 }}>Rent + any recurring charges</p>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <p style={{ fontWeight: 900 }}>${Number(inv.total_amount || 0).toFixed(2)}</p>
-                      <p style={{ color: "var(--gray)", fontSize: 12 }}>{inv.status}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div style={{ borderTop: "1.5px solid var(--border)", marginTop: 16, paddingTop: 16, display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 900 }}>Total Due</span>
