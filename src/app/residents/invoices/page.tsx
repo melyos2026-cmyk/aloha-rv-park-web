@@ -124,8 +124,8 @@ export default function InvoicesPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen p-6" style={{ backgroundColor: "#e1f8f7" }}>
-        <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #16a34a" }}>
+      <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
+        <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
           <p className="text-black">Loading invoices...</p>
         </div>
       </main>
@@ -133,9 +133,9 @@ export default function InvoicesPage() {
   }
 
   return (
-    <main className="min-h-screen p-6" style={{ backgroundColor: "#e1f8f7" }}>
+    <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #16a34a" }}>
+        <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
           <h1 className="text-3xl font-bold text-black">Invoices</h1>
           <p className="mt-2 text-base text-black">
             View your monthly invoices and charge breakdown, or download a printable PDF.
@@ -149,7 +149,7 @@ export default function InvoicesPage() {
         )}
 
         {/* Search */}
-        <div className="rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #16a34a" }}>
+        <div className="rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
           <label style={{ fontSize: 13, fontWeight: 700, color: "#000", display: "block", marginBottom: 8 }}>
             Search by month or year
           </label>
@@ -169,9 +169,9 @@ export default function InvoicesPage() {
         </div>
 
         {/* Invoices — spacious cards */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
           {filteredInvoices.length === 0 ? (
-            <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #16a34a" }}>
+            <div className="rounded-xl bg-white p-8 shadow" style={{ border: "1px solid #e5e7eb" }}>
               <p className="text-black">
                 {invoices.length === 0 ? "No invoices found yet." : "No invoices match your search."}
               </p>
@@ -184,7 +184,7 @@ export default function InvoicesPage() {
                 <div
                   key={invoice.id}
                   className="rounded-xl bg-white shadow"
-                  style={{ border: "1px solid #16a34a", overflow: "hidden" }}
+                  style={{ border: "1px solid #e5e7eb", overflow: "hidden" }}
                 >
                   <button
                     onClick={() => toggleExpand(invoice.id)}
@@ -201,7 +201,7 @@ export default function InvoicesPage() {
                     }}
                   >
                     <div>
-                      <p style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 6 }}>
+                      <p style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 10 }}>
                         {invoice.invoice_month || "Invoice"}
                       </p>
                       <p style={{ fontSize: 14, color: "#4b5563" }}>Due: {formatDate(invoice.due_date)}</p>
