@@ -698,10 +698,6 @@ export default function ResidentDashboard() {
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🧾 Invoices</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View your monthly invoices and charges.</p>
             </button>
-            <button onClick={() => router.push("/residents/payment-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📜 Payment History</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View completed payments.</p>
-            </button>
             {activeLease && (
               <button
                 onClick={() => document.getElementById("move-out-request")?.scrollIntoView({ behavior: "smooth" })}
@@ -711,6 +707,10 @@ export default function ResidentDashboard() {
                 <p style={{ color: "var(--gray)", fontSize: 13 }}>Let us know your planned move-out date.</p>
               </button>
             )}
+            <button onClick={() => router.push("/residents/payment-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📜 Payment History</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>View completed payments.</p>
+            </button>
             <button onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement.</p>
