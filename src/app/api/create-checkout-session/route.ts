@@ -139,6 +139,13 @@ export async function POST(req: Request) {
       metadata: {
         resident_id: residentId,
         invoice_ids: invoiceIds.join(","),
+        // Aug 5 (per Mely): so the webhook can persist these as real
+        // resident_invoice_items once payment is confirmed — otherwise
+        // the fee/tax only ever existed as ephemeral Stripe line items,
+        // never reflected on the invoice record itself.
+        processing_fee_charged: passFeeToResident ? String(processingFee) : "0",
+        tax_charged: String(taxAmount),
+        tax_rate_percent: String(taxRatePercent),
       },
       success_url: `${siteUrl}/residents/payment-review?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/residents/dashboard`,

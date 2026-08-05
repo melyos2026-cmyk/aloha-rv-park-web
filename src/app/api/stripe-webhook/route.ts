@@ -54,6 +54,9 @@ export async function POST(req: Request) {
     const residentId = session.metadata?.resident_id;
     const invoiceIdsRaw = session.metadata?.invoice_ids || "";
     const invoiceIds = invoiceIdsRaw.split(",").filter(Boolean);
+    const processingFeeCharged = Number(session.metadata?.processing_fee_charged || 0);
+    const taxCharged = Number(session.metadata?.tax_charged || 0);
+    const taxRatePercent = Number(session.metadata?.tax_rate_percent || 0);
 
     console.log("Payment completed for resident:", residentId);
     console.log("Marking invoice IDs as Paid:", invoiceIds);
@@ -72,6 +75,51 @@ export async function POST(req: Request) {
           amount: Number(inv.total_amount || 0),
         }))
       );
+      if (taxCharged > 0) {
+        chargesPaid.push({ label: `Sales Tax (${taxRatePercent}%)`, amount: taxCharged });
+      }
+      if (processingFeeCharged > 0) {
+        chargesPaid.push({ label: "Card Processing Fee", amount: processingFeeCharged });
+      }
+
+      // Aug 5 (per Mely — real gap she caught: the invoice record never
+      // showed the fee/tax Stripe actually charged): attach these as real
+      // line items on the FIRST invoice being paid (the common case is
+      // exactly one), then recompute that invoice's total_amount to
+      // match what was truly collected — same safe "always recompute
+      // from all items" pattern used everywhere else in this codebase.
+      const primaryInvoiceId = invoiceIds[0];
+      if (primaryInvoiceId && (processingFeeCharged > 0 || taxCharged > 0)) {
+        if (taxCharged > 0) {
+          await supabase.from("resident_invoice_items").insert({
+            invoice_id: primaryInvoiceId,
+            charge_type: "Sales Tax",
+            description: `Sales Tax (${taxRatePercent}%)`,
+            amount: taxCharged,
+          });
+        }
+        if (processingFeeCharged > 0) {
+          await supabase.from("resident_invoice_items").insert({
+            invoice_id: primaryInvoiceId,
+            charge_type: "Card Processing Fee",
+            description: "Card Processing Fee",
+            amount: processingFeeCharged,
+          });
+        }
+
+        const { data: allItems } = await supabase
+          .from("resident_invoice_items")
+          .select("amount")
+          .eq("invoice_id", primaryInvoiceId);
+        const recomputedTotal = (allItems || []).reduce(
+          (sum, item) => sum + Number(item.amount || 0),
+          0
+        );
+        await supabase
+          .from("resident_invoices")
+          .update({ total_amount: recomputedTotal })
+          .eq("id", primaryInvoiceId);
+      }
 
       const { error: invoiceUpdateError } = await supabase
         .from("resident_invoices")
