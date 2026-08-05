@@ -267,6 +267,20 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     }
   }
 
+  // Aug 5 (per Mely — real bug she caught: some notification emails said
+  // "MelyOS" as the sender instead of the actual park's name): fetch the
+  // company name ONCE at function scope so every email sent from here —
+  // not just the applicant's receipt — uses the real company name.
+  let company: { company_name: string | null; address: string | null; logo_url: string | null } | null = null;
+  if (application?.company_id) {
+    const { data: companyRow } = await supabase
+      .from("companies")
+      .select("company_name, address, logo_url")
+      .eq("id", application.company_id)
+      .maybeSingle();
+    company = companyRow;
+  }
+
   // Send the applicant an actual PDF receipt (company name, amount,
   // description, receipt/transaction numbers) — the confirmation page
   // promises "a receipt has been sent to your email", so this needs to be
@@ -274,12 +288,6 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   // instructions.
   if (application?.email && process.env.RESEND_API_KEY) {
     try {
-      const { data: company } = await supabase
-        .from("companies")
-        .select("company_name, address, logo_url")
-        .eq("id", application.company_id)
-        .maybeSingle();
-
       const amountPaid = (session.amount_total || 0) / 100;
       const paymentDate = new Date(session.created * 1000);
 
@@ -351,7 +359,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         .slice(0, 4)}`;
 
       const receiptPdf = await generateApplicationFeeReceiptPdf({
-        companyName: company?.company_name || "MelyOS",
+        companyName: company?.company_name || "Aloha RV Park",
         companyAddress: company?.address || null,
         companyLogoUrl: company?.logo_url || null,
         applicantName: application.full_name || "Applicant",
@@ -369,7 +377,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: `${company?.company_name || "MelyOS"} <noreply@aloharvparkfl.com>`,
+          from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
           to: application.email,
           subject: `Receipt — Application Fee Paid ($${amountPaid.toFixed(2)})`,
           html: `
@@ -402,7 +410,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "MelyOS <noreply@aloharvparkfl.com>",
+            from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
             to: adminNotifyEmail,
             subject: `Short-stay application fee${stayAmount > 0 ? " + stay charge" : ""} paid for ${application?.full_name || "applicant"} — no background check needed`,
             html: `<p>${application?.full_name || "An applicant"} just paid their application fee${
@@ -485,7 +493,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "MelyOS <noreply@aloharvparkfl.com>",
+          from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
           to: adminNotifyEmail,
          subject: checkrInvited
             ? `Background check application sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`

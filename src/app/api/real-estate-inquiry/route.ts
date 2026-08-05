@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
     const { data: company } = await supabaseAdmin
       .from("companies")
-      .select("id, park_id, contact_email")
+      .select("id, park_id, contact_email, company_name")
       .eq("domain", host)
       .maybeSingle();
 
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "MelyOS <noreply@aloharvparkfl.com>",
+            from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
             to: notifyEmail,
             subject: `New appointment request${listingTitle ? `: ${listingTitle}` : ""} from ${fullName}`,
             html: `
