@@ -67,11 +67,11 @@ export async function POST(req: Request) {
     // in Florida, unlike short-term reservations.
     const { data: taxSettings } = await supabase
       .from("company_tax_settings")
-      .select("enable_tax, manual_tax_rate_percent, tax_mode")
+      .select("enable_tax, manual_tax_rate_percent, rent_tax_mode")
       .eq("company_id", resident?.company_id || "")
       .maybeSingle();
     const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
-    const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.tax_mode === "excluded";
+    const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
     const taxAmount = taxEnabled ? totalAmount * (taxRatePercent / 100) : 0;
 
     const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
