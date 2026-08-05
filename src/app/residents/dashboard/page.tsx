@@ -829,10 +829,22 @@ export default function ResidentDashboard() {
 
           {/* Rent / Balance */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div style={card}>
-              <p style={label}>Rent Amount</p>
-              <p style={bigNumber}>${resident.rent_amount}</p>
-            </div>
+            {autopayAvailable && residentId ? (
+              <div style={card}>
+                <p style={label}>💳 Autopay</p>
+                <AutopaySection
+                  residentId={residentId}
+                  autopayEnabled={autopayEnabled}
+                  cardLast4={autopayCardLast4}
+                  onChange={loadResidentDashboard}
+                />
+              </div>
+            ) : (
+              <div style={card}>
+                <p style={label}>Rent Amount</p>
+                <p style={bigNumber}>${resident.rent_amount}</p>
+              </div>
+            )}
             <div style={cardAccent}>
               <p style={label}>Outstanding Balance</p>
               <p style={{ fontSize: 30, fontWeight: 900, color: "#b91c1c" }}>${outstandingBalance.toFixed(2)}</p>
@@ -924,18 +936,6 @@ export default function ResidentDashboard() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {autopayAvailable && residentId && (
-            <div style={{ ...card, marginTop: 16 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>💳 Autopay</h2>
-              <AutopaySection
-                residentId={residentId}
-                autopayEnabled={autopayEnabled}
-                cardLast4={autopayCardLast4}
-                onChange={loadResidentDashboard}
-              />
             </div>
           )}
 
