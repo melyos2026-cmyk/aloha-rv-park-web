@@ -14,6 +14,7 @@ type Listing = {
   price: number | null;
   category: string;
   status: string;
+  posted_by_admin?: boolean;
   resident_accounts?: { full_name: string; rv_lots?: { lot_name: string } | null };
   marketplace_listing_photos?: { photo_url: string; sort_order: number }[];
 };
@@ -166,8 +167,14 @@ function PublicMarketplaceContent() {
         <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
           <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 2 }}>Seller</p>
           <p style={{ fontWeight: 700 }}>
-            {selected.resident_accounts?.full_name}
-            {selected.resident_accounts?.rv_lots?.lot_name && ` — Lot ${selected.resident_accounts.rv_lots.lot_name}`}
+            {selected.posted_by_admin
+              ? `Posted by ${company?.company_name || "the park"}`
+              : (
+                <>
+                  {selected.resident_accounts?.full_name}
+                  {selected.resident_accounts?.rv_lots?.lot_name && ` — Lot ${selected.resident_accounts.rv_lots.lot_name}`}
+                </>
+              )}
           </p>
         </div>
 
