@@ -46,16 +46,18 @@ export default function MaintenancePage() {
 
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("maintenance_requests")
-      .update({
-        status: "Cancelled",
-      })
-      .eq("id", requestId)
-      .eq("status", "Open");
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) return;
 
-    if (error) {
-      setMessage(error.message);
+    const res = await fetch("/api/portal/cancel-maintenance-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, requestId }),
+    });
+    const result = await res.json();
+
+    if (!res.ok) {
+      setMessage(result.error || "Could not cancel request.");
       return;
     }
 
@@ -78,40 +80,25 @@ export default function MaintenancePage() {
       return;
     }
 
-    const { data: residentData, error: residentError } = await supabase
-      .from("resident_accounts")
-      .select("id, company_id")
-      .eq("id", residentId)
-      .single();
+    const res = await fetch("/api/portal/create-maintenance-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, subject, description, priority }),
+    });
+    const result = await res.json();
 
-    if (residentError || !residentData) {
-      setMessage("Resident not found.");
+    if (!res.ok) {
+      setMessage(result.error || "Could not create request.");
       return;
     }
 
-    const { data: requestData, error } = await supabase
-      .from("maintenance_requests")
-      .insert({
-        company_id: residentData.company_id,
-        resident_id: residentId,
-        subject: subject.trim(),
-        description: description.trim(),
-        priority,
-        status: "Open",
-      })
-      .select()
-      .single();
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
+    const requestData = result.request;
 
     fetch("/api/notify-maintenance-request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        companyId: residentData.company_id,
+        companyId: requestData.company_id,
         residentId,
         subject: subject.trim(),
         priority,
@@ -138,9 +125,14 @@ export default function MaintenancePage() {
         .from("maintenance-photos")
         .getPublicUrl(filePath);
 
-      await supabase.from("maintenance_request_photos").insert({
-        request_id: requestData.id,
-        file_url: publicUrlData.publicUrl,
+      await fetch("/api/portal/maintenance-add-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId,
+          requestId: requestData.id,
+          fileUrl: publicUrlData.publicUrl,
+        }),
       });
     }
 
