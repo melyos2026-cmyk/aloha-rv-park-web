@@ -57,14 +57,43 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
   // person logic is needed, just a direct status update.
   if (applicationId === "occupant") {
     const occupantId = personKey;
-    const { error: occError } = await supabase
+    const { data: updatedOccupant, error: occError } = await supabase
       .from("resident_occupants")
       .update({ background_check_status: status })
-      .eq("id", occupantId);
+      .eq("id", occupantId)
+      .select("full_name, resident_id")
+      .maybeSingle();
 
     if (occError) {
       console.log(`Checkr webhook: could not update occupant ${occupantId}:`, occError.message);
       return;
+    }
+
+    // Aug 4 (per Mely): notify admin the moment Checkr gives a real
+    // result — not for the transitional "in_progress" state, only once
+    // there's something actually actionable (a pass/fail, or an expired
+    // invitation) — same resident_update_notifications table/pattern the
+    // bell already watches in real time, so this shows up instantly
+    // without admin having to check anything manually.
+    const isFinalResult = status === "Passed" || status === "Needs Review" || status === "invitation_expired";
+    if (isFinalResult && updatedOccupant?.resident_id) {
+      const { data: resident } = await supabase
+        .from("resident_accounts")
+        .select("company_id, full_name")
+        .eq("id", updatedOccupant.resident_id)
+        .maybeSingle();
+
+      if (resident) {
+        const resultLabel =
+          status === "Passed" ? "passed" : status === "Needs Review" ? "needs review" : "invitation expired";
+        await supabase.from("resident_update_notifications").insert({
+          company_id: resident.company_id,
+          resident_id: updatedOccupant.resident_id,
+          resident_name: resident.full_name,
+          update_type: "occupant_background_check_result",
+          message: `Background check for ${updatedOccupant.full_name} (household occupant of ${resident.full_name}): ${resultLabel}.`,
+        });
+      }
     }
 
     console.log(`Household Occupant ${occupantId} -> ${status}`);
