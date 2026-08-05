@@ -444,7 +444,7 @@ interface Props {
 
 const styles = {
   page: {
-    maxWidth: 720,
+    maxWidth: 900,
     margin: "0 auto",
     padding: "32px 20px",
     fontFamily: "system-ui, -apple-system, sans-serif",
