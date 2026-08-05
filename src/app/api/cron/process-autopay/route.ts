@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
   const { data: autopayResidents, error } = await supabaseAdmin
     .from("resident_accounts")
-    .select("id, stripe_customer_id, stripe_payment_method_id, full_name, email")
+    .select("id, company_id, stripe_customer_id, stripe_payment_method_id, full_name, email")
     .eq("autopay_enabled", true)
     .not("stripe_customer_id", "is", null)
     .not("stripe_payment_method_id", "is", null);
@@ -66,6 +66,18 @@ export async function GET(request: Request) {
             .update({ status: "Paid" })
             .eq("id", invoice.id);
           chargedCount += 1;
+
+          // Aug 4 (per Mely): so admin can actually SEE and verify the
+          // real amount autopay charged each month, instead of just
+          // trusting it happened silently — same real-time notification
+          // bell used everywhere else.
+          await supabaseAdmin.from("resident_update_notifications").insert({
+            company_id: resident.company_id,
+            resident_id: resident.id,
+            resident_name: resident.full_name,
+            update_type: "autopay_charged",
+            message: `Autopay charged ${resident.full_name} $${amount.toFixed(2)} for invoice due ${invoice.due_date}.`,
+          });
         } else {
           failedCount += 1;
         }
@@ -79,6 +91,14 @@ export async function GET(request: Request) {
           .from("resident_accounts")
           .update({ autopay_enabled: false })
           .eq("id", resident.id);
+
+        await supabaseAdmin.from("resident_update_notifications").insert({
+          company_id: resident.company_id,
+          resident_id: resident.id,
+          resident_name: resident.full_name,
+          update_type: "autopay_failed",
+          message: `Autopay FAILED for ${resident.full_name} (invoice due ${invoice.due_date}, $${amount.toFixed(2)}) — autopay has been turned off for them.`,
+        });
       }
     }
   }
