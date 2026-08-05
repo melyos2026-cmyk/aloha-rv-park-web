@@ -702,6 +702,15 @@ export default function ResidentDashboard() {
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📜 Payment History</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View completed payments.</p>
             </button>
+            {activeLease && (
+              <button
+                onClick={() => document.getElementById("move-out-request")?.scrollIntoView({ behavior: "smooth" })}
+                style={{ ...card, textAlign: "left", cursor: "pointer" }}
+              >
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>Let us know your planned move-out date.</p>
+              </button>
+            )}
             <button onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement.</p>
@@ -998,7 +1007,7 @@ export default function ResidentDashboard() {
 
           {/* Move-out request */}
           {activeLease && (
-            <div style={card}>
+            <div id="move-out-request" style={card}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
               <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
                 Let us know your planned move-out date — the office will follow up to confirm.
