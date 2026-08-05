@@ -833,9 +833,22 @@ export default function ResidentDashboard() {
           </div>
 
           {/* Rent / Balance */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <style jsx>{`
+            @media (max-width: 640px) {
+              .rent-balance-grid {
+                grid-template-columns: 1fr !important;
+              }
+              .autopay-card {
+                order: 2;
+              }
+              .balance-card {
+                order: 1;
+              }
+            }
+          `}</style>
+          <div className="rent-balance-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {autopayAvailable && residentId ? (
-              <div style={card}>
+              <div className="autopay-card" style={card}>
                 <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>💳 Autopay</h2>
                 <AutopaySection
                   residentId={residentId}
@@ -845,12 +858,12 @@ export default function ResidentDashboard() {
                 />
               </div>
             ) : (
-              <div style={card}>
+              <div className="autopay-card" style={card}>
                 <p style={label}>Rent Amount</p>
                 <p style={bigNumber}>${resident.rent_amount}</p>
               </div>
             )}
-            <div style={cardAccent}>
+            <div className="balance-card" style={cardAccent}>
               <p style={label}>Outstanding Balance</p>
               <p style={{ fontSize: 30, fontWeight: 900, color: "#b91c1c" }}>${outstandingBalance.toFixed(2)}</p>
               {acceptOnlinePayments && (
