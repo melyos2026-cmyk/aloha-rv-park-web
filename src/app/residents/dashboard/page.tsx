@@ -243,14 +243,9 @@ export default function ResidentDashboard() {
     );
     setElectricUsage(sortedElectric);
 
-    const { data: lease } = await supabase
-      .from("resident_leases")
-      .select("id, requested_move_out_date, requested_move_out_note")
-      .eq("resident_id", residentId)
-      .eq("status", "Active")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const res = await fetch(`/api/portal/active-lease?residentId=${residentId}`);
+    const result = await res.json();
+    const lease = result.lease;
     setActiveLease(lease || null);
     setMoveOutDate(lease?.requested_move_out_date || "");
     setMoveOutNote(lease?.requested_move_out_note || "");
