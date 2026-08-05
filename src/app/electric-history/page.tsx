@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import {
   ResponsiveContainer,
@@ -34,17 +33,14 @@ export default function ElectricHistoryPage() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("resident_electric_readings")
-      .select("*")
-      .eq("resident_id", residentId)
-      .order("created_at", { ascending: false });
+    const res = await fetch(`/api/portal/electric-history?residentId=${residentId}`);
+    const result = await res.json();
 
-    if (error) {
-      setMessage(error.message);
+    if (!res.ok) {
+      setMessage(result.error || "Could not load electric history.");
       return;
     }
-    setReadings(data || []);
+    setReadings(result.readings || []);
     setMessage("");
   }
 

@@ -154,10 +154,10 @@ function PaymentReviewContent() {
               <p style={{ marginTop: 8, color: "#111827" }}>{confirmationError}</p>
             </div>
             <button
-              onClick={() => (window.location.href = "/residents/payments")}
+              onClick={() => (window.location.href = "/residents/dashboard")}
               style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
             >
-              Back to Payments
+              Back to Dashboard
             </button>
           </div>
         </main>
@@ -228,10 +228,10 @@ function PaymentReviewContent() {
           </div>
 
           <button
-            onClick={() => (window.location.href = "/residents/payments")}
+            onClick={() => (window.location.href = "/residents/dashboard")}
             style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
           >
-            Back to Payments
+            Back to Dashboard
           </button>
         </div>
       </main>
@@ -316,10 +316,10 @@ function PaymentReviewContent() {
         </div>
 
         <button
-          onClick={() => (window.location.href = "/residents/payments")}
+          onClick={() => (window.location.href = "/residents/dashboard")}
           style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
         >
-          Back to Payments
+          Back to Dashboard
         </button>
       </div>
     </main>

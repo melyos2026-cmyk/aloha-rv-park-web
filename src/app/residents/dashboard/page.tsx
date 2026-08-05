@@ -698,10 +698,6 @@ export default function ResidentDashboard() {
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🧾 Invoices</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View your monthly invoices and charges.</p>
             </button>
-            <button onClick={() => router.push("/residents/payments")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>💳 Payments</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and pay outstanding charges.</p>
-            </button>
             <button onClick={() => router.push("/residents/payment-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📜 Payment History</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View completed payments.</p>
