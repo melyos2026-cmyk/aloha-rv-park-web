@@ -56,7 +56,7 @@ function AutopayForm({ residentId, onSaved }: { residentId: string; onSaved: (la
 
   return (
     <div>
-      <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 14, marginBottom: 12 }}>
+      <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 14, marginBottom: 12, minHeight: 44 }}>
         <CardElement options={{ style: { base: { fontSize: "15px" } } }} />
       </div>
       {error && <p style={{ color: "#dc2626", fontSize: 13, marginBottom: 10 }}>{error}</p>}
