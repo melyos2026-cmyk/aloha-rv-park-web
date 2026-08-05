@@ -57,7 +57,24 @@ export async function POST(req: Request) {
 
     const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
     const processingFee = calculateProcessingFee(totalAmount);
-    const chargeAmount = passFeeToResident ? totalAmount + processingFee : totalAmount;
+
+    // Aug 5 (per Mely): same company-wide sales tax settings used for
+    // propane/reservations (rate + included/excluded/blank mode, varies
+    // by county). "excluded" adds tax as its own line item; "included"
+    // means the rent amount already has tax baked in; blank/null means
+    // no mode chosen yet, so no tax on rent — matches Mely's real-world
+    // expectation that long-term resident rent is typically NOT taxable
+    // in Florida, unlike short-term reservations.
+    const { data: taxSettings } = await supabase
+      .from("company_tax_settings")
+      .select("enable_tax, manual_tax_rate_percent, tax_mode")
+      .eq("company_id", resident?.company_id || "")
+      .maybeSingle();
+    const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
+    const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.tax_mode === "excluded";
+    const taxAmount = taxEnabled ? totalAmount * (taxRatePercent / 100) : 0;
+
+    const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
 
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -76,6 +93,17 @@ export async function POST(req: Request) {
       },
     ];
 
+    if (taxAmount > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(taxAmount * 100),
+          product_data: { name: `Sales Tax (${taxRatePercent}%)` },
+        },
+      });
+    }
+
     if (passFeeToResident) {
       lineItems.push({
         quantity: 1,
@@ -87,11 +115,11 @@ export async function POST(req: Request) {
       });
     }
 
-    // Aloha's share is always the full invoice amount — if the resident
-    // is paying the fee on top, MelyOS's cut comes only from that fee; if
-    // the park absorbs it instead, MelyOS's cut comes out of the park's
-    // own invoice amount.
-    const alohaShare = passFeeToResident ? totalAmount : totalAmount - processingFee;
+    // Aloha's share is the full invoice amount PLUS all of the tax
+    // (theirs to remit) — MelyOS's cut is only the processing fee, taken
+    // from the resident's payment if they're covering it, or otherwise
+    // out of the park's own invoice amount.
+    const alohaShare = totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee);
     const connectSplit = resident?.company_id
       ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
       : null;
