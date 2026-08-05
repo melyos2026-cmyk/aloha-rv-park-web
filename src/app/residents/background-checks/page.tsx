@@ -94,7 +94,7 @@ function BackgroundChecksContent() {
 
         {justPaid && (
           <div style={{ ...card, border: "1.5px solid #16a34a", background: "#f0fdf4" }}>
-            <p style={{ color: "#166534", fontWeight: 700 }}>Payment received — background check(s) are being started. This can take a few minutes to show as in progress.</p>
+            <p style={{ color: "#166534", fontWeight: 700 }}>Payment received — check your email for a message with instructions to complete the background check. This can take a few minutes to arrive.</p>
           </div>
         )}
 
