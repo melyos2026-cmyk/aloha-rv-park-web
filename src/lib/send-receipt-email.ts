@@ -68,6 +68,9 @@ export async function sendReceiptEmail(data: ReceiptData) {
     <p style="text-align:center; color:#888; font-size:12px; margin-top:16px;">
       Aloha RV Park · 4648 S. Orange Blossom Trl, Kissimmee, FL 34746
     </p>
+    <p style="text-align:center; color:#bbb; font-size:10px; margin-top:4px;">
+      Powered by MelyOS.io
+    </p>
   </div>
   `;
 
