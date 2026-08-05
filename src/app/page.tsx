@@ -8,6 +8,8 @@ export default function Home() {
   const mapWrapperRef = useRef<HTMLDivElement | null>(null);
   const [mapHeight, setMapHeight] = useState(1350);
   const [gotRealHeight, setGotRealHeight] = useState(false);
+  const [extraHeroImages, setExtraHeroImages] = useState<string[]>([]);
+  const [heroIndex, setHeroIndex] = useState(0);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -34,6 +36,32 @@ export default function Home() {
   }, [gotRealHeight]);
 
   const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
+
+  // Aug 5 (per Mely): additional carousel photos on top of the single
+  // main Header Photo — together they rotate on the homepage every few
+  // seconds. If none were added, this is just the one static photo as
+  // before (backward compatible).
+  useEffect(() => {
+    if (!company?.id) return;
+    fetch(`/api/get-hero-images?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((result) => setExtraHeroImages(result.images || []))
+      .catch(() => setExtraHeroImages([]));
+  }, [company?.id]);
+
+  const allHeroImages = [heroImage, ...extraHeroImages];
+
+  useEffect(() => {
+    if (allHeroImages.length <= 1) return;
+    const timer = setInterval(() => {
+      setHeroIndex((i) => (i + 1) % allHeroImages.length);
+    }, 6000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allHeroImages.length]);
+
+  const currentHeroImage = allHeroImages[heroIndex % allHeroImages.length];
+
   const rates: [string, string][] = [
     ["Daily", company?.rate_daily || "$40/night"],
     ["Weekly", company?.rate_weekly || "$225/week"],
@@ -44,9 +72,10 @@ export default function Home() {
     <>
       {/* Hero Banner */}
       <section style={{
-        backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url(${heroImage})`,
+        backgroundImage: `linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url(${currentHeroImage})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
+        transition: "background-image 1s ease-in-out",
         color: "var(--white)",
         padding: "80px 24px",
         textAlign: "center",
