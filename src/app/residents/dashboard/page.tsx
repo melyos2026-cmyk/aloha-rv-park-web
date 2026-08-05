@@ -831,7 +831,7 @@ export default function ResidentDashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {autopayAvailable && residentId ? (
               <div style={card}>
-                <p style={label}>💳 Autopay</p>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>💳 Autopay</h2>
                 <AutopaySection
                   residentId={residentId}
                   autopayEnabled={autopayEnabled}
