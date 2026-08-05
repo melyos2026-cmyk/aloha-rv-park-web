@@ -116,6 +116,7 @@ export default function ResidentDashboard() {
   const [rvModel, setRvModel] = useState("");
   const [rvYear, setRvYear] = useState("");
   const [rvLengthFt, setRvLengthFt] = useState("");
+  const [rvWidthFt, setRvWidthFt] = useState("");
   const [rvVinOrTag, setRvVinOrTag] = useState("");
   const [savingRvInfo, setSavingRvInfo] = useState(false);
   // View/edit toggle for RV Info (Aug 3, per Mely's feedback) — shows saved
@@ -182,6 +183,7 @@ export default function ResidentDashboard() {
     setRvModel(residentData?.rv_model || "");
     setRvYear(residentData?.rv_year || "");
     setRvLengthFt(residentData?.rv_length_ft ? String(residentData.rv_length_ft) : "");
+    setRvWidthFt(residentData?.rv_width_ft ? String(residentData.rv_width_ft) : "");
     setRvVinOrTag(residentData?.rv_vin_or_tag || "");
     setEditingRvInfo(!residentData?.rv_make && !residentData?.rv_model && !residentData?.rv_vin_or_tag);
 
@@ -646,6 +648,7 @@ export default function ResidentDashboard() {
           rvModel: rvModel.trim(),
           rvYear: rvYear.trim(),
           rvLengthFt,
+          rvWidthFt,
           rvVinOrTag: rvVinOrTag.trim(),
         }),
       });
@@ -1288,6 +1291,7 @@ export default function ResidentDashboard() {
                   <input placeholder="Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Width (ft) — optional" type="number" value={rvWidthFt} onChange={e => setRvWidthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -1309,6 +1313,7 @@ export default function ResidentDashboard() {
                         setRvModel(resident?.rv_model || "");
                         setRvYear(resident?.rv_year || "");
                         setRvLengthFt(resident?.rv_length_ft ? String(resident.rv_length_ft) : "");
+                        setRvWidthFt(resident?.rv_width_ft ? String(resident.rv_width_ft) : "");
                         setRvVinOrTag(resident?.rv_vin_or_tag || "");
                         setRvMessage("");
                         setEditingRvInfo(false);

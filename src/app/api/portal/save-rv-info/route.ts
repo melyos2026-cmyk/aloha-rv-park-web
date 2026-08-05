@@ -3,12 +3,12 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
 
 // POST /api/portal/save-rv-info
-// Body: { residentId, rvType, rvMake, rvModel, rvYear, rvLengthFt, rvVinOrTag }
+// Body: { residentId, rvType, rvMake, rvModel, rvYear, rvLengthFt, rvWidthFt, rvVinOrTag }
 // Replaces a direct client-side Supabase write in
 // residents/dashboard/page.tsx (saveRvInfo) found during the final sweep
 // for this table — same pattern as save-resident-info.
 export async function POST(req: NextRequest) {
-  const { residentId, rvType, rvMake, rvModel, rvYear, rvLengthFt, rvVinOrTag } = await req.json();
+  const { residentId, rvType, rvMake, rvModel, rvYear, rvLengthFt, rvWidthFt, rvVinOrTag } = await req.json();
 
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
       rv_model: (rvModel || "").trim() || null,
       rv_year: (rvYear || "").trim() || null,
       rv_length_ft: rvLengthFt ? Number(rvLengthFt) : null,
+      rv_width_ft: rvWidthFt ? Number(rvWidthFt) : null,
       rv_vin_or_tag: (rvVinOrTag || "").trim() || null,
     })
     .eq("id", residentId);
