@@ -29,3 +29,25 @@ body {
 h1, h2, h3, h4 { font-family: 'Playfair Display', serif; }
 a { text-decoration: none; color: inherit; }
 button { cursor: pointer; font-family: 'DM Sans', sans-serif; }
+
+/* Aug 4 (per Mely): give every button and clickable card on the public
+   site a bit of life — subtle lift + shadow on hover, press-down on
+   click — so nothing looks flat or "dead." Many clickable cards here use
+   inline cursor:pointer styles rather than real <button> tags, so this
+   also matches on that (React renders it into the actual style
+   attribute, so [style*="cursor: pointer"] catches it). Layers on top of
+   whatever each element already sets — never overrides colors. */
+button,
+[style*="cursor: pointer"] {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+button:hover,
+[style*="cursor: pointer"]:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+button:active,
+[style*="cursor: pointer"]:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
