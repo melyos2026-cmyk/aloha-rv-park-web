@@ -25,18 +25,9 @@ export default function MaintenancePage() {
       return;
     }
 
-    const { data } = await supabase
-      .from("maintenance_requests")
-      .select(`
-       *,
-       maintenance_request_photos(*),
-       maintenance_request_notes(*)
-     `)
-      .eq("resident_id", residentId)
-      .neq("status", "Cancelled")
-      .order("created_at", { ascending: false });
-
-    setRequests(data || []);
+    const res = await fetch(`/api/portal/maintenance-requests?residentId=${residentId}`);
+    const result = await res.json();
+    setRequests(result.requests || []);
   }
 
   async function cancelRequest(requestId: string) {
