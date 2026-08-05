@@ -105,24 +105,37 @@ export default function MarketplacePage() {
 
   async function toggleSaved(listingId: string) {
     if (!residentId) return;
-    if (savedIds.includes(listingId)) {
-      await supabase.from("marketplace_saved_listings").delete().eq("resident_id", residentId).eq("listing_id", listingId);
-      setSavedIds((prev) => prev.filter((id) => id !== listingId));
-    } else {
-      await supabase.from("marketplace_saved_listings").insert({ resident_id: residentId, listing_id: listingId });
+    const nowSaved = !savedIds.includes(listingId);
+    // Optimistic UI update, reverted below if the request fails.
+    if (nowSaved) {
       setSavedIds((prev) => [...prev, listingId]);
+    } else {
+      setSavedIds((prev) => prev.filter((id) => id !== listingId));
+    }
+    const res = await fetch("/api/portal/marketplace-toggle-saved", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, listingId, saved: nowSaved }),
+    });
+    if (!res.ok) {
+      // Revert on failure.
+      if (nowSaved) {
+        setSavedIds((prev) => prev.filter((id) => id !== listingId));
+      } else {
+        setSavedIds((prev) => [...prev, listingId]);
+      }
     }
   }
 
   async function repostListing(listingId: string) {
-    const newExpiry = new Date();
-    newExpiry.setDate(newExpiry.getDate() + 30);
-    await supabase
-      .from("marketplace_listings")
-      .update({ expires_at: newExpiry.toISOString(), status: "active" })
-      .eq("id", listingId);
+    if (!residentId) return;
+    await fetch("/api/portal/marketplace-repost", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, listingId }),
+    });
     setSelectedListing(null);
-    if (residentId) load(residentId);
+    load(residentId);
   }
 
   function daysLeft(expiresAt?: string | null) {
@@ -158,44 +171,27 @@ export default function MarketplacePage() {
     }
     setSaving(true);
 
-    let listingId = editingId;
+    const res = await fetch("/api/portal/marketplace-save-listing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        residentId,
+        listingId: editingId,
+        title,
+        description,
+        price,
+        category,
+      }),
+    });
+    const result = await res.json();
 
-    if (editingId) {
-      await supabase
-        .from("marketplace_listings")
-        .update({
-          title: title.trim(),
-          description: description.trim() || null,
-          price: price ? Number(price) : null,
-          category,
-        })
-        .eq("id", editingId);
-    } else {
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
-
-      const { data: newListing, error } = await supabase
-        .from("marketplace_listings")
-        .insert({
-          company_id: companyId,
-          resident_id: residentId,
-          title: title.trim(),
-          description: description.trim() || null,
-          price: price ? Number(price) : null,
-          category,
-          status: "active",
-          expires_at: expiresAt.toISOString(),
-        })
-        .select("id")
-        .single();
-
-      if (error || !newListing) {
-        alert("Could not create listing: " + (error?.message || ""));
-        setSaving(false);
-        return;
-      }
-      listingId = newListing.id;
+    if (!res.ok) {
+      alert("Could not save listing: " + (result.error || ""));
+      setSaving(false);
+      return;
     }
+
+    const listingId = result.listingId;
 
     if (listingId && photoFiles.length > 0) {
       for (let i = 0; i < photoFiles.length; i++) {
@@ -204,10 +200,15 @@ export default function MarketplacePage() {
         const { error: uploadError } = await supabase.storage.from("company-assets").upload(path, file);
         if (!uploadError) {
           const { data: urlData } = supabase.storage.from("company-assets").getPublicUrl(path);
-          await supabase.from("marketplace_listing_photos").insert({
-            listing_id: listingId,
-            photo_url: urlData.publicUrl,
-            sort_order: i,
+          await fetch("/api/portal/marketplace-add-photo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              residentId,
+              listingId,
+              photoUrl: urlData.publicUrl,
+              sortOrder: i,
+            }),
           });
         }
       }
@@ -218,16 +219,26 @@ export default function MarketplacePage() {
   }
 
   async function markSold(listingId: string) {
-    await supabase.from("marketplace_listings").update({ status: "sold" }).eq("id", listingId);
+    if (!residentId) return;
+    await fetch("/api/portal/marketplace-mark-sold", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, listingId }),
+    });
     setSelectedListing(null);
-    if (residentId) load(residentId);
+    load(residentId);
   }
 
   async function deleteListing(listingId: string) {
     if (!confirm("Delete this listing?")) return;
-    await supabase.from("marketplace_listings").delete().eq("id", listingId);
+    if (!residentId) return;
+    await fetch("/api/portal/marketplace-delete-listing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, listingId }),
+    });
     setSelectedListing(null);
-    if (residentId) load(residentId);
+    load(residentId);
   }
 
   const visibleListings = listings
