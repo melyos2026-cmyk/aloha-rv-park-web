@@ -1093,6 +1093,9 @@ export default function ResidentDashboard() {
                     Requested move-out date: <strong>{activeLease.requested_move_out_date}</strong>
                     {" "}<span style={{ color: "#16a34a", fontWeight: 700 }}>Submitted ✓</span>
                   </p>
+                  <p style={{ color: "#b45309", fontSize: 13, marginBottom: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
+                    Please check your email — the office will confirm your move-out date there once approved.
+                  </p>
                   <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
                     Changed your mind, or need a different date? Cancel below, then submit a new one.
                   </p>

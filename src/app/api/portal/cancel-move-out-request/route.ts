@@ -23,6 +23,20 @@ export async function POST(req: NextRequest) {
   const authError = requireMatchingSession(req, residentId);
   if (authError) return authError;
 
+  // Aug 6 (per Mely: admin never gets told a resident cancelled — neither
+  // notification bell nor Resident Leases): fetch resident info so we can
+  // notify the admin, matching the same notification request-move-out
+  // already sends when a resident FILES a request.
+  const { data: resident } = await supabase
+    .from("resident_accounts")
+    .select("company_id, full_name, space_id")
+    .eq("id", residentId)
+    .maybeSingle();
+
+  if (!resident) {
+    return NextResponse.json({ error: "Resident not found." }, { status: 404 });
+  }
+
   // Aug 6 (per Mely): no longer requires status='Active' — this is exactly
   // the case where the resident's request needs cancelling even though
   // status may have already flipped to 'Ended' by mistake.
@@ -52,6 +66,23 @@ export async function POST(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  let lotName: string | null = null;
+  if (resident.space_id) {
+    const { data: lot } = await supabase
+      .from("rv_lots")
+      .select("lot_name")
+      .eq("id", resident.space_id)
+      .maybeSingle();
+    lotName = lot?.lot_name || null;
+  }
+
+  await supabase.from("resident_update_notifications").insert({
+    company_id: resident.company_id,
+    resident_name: resident.full_name,
+    update_type: "move_out_cancelled",
+    message: `${resident.full_name}${lotName ? ` (Lot ${lotName})` : ""} cancelled their move-out request.`,
+  });
 
   return NextResponse.json({ success: true });
 }
