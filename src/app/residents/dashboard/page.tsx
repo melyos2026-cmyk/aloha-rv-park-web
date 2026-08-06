@@ -64,10 +64,12 @@ export default function ResidentDashboard() {
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
   const [autopayAvailable, setAutopayAvailable] = useState(false);
+  const [moveOutThresholdDays, setMoveOutThresholdDays] = useState(15);
   const [autopayEnabled, setAutopayEnabled] = useState(false);
   const [autopayCardLast4, setAutopayCardLast4] = useState<string | null>(null);
   const [residentId, setResidentId] = useState<string | null>(null);
   const [activeLease, setActiveLease] = useState<any>(null);
+  const [showMoveOutModal, setShowMoveOutModal] = useState(false);
   const [moveOutDate, setMoveOutDate] = useState("");
   const [moveOutNote, setMoveOutNote] = useState("");
   const [moveOutSubmitting, setMoveOutSubmitting] = useState(false);
@@ -219,6 +221,7 @@ export default function ResidentDashboard() {
       .catch(() => null);
     setAcceptOnlinePayments(feeSettingsData?.acceptOnlinePayments ?? true);
     setAutopayAvailable(!!feeSettingsData?.autopayAvailable);
+    setMoveOutThresholdDays(feeSettingsData?.moveOutThresholdDays ?? 15);
 
     const pendingBgData = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`)
       .then((r) => r.json())
@@ -695,7 +698,7 @@ export default function ResidentDashboard() {
             </button>
             {activeLease && (
               <button
-                onClick={() => document.getElementById("move-out-request")?.scrollIntoView({ behavior: "smooth" })}
+                onClick={() => setShowMoveOutModal(true)}
                 style={{ ...card, textAlign: "left", cursor: "pointer" }}
               >
                 <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
@@ -1014,11 +1017,38 @@ export default function ResidentDashboard() {
           </div>
 
           {/* Move-out request */}
-          {activeLease && (
-            <div id="move-out-request" style={card}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
+          {activeLease && showMoveOutModal && (
+            <div
+              onClick={() => setShowMoveOutModal(false)}
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(0,0,0,0.5)",
+                zIndex: 1000,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 16,
+              }}
+            >
+              <div
+                id="move-out-request"
+                onClick={(e) => e.stopPropagation()}
+                style={{ ...card, maxWidth: 420, width: "100%", position: "relative" }}
+              >
+                <button
+                  onClick={() => setShowMoveOutModal(false)}
+                  style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--gray)" }}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
               <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
-                Let us know your planned move-out date — the office will follow up to confirm.
+                Let us know your planned move-out date — the office will follow up to confirm. Please give us at least <strong>{moveOutThresholdDays} days</strong> notice.
               </p>
               {activeLease.requested_move_out_date && (
                 <p style={{ fontSize: 13, marginBottom: 12, color: "var(--black)" }}>
@@ -1047,6 +1077,7 @@ export default function ResidentDashboard() {
                 {moveOutSubmitting ? "Sending..." : "Submit Move-Out Date"}
               </button>
               {moveOutMessage && <p style={{ fontSize: 13, marginTop: 8 }}>{moveOutMessage}</p>}
+              </div>
             </div>
           )}
 

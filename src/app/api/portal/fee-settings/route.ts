@@ -39,11 +39,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Aug 6 (per Mely): also return the park's configured move-out notice
+  // period so the Moving Out card can tell residents how much notice to
+  // give, instead of them guessing.
+  const { data: parkSettings } = await supabase
+    .from("park_settings")
+    .select("move_out_threshold_days")
+    .eq("company_id", resident.company_id)
+    .maybeSingle();
+
   return NextResponse.json({
     // Online payments are always accepted (Aug 3) — no longer a toggle in
     // admin's Fee Settings, so this ignores whatever's stored in the
     // column and is just always true.
     acceptOnlinePayments: true,
     autopayAvailable: !!feeSettings?.autopay_available,
+    moveOutThresholdDays: parkSettings?.move_out_threshold_days ?? 15,
   });
 }
