@@ -35,17 +35,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Resident not found." }, { status: 404 });
   }
 
+  // Aug 6 (per Mely): no longer requires status='Active' — just the
+  // resident's most recent lease, so the request/cancel flow stays
+  // connected regardless of which admin action last touched the status.
   const { data: lease, error: leaseError } = await supabase
     .from("resident_leases")
     .select("id")
     .eq("resident_id", residentId)
-    .eq("status", "Active")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (leaseError || !lease) {
-    return NextResponse.json({ error: "No active lease found." }, { status: 404 });
+    return NextResponse.json({ error: "No lease found." }, { status: 404 });
   }
 
   const { error } = await supabase

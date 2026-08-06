@@ -23,17 +23,19 @@ export async function POST(req: NextRequest) {
   const authError = requireMatchingSession(req, residentId);
   if (authError) return authError;
 
+  // Aug 6 (per Mely): no longer requires status='Active' — this is exactly
+  // the case where the resident's request needs cancelling even though
+  // status may have already flipped to 'Ended' by mistake.
   const { data: lease, error: leaseError } = await supabase
     .from("resident_leases")
     .select("id")
     .eq("resident_id", residentId)
-    .eq("status", "Active")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (leaseError || !lease) {
-    return NextResponse.json({ error: "No active lease found." }, { status: 404 });
+    return NextResponse.json({ error: "No lease found." }, { status: 404 });
   }
 
   const { error } = await supabase
@@ -43,6 +45,7 @@ export async function POST(req: NextRequest) {
       requested_move_out_note: null,
       requested_move_out_at: null,
       lease_end: null,
+      status: "Active",
     })
     .eq("id", lease.id);
 

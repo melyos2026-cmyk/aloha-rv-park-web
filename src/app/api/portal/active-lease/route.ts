@@ -9,6 +9,14 @@ import { requireMatchingSession } from "@/lib/portalSession";
 // related table) silently returns nothing under RLS instead of erroring,
 // making `activeLease` always null regardless of whether a real active
 // lease exists.
+// Aug 6 (per Mely: "necesito que el lease no se desconecte aunque se
+// acepte el moveout por el admin"): no longer requires status='Active' —
+// just the resident's most recent lease record, period. Two similarly-
+// named admin buttons (Confirm Date vs Finalize Move-Out) kept getting
+// mixed up, flipping status to 'Ended' and disconnecting the Moving Out
+// card/cancel flow before the resident had actually moved out. This makes
+// the whole feature resilient to that regardless of which button gets
+// clicked.
 export async function GET(req: NextRequest) {
   const residentId = req.nextUrl.searchParams.get("residentId");
   if (!residentId) {
@@ -22,7 +30,6 @@ export async function GET(req: NextRequest) {
     .from("resident_leases")
     .select("id, requested_move_out_date, requested_move_out_note")
     .eq("resident_id", residentId)
-    .eq("status", "Active")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
