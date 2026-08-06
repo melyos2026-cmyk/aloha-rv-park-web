@@ -69,19 +69,13 @@ function ApplyPageInner() {
       return;
     }
 
-    supabase
-      .from("rv_lots_public")
-      .select(
-        "id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing"
-      )
-      .eq("company_id", company.id)
-      .order("lot_name")
-      .then(({ data: lotData, error: lotError }) => {
-        if (!lotError) {
-          setLots((lotData ?? []).slice().sort(naturalSort));
-        }
+    fetch(`/api/get-available-lots?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((result) => {
+        setLots((result.lots ?? []).slice().sort(naturalSort));
         setLotsLoaded(true);
-      });
+      })
+      .catch(() => setLotsLoaded(true));
 
     supabase
       .from("park_settings")

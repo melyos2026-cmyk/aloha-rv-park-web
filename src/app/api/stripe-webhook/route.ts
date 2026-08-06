@@ -234,13 +234,27 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     })
     .eq("id", applicationId)
     .select(
-      "id, full_name, email, application_fee_total, application_fee_primary, application_fee_per_additional, application_fee_additional_count, application_processing_fee, background_check_required, company_id, occupants"
+      "id, full_name, email, application_fee_total, application_fee_primary, application_fee_per_additional, application_fee_additional_count, application_processing_fee, background_check_required, company_id, occupants, space_id"
     )
     .single();
 
   if (error) {
     console.log("Error updating resident_applications after fee payment:", error.message);
     return;
+  }
+
+  // Aug 6 (per Mely): once the application fee (incl. background check)
+  // is paid, hold the selected lot as "reserved" (yellow on the map) so
+  // it doesn't look free to book/apply for while this application is
+  // still pending admin's decision. Flips to occupied on approval, or
+  // back to available on denial — same "reserved" convention already
+  // used for confirmed reservations and pending move-outs.
+  if (application?.space_id) {
+    await supabase
+      .from("rv_lots")
+      .update({ status: "reserved" })
+      .eq("id", application.space_id)
+      .eq("status", "available");
   }
 
   console.log(
