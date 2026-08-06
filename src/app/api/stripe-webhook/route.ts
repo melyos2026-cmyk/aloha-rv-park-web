@@ -239,6 +239,41 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     .single();
 
   if (error) {
+    // Aug 6 (per Mely: every function must work correctly with several
+    // applicants at once) — unique_active_application_lot_hold can reject
+    // this exact update if someone else's application already grabbed
+    // this lot a moment earlier. The applicant's card was ALREADY charged
+    // by Stripe before this webhook runs, so we can't just drop this
+    // silently: record the payment anyway (clearing space_id so it
+    // doesn't collide with the constraint), and alert admin urgently
+    // since a real person paid for a lot they can no longer have.
+    if (error.code === "23505" && error.message?.includes("unique_active_application_lot_hold")) {
+      const { data: retryApplication } = await supabase
+        .from("resident_applications")
+        .update({
+          application_fee_paid: true,
+          application_fee_paid_at: new Date().toISOString(),
+          application_fee_stripe_payment_intent_id: paymentIntentId,
+          background_check_status: requiresBackgroundCheck ? "payment_confirmed" : "not_required",
+          space_id: null,
+        })
+        .eq("id", applicationId)
+        .select("id, full_name, email, company_id, application_fee_total")
+        .single();
+
+      if (retryApplication?.company_id) {
+        await supabase.from("resident_update_notifications").insert({
+          company_id: retryApplication.company_id,
+          resident_name: retryApplication.full_name,
+          update_type: "application_lot_conflict",
+          message: `${retryApplication.full_name} paid their application fee ($${retryApplication.application_fee_total}), but their selected lot was just taken by another applicant. Please contact them to choose a different lot (payment already collected).`,
+        });
+      }
+
+      console.log(`Application ${applicationId}: lot conflict on fee payment, admin notified.`);
+      return;
+    }
+
     console.log("Error updating resident_applications after fee payment:", error.message);
     return;
   }
