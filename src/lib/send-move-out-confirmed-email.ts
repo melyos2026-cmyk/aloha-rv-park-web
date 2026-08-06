@@ -7,6 +7,7 @@ type MoveOutConfirmedData = {
   residentName: string;
   companyName: string;
   moveOutDate: string;
+  pdfBuffer?: Buffer;
 };
 
 function formatDate(dateStr: string) {
@@ -31,7 +32,7 @@ export async function sendMoveOutConfirmedEmail(data: MoveOutConfirmedData) {
 
       <p style="color:#111; font-size:15px; line-height:1.6;">
         Hi ${data.residentName},<br/><br/>
-        The office has confirmed your planned move-out date:
+        The office has confirmed your planned move-out date. Your move-out confirmation statement is attached as a PDF.
       </p>
 
       <div style="background:#f9fafb; border-radius:8px; padding:16px; margin:16px 0; text-align:center;">
@@ -57,6 +58,9 @@ export async function sendMoveOutConfirmedEmail(data: MoveOutConfirmedData) {
     to: data.toEmail,
     subject: `Your move-out date is confirmed — ${formatDate(data.moveOutDate)}`,
     html,
+    attachments: data.pdfBuffer
+      ? [{ filename: "move-out-confirmation.pdf", content: data.pdfBuffer.toString("base64") }]
+      : undefined,
   });
 
   console.log("Move-out confirmation email result:", result);
