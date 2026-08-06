@@ -10,6 +10,8 @@ export async function generateMoveOutConfirmationPdf(params: {
   moveOutDate: string;
   goodStanding: boolean;
   owingAmount: number;
+  finalized?: boolean;
+  notes?: string | null;
 }): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([612, 792]);
@@ -20,7 +22,7 @@ export async function generateMoveOutConfirmationPdf(params: {
   let y = 792 - 60;
 
   y = await drawPdfBrandHeader(doc, page, font, fontBold, {
-    title: "MOVE-OUT CONFIRMATION",
+    title: params.finalized ? "MOVE-OUT / CANCELLATION STATEMENT" : "MOVE-OUT CONFIRMATION",
     companyName: params.companyName,
     companyAddress: params.companyAddress,
     companyLogoUrl: params.companyLogoUrl,
@@ -84,18 +86,42 @@ export async function generateMoveOutConfirmationPdf(params: {
       `An outstanding balance of $${params.owingAmount.toFixed(2)} must be paid in full before move-out.`,
       { x: marginX, y, size: 10, font, color: pdfColors.gray }
     );
+    y -= 14;
+    page.drawText(
+      "If this balance remains unpaid, it may be sent to a collections agency.",
+      { x: marginX, y, size: 10, font, color: pdfColors.red }
+    );
   }
 
   y -= 40;
-  page.drawText(
-    "This confirms the office has received and approved the move-out date above. If your plans",
-    { x: marginX, y, size: 10, font, color: pdfColors.gray }
-  );
-  y -= 14;
-  page.drawText(
-    "change, you can cancel and resubmit a new date any time from your resident portal.",
-    { x: marginX, y, size: 10, font, color: pdfColors.gray }
-  );
+  if (params.finalized) {
+    page.drawText(
+      "This is the official record of this resident's move-out. The lease has been closed as of the",
+      { x: marginX, y, size: 10, font, color: pdfColors.gray }
+    );
+    y -= 14;
+    page.drawText(
+      "date above, reflecting the account status shown.",
+      { x: marginX, y, size: 10, font, color: pdfColors.gray }
+    );
+  } else {
+    page.drawText(
+      "This confirms the office has received and approved the move-out date above. If your plans",
+      { x: marginX, y, size: 10, font, color: pdfColors.gray }
+    );
+    y -= 14;
+    page.drawText(
+      "change, you can cancel and resubmit a new date any time from your resident portal.",
+      { x: marginX, y, size: 10, font, color: pdfColors.gray }
+    );
+  }
+
+  if (params.notes?.trim()) {
+    y -= 24;
+    page.drawText("Notes:", { x: marginX, y, size: 10, font: fontBold, color: pdfColors.gray });
+    y -= 14;
+    page.drawText(params.notes.trim().slice(0, 200), { x: marginX, y, size: 10, font, color: pdfColors.gray });
+  }
 
   y -= 40;
   drawPdfFooter(page, y, font, "Generated from your resident portal. For questions, contact the park office.");
