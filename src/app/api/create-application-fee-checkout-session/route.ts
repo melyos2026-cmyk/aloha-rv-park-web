@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const { data: application, error } = await supabase
       .from("resident_applications")
       .select(
-        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total"
+        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total, space_id"
       )
       .eq("id", applicationId)
       .single();
@@ -52,6 +52,26 @@ export async function POST(req: Request) {
         { error: "This application fee has already been paid." },
         { status: 400 }
       );
+    }
+
+    // Aug 6 (per Mely's "semáforo" idea — check the light BEFORE letting
+    // someone pay, not charge-then-refund after): if another applicant's
+    // payment already put this exact lot on hold, stop here and never
+    // even create a Stripe session — their card is never charged at all,
+    // so there's nothing to refund.
+    if (application.space_id) {
+      const { data: lot } = await supabase
+        .from("rv_lots")
+        .select("status")
+        .eq("id", application.space_id)
+        .maybeSingle();
+
+      if (lot && lot.status !== "available") {
+        return NextResponse.json(
+          { error: "This lot is on hold — please choose a different lot and try again." },
+          { status: 409 }
+        );
+      }
     }
 
     const smsFee = Number(application.sms_fee_amount) || 0;
