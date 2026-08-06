@@ -52,10 +52,18 @@ export async function sendMoveOutConfirmedEmail(data: MoveOutConfirmedData) {
     <p style="text-align:center; color:#9ca3af; font-size:11px; margin-top:16px;">Powered by MelyOS.io</p>
   </div>`;
 
-  await resend.emails.send({
+  const result = await resend.emails.send({
     from: `${data.companyName} <noreply@aloharvparkfl.com>`,
     to: data.toEmail,
     subject: `Your move-out date is confirmed — ${formatDate(data.moveOutDate)}`,
     html,
   });
+
+  console.log("Move-out confirmation email result:", result);
+
+  if (result.error) {
+    throw new Error(result.error.message || "Resend returned an error.");
+  }
+
+  return result;
 }

@@ -359,7 +359,41 @@ export default function ResidentDashboard() {
       if (!res.ok) {
         setMoveOutMessage(`Error: ${result.error}`);
       } else {
-        setMoveOutMessage("Move-out date sent to the office.");
+        setMoveOutMessage("Submitted ✓");
+        setActiveLease((prev: any) => ({
+          ...prev,
+          requested_move_out_date: moveOutDate,
+          requested_move_out_note: moveOutNote,
+        }));
+      }
+    } catch {
+      setMoveOutMessage("Something went wrong. Please try again.");
+    }
+    setMoveOutSubmitting(false);
+  }
+
+  async function handleCancelMoveOut() {
+    if (!confirm("Cancel your move-out request? You can submit a new date afterward.")) return;
+    setMoveOutSubmitting(true);
+    setMoveOutMessage("");
+    try {
+      const res = await fetch("/api/portal/cancel-move-out-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setMoveOutMessage(`Error: ${result.error}`);
+      } else {
+        setActiveLease((prev: any) => ({
+          ...prev,
+          requested_move_out_date: null,
+          requested_move_out_note: null,
+        }));
+        setMoveOutDate("");
+        setMoveOutNote("");
+        setMoveOutMessage("");
       }
     } catch {
       setMoveOutMessage("Something went wrong. Please try again.");
@@ -1047,36 +1081,59 @@ export default function ResidentDashboard() {
                   ✕
                 </button>
                 <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
-                Let us know your planned move-out date — the office will follow up to confirm. Please give us at least <strong>{moveOutThresholdDays} days</strong> notice.
+              <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 8 }}>
+                Please give us at least <strong>{moveOutThresholdDays} days</strong> notice.
               </p>
-              {activeLease.requested_move_out_date && (
-                <p style={{ fontSize: 13, marginBottom: 12, color: "var(--black)" }}>
-                  Currently requested: <strong>{activeLease.requested_move_out_date}</strong>
+              <p style={{ color: "#b45309", fontSize: 13, marginBottom: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
+                Before moving out, your outstanding balance must be $0.
+              </p>
+              {activeLease.requested_move_out_date ? (
+                <>
+                  <p style={{ fontSize: 14, marginBottom: 12, color: "var(--black)" }}>
+                    Requested move-out date: <strong>{activeLease.requested_move_out_date}</strong>
+                    {" "}<span style={{ color: "#16a34a", fontWeight: 700 }}>Submitted ✓</span>
+                  </p>
+                  <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
+                    Changed your mind, or need a different date? Cancel below, then submit a new one.
+                  </p>
+                  <button
+                    onClick={handleCancelMoveOut}
+                    disabled={moveOutSubmitting}
+                    style={{ background: "#fff", color: "#dc2626", border: "1.5px solid #dc2626", borderRadius: 6, padding: "10px 16px", fontWeight: 700, cursor: "pointer", opacity: moveOutSubmitting ? 0.6 : 1 }}
+                  >
+                    {moveOutSubmitting ? "Cancelling..." : "Cancel Request"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <label style={label}>Move-Out Date</label>
+                  <input
+                    type="date"
+                    value={moveOutDate}
+                    onChange={(e) => setMoveOutDate(e.target.value)}
+                    style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
+                  />
+                  <label style={label}>Notes (optional)</label>
+                  <textarea
+                    value={moveOutNote}
+                    onChange={(e) => setMoveOutNote(e.target.value)}
+                    rows={2}
+                    style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
+                  />
+                  <button
+                    onClick={handleSubmitMoveOut}
+                    disabled={moveOutSubmitting}
+                    style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 16px", fontWeight: 700, cursor: "pointer", opacity: moveOutSubmitting ? 0.6 : 1 }}
+                  >
+                    {moveOutSubmitting ? "Sending..." : "Submit Move-Out Date"}
+                  </button>
+                </>
+              )}
+              {moveOutMessage && (
+                <p style={{ fontSize: 13, marginTop: 8, color: moveOutMessage === "Submitted ✓" ? "#16a34a" : "var(--black)", fontWeight: moveOutMessage === "Submitted ✓" ? 700 : 400 }}>
+                  {moveOutMessage}
                 </p>
               )}
-              <label style={label}>Move-Out Date</label>
-              <input
-                type="date"
-                value={moveOutDate}
-                onChange={(e) => setMoveOutDate(e.target.value)}
-                style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
-              />
-              <label style={label}>Notes (optional)</label>
-              <textarea
-                value={moveOutNote}
-                onChange={(e) => setMoveOutNote(e.target.value)}
-                rows={2}
-                style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
-              />
-              <button
-                onClick={handleSubmitMoveOut}
-                disabled={moveOutSubmitting}
-                style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 16px", fontWeight: 700, cursor: "pointer", opacity: moveOutSubmitting ? 0.6 : 1 }}
-              >
-                {moveOutSubmitting ? "Sending..." : "Submit Move-Out Date"}
-              </button>
-              {moveOutMessage && <p style={{ fontSize: 13, marginTop: 8 }}>{moveOutMessage}</p>}
               </div>
             </div>
           )}
