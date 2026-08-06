@@ -1,4 +1,5 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts } from "pdf-lib";
+import { drawPdfBrandHeader, drawPdfFooter, PDF_MARGIN_X, PDF_CONTENT_WIDTH, pdfColors } from "./pdf-brand-template";
 
 export type InvoiceLineItem = {
   description: string;
@@ -10,8 +11,9 @@ export type InvoiceLineItem = {
 // logo/name/address, ISSUED TO / DATE / DUE DATE, a
 // DESCRIPTION/QTY/TOTAL table, SUBTOTAL, and a final total line that reads
 // "PAID" (green) if the invoice is already paid, or "TOTAL DUE" otherwise.
-// (PAY TO section removed per Mely's request — redundant with the
-// company name/address already shown at the top.)
+// Aug 6: header/footer now come from the shared pdf-brand-template — this
+// is THE reference design every other company PDF (move-out confirmation,
+// etc.) is built to match, per Mely's explicit request.
 export async function generateInvoicePdf(params: {
   companyName: string;
   companyAddress: string | null;
@@ -30,53 +32,20 @@ export async function generateInvoicePdf(params: {
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const marginX = 54;
-  const pageWidth = 612;
-  const contentWidth = pageWidth - marginX * 2;
-  const gray = rgb(0.45, 0.45, 0.45);
-  const lightGray = rgb(0.6, 0.6, 0.6);
-  const black = rgb(0.13, 0.13, 0.13);
-  const green = rgb(0.09, 0.55, 0.2);
-  const lineColor = rgb(0.85, 0.85, 0.85);
+  const marginX = PDF_MARGIN_X;
+  const contentWidth = PDF_CONTENT_WIDTH;
+  const { gray, lightGray, black, green, lineColor } = pdfColors;
   const isPaid = (params.status || "").toLowerCase() === "paid";
 
   let y = 792 - 60;
 
-  // "INVOICE" title, top-left, with an underline — matches the sample.
-  page.setFontSize?.(28);
-  page.drawText("INVOICE", { x: marginX, y, size: 30, font, color: black });
-  y -= 8;
-  page.drawLine({ start: { x: marginX, y }, end: { x: marginX + 230, y }, thickness: 1, color: black });
-  y -= 36;
-
-  // Logo (left, next to company name) + company name/address block.
-  let textX = marginX;
-  if (params.companyLogoUrl) {
-    try {
-      const res = await fetch(params.companyLogoUrl);
-      const bytes = new Uint8Array(await res.arrayBuffer());
-      const contentType = res.headers.get("content-type") || "";
-      const image = contentType.includes("png") ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      const maxDim = 72;
-      const scale = Math.min(maxDim / image.width, maxDim / image.height, 1);
-      const w = image.width * scale;
-      const h = image.height * scale;
-      page.drawImage(image, { x: marginX, y: y - h + 14, width: w, height: h });
-      textX = marginX + w + 16;
-    } catch {
-      // no logo — skip silently
-    }
-  }
-
-  page.drawText(params.companyName, { x: textX, y, size: 15, font: fontBold, color: black });
-  y -= 18;
-  if (params.companyAddress) {
-    const addressLines = params.companyAddress.split(",").map((s) => s.trim());
-    for (const line of addressLines) {
-      page.drawText(line, { x: textX, y, size: 10, font, color: gray });
-      y -= 14;
-    }
-  }
+  y = await drawPdfBrandHeader(doc, page, font, fontBold, {
+    title: "INVOICE",
+    companyName: params.companyName,
+    companyAddress: params.companyAddress,
+    companyLogoUrl: params.companyLogoUrl,
+    startY: y,
+  });
 
   y -= 40;
 
@@ -115,8 +84,6 @@ export async function generateInvoicePdf(params: {
   const colDesc = marginX;
   const colQty = marginX + contentWidth - 130;
   const colTotal = marginX + contentWidth - 60;
-  // SUBTOTAL / TOTAL DUE labels need more room to the left than "QTY" does
-  // — otherwise longer text like "TOTAL DUE" runs right into the amount.
   const colSummaryLabel = marginX + contentWidth - 220;
 
   page.drawText("DESCRIPTION", { x: colDesc, y, size: 10, font: fontBold, color: gray });
@@ -161,7 +128,6 @@ export async function generateInvoicePdf(params: {
   page.drawText(`$${Math.abs(subtotal).toFixed(2)}`, { x: colTotal, y, size: 10, font, color: black });
   y -= 26;
 
-  // Final total line — "PAID" in green if settled, "TOTAL DUE" otherwise.
   const totalLabel = isPaid ? "PAID" : "TOTAL DUE";
   const totalColor = isPaid ? green : black;
   page.drawText(totalLabel, { x: colSummaryLabel, y, size: 14, font: fontBold, color: totalColor });
@@ -174,13 +140,7 @@ export async function generateInvoicePdf(params: {
   });
 
   y -= 40;
-  page.drawText("Generated from your resident portal. For questions, contact the park office.", {
-    x: marginX,
-    y,
-    size: 9,
-    font,
-    color: lightGray,
-  });
+  drawPdfFooter(page, y, font, "Generated from your resident portal. For questions, contact the park office.");
 
   const bytes = await doc.save();
   return Buffer.from(bytes);

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data: company } = await supabaseAdmin
     .from("companies")
-    .select("company_name, address")
+    .select("company_name, address, logo_url")
     .eq("id", resident.company_id)
     .maybeSingle();
 
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
     pdfBuffer = await generateMoveOutConfirmationPdf({
       companyName: company?.company_name || "the office",
       companyAddress: company?.address || null,
+      companyLogoUrl: company?.logo_url || null,
       residentName: resident.full_name,
       lotName,
       moveOutDate,
