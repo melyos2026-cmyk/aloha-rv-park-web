@@ -97,6 +97,15 @@ export interface LeaseApplicationData {
   rv_removal_storage_fee: string;
   rv_removal_clause: string;
 
+  // Aug 7 (per Mely): the admin sets these at invite time (or they come
+  // from Lease Defaults). They're NOT editable by the applicant, but the
+  // applicant must SEE them so they know what they're agreeing to pay
+  // for. Displayed read-only in the Utilities section.
+  electric_type: string;
+  electric_included_kwh: string;
+  electric_rate_per_kwh: string;
+  laundry_type: string;
+  laundry_monthly_fee: string;
   park_rules: ParkRule[];
   park_rules_acknowledged: boolean;
 
@@ -381,6 +390,11 @@ const emptyForm: LeaseApplicationData = {
   rv_removal_storage_fee: "25.00",
   rv_removal_clause:
     "Upon termination of this Agreement, Tenant shall remove the RV and all personal property from the lot within the number of days stated above. If the RV and/or personal property is not removed within that period, Park may treat the RV as abandoned, may charge a daily storage fee as stated above until removal, and/or may remove, store, and dispose of the RV and any remaining personal property in accordance with Florida law, at Tenant's sole expense. Park shall not be liable for any damage to the RV or personal property in connection with such removal or storage.",
+  electric_type: "",
+  electric_included_kwh: "",
+  electric_rate_per_kwh: "",
+  laundry_type: "",
+  laundry_monthly_fee: "",
   park_rules: defaultParkRules,
   park_rules_acknowledged: false,
   tenant_signature_name: "",
@@ -1946,6 +1960,51 @@ export default function LeaseApplicationForm({
               : data.utilities_included_short_stay) ||
               data.utilities_included ||
               "None specified."}
+            {/* Aug 7 (per Mely): the applicant must SEE how electric and
+                laundry will be billed before they sign — these are set by
+                the park (Lease Defaults, or overridden per-invite by the
+                admin) and are never editable by the applicant. */}
+            {(data.electric_type || data.laundry_type) && (
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: "1px solid #e5e7eb",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                {data.electric_type && (
+                  <div>
+                    <strong>Electric:</strong>{" "}
+                    {data.electric_type === "included"
+                      ? "Included in rent"
+                      : data.electric_type === "metered_included"
+                      ? `${data.electric_included_kwh || 0} kWh included per month, then $${
+                          data.electric_rate_per_kwh || 0
+                        } per kWh`
+                      : data.electric_type === "metered"
+                      ? `Billed by usage at $${data.electric_rate_per_kwh || 0} per kWh`
+                      : data.electric_type}
+                  </div>
+                )}
+                {data.laundry_type && (
+                  <div>
+                    <strong>Laundry:</strong>{" "}
+                    {data.laundry_type === "pay_per_use"
+                      ? "Pay per use"
+                      : data.laundry_type === "monthly_fee"
+                      ? `$${data.laundry_monthly_fee || 0} per month`
+                      : data.laundry_type === "included"
+                      ? "Included in rent"
+                      : data.laundry_type === "not_included"
+                      ? "Not included"
+                      : data.laundry_type}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         </>
