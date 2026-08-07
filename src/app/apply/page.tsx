@@ -116,7 +116,11 @@ function ApplyPageInner() {
           }
         }
         setSettingsLoaded(true);
-      });
+      })
+      // Aug 7: the form render is now gated on settingsLoaded (see below),
+      // so this MUST flip even if the query rejects outright — otherwise
+      // the applicant would sit on "Loading..." forever.
+      .catch(() => setSettingsLoaded(true));
   }, [company, companyLoading, companyError, inviteToken]);
 
   useEffect(() => {
@@ -165,6 +169,12 @@ function ApplyPageInner() {
           security_deposit_amount:
             data.security_deposit != null ? String(data.security_deposit) : "",
         }));
+        setInvitationLoaded(true);
+      })
+      .catch(() => {
+        setInvitationError(
+          "This invitation link is invalid or has expired. Please contact the park directly."
+        );
         setInvitationLoaded(true);
       });
   }, [inviteToken]);
@@ -397,7 +407,7 @@ function ApplyPageInner() {
     return <p style={{ padding: 20, color: "#c00" }}>{invitationError}</p>;
   }
 
-  if (!company || !invitationLoaded) {
+  if (!company || !invitationLoaded || !settingsLoaded) {
     return <p style={{ padding: 20, color: "#777" }}>Loading...</p>;
   }
 
