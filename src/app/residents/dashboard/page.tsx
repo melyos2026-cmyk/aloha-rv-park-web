@@ -266,12 +266,12 @@ export default function ResidentDashboard() {
     setOccupants(occVehData?.occupants || []);
     setVehicles(occVehData?.vehicles || []);
 
-    const { data: invs } = await supabase
-      .from("resident_invoices")
-      .select("*")
-      .eq("resident_id", residentId)
-      .eq("status", "Pending")
-      .order("due_date", { ascending: true });
+    const { invoices: allInvoices } = await fetch(`/api/portal/invoices?residentId=${residentId}`)
+      .then((res) => res.json())
+      .catch(() => ({ invoices: [] }));
+    const invs = (allInvoices || [])
+      .filter((inv: any) => inv.status === "Pending")
+      .sort((a: any, b: any) => (a.due_date || "").localeCompare(b.due_date || ""));
     setPendingInvoices(invs || []);
 
     // Fetch each pending invoice's itemized line items (Rent, Wifi,
