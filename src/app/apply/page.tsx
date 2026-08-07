@@ -168,6 +168,22 @@ function ApplyPageInner() {
           rent_amount: data.monthly_rent != null ? String(data.monthly_rent) : "",
           security_deposit_amount:
             data.security_deposit != null ? String(data.security_deposit) : "",
+          // Aug 7 (per Mely): the admin can override electric/laundry per
+          // invite. These were saved on the application row but never
+          // loaded into the form, so the applicant never saw them. Only
+          // override when the admin actually set one — otherwise leave
+          // whatever came from the park's Lease Defaults in place.
+          ...(data.electric_type ? { electric_type: data.electric_type } : {}),
+          ...(data.electric_included_kwh != null
+            ? { electric_included_kwh: String(data.electric_included_kwh) }
+            : {}),
+          ...(data.electric_rate_per_kwh != null
+            ? { electric_rate_per_kwh: String(data.electric_rate_per_kwh) }
+            : {}),
+          ...(data.laundry_type ? { laundry_type: data.laundry_type } : {}),
+          ...(data.laundry_monthly_fee != null
+            ? { laundry_monthly_fee: String(data.laundry_monthly_fee) }
+            : {}),
         }));
         setInvitationLoaded(true);
       })
