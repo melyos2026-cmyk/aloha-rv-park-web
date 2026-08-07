@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,6 +39,27 @@ export async function GET(request: Request) {
   let failedCount = 0;
 
   for (const resident of autopayResidents || []) {
+    // Aug 6 (per Mely): same processing-fee/tax/Connect-split model as the
+    // manual "Pay Now" route (create-checkout-session) — found via a real
+    // live-mode audit that this cron was charging the raw invoice total
+    // straight to MelyOS's own account, with NO split to the park and NO
+    // processing fee at all, unlike every other charge in the system.
+    const { data: feeSettings } = await supabaseAdmin
+      .from("company_fee_settings")
+      .select("pass_processing_fee_to_resident")
+      .eq("company_id", resident.company_id || "")
+      .maybeSingle();
+    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
+
+    const { data: taxSettings } = await supabaseAdmin
+      .from("company_tax_settings")
+      .select("enable_tax, manual_tax_rate_percent, rent_tax_mode")
+      .eq("company_id", resident.company_id || "")
+      .maybeSingle();
+    const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
+    const taxEnabled =
+      !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
+
     const { data: invoices } = await supabaseAdmin
       .from("resident_invoices")
       .select("id, total_amount, due_date")
@@ -49,15 +71,31 @@ export async function GET(request: Request) {
       const amount = Number(invoice.total_amount || 0);
       if (amount <= 0) continue;
 
+      const taxAmount = taxEnabled ? amount * (taxRatePercent / 100) : 0;
+      const processingFee = calculateProcessingFee(amount);
+      const chargeAmount = amount + taxAmount + (passFeeToResident ? processingFee : 0);
+      // Aloha's share is the full invoice amount plus all tax (theirs to
+      // remit) — MelyOS's cut is only the processing fee.
+      const alohaShare = amount + taxAmount + (passFeeToResident ? 0 : -processingFee);
+      const connectSplit = resident.company_id
+        ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
+        : null;
+
       try {
         const paymentIntent = await stripe.paymentIntents.create({
-          amount: Math.round(amount * 100),
+          amount: Math.round(chargeAmount * 100),
           currency: "usd",
           customer: resident.stripe_customer_id!,
           payment_method: resident.stripe_payment_method_id!,
           off_session: true,
           confirm: true,
           description: `Autopay — Aloha RV Park invoice ${invoice.id}`,
+          ...(connectSplit
+            ? {
+                application_fee_amount: connectSplit.applicationFeeAmountCents,
+                transfer_data: { destination: connectSplit.connectedAccountId },
+              }
+            : {}),
         });
 
         if (paymentIntent.status === "succeeded") {
@@ -66,6 +104,44 @@ export async function GET(request: Request) {
             .update({ status: "Paid" })
             .eq("id", invoice.id);
           chargedCount += 1;
+
+          // Aug 6 (per Mely): same "attach fee/tax as real invoice items,
+          // then recompute total_amount" pattern the manual Pay Now
+          // webhook uses — autopay charges via a direct PaymentIntent, so
+          // it never passes through that webhook and previously left the
+          // invoice record showing only the original amount, not what was
+          // truly charged.
+          if (taxAmount > 0 || (passFeeToResident && processingFee > 0)) {
+            if (taxAmount > 0) {
+              await supabaseAdmin.from("resident_invoice_items").insert({
+                invoice_id: invoice.id,
+                charge_type: "Sales Tax",
+                description: `Sales Tax (${taxRatePercent}%)`,
+                amount: taxAmount,
+              });
+            }
+            if (passFeeToResident && processingFee > 0) {
+              await supabaseAdmin.from("resident_invoice_items").insert({
+                invoice_id: invoice.id,
+                charge_type: "Card Processing Fee",
+                description: "Card Processing Fee",
+                amount: processingFee,
+              });
+            }
+
+            const { data: allItems } = await supabaseAdmin
+              .from("resident_invoice_items")
+              .select("amount")
+              .eq("invoice_id", invoice.id);
+            const recomputedTotal = (allItems || []).reduce(
+              (sum, item) => sum + Number(item.amount || 0),
+              0
+            );
+            await supabaseAdmin
+              .from("resident_invoices")
+              .update({ total_amount: recomputedTotal })
+              .eq("id", invoice.id);
+          }
 
           // Aug 4 (per Mely): so admin can actually SEE and verify the
           // real amount autopay charged each month, instead of just
@@ -76,7 +152,7 @@ export async function GET(request: Request) {
             resident_id: resident.id,
             resident_name: resident.full_name,
             update_type: "autopay_charged",
-            message: `Autopay charged ${resident.full_name} $${amount.toFixed(2)} for invoice due ${invoice.due_date}.`,
+            message: `Autopay charged ${resident.full_name} $${chargeAmount.toFixed(2)} for invoice due ${invoice.due_date}.`,
           });
         } else {
           failedCount += 1;
@@ -97,7 +173,7 @@ export async function GET(request: Request) {
           resident_id: resident.id,
           resident_name: resident.full_name,
           update_type: "autopay_failed",
-          message: `Autopay FAILED for ${resident.full_name} (invoice due ${invoice.due_date}, $${amount.toFixed(2)}) — autopay has been turned off for them.`,
+          message: `Autopay FAILED for ${resident.full_name} (invoice due ${invoice.due_date}, $${chargeAmount.toFixed(2)}) — autopay has been turned off for them.`,
         });
       }
     }

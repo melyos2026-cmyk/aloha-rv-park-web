@@ -171,11 +171,11 @@ export default function ResidentDashboard() {
       return;
     }
 
-    const { data: residentData, error: residentError } = await supabase
-      .from("resident_accounts")
-      .select("*, rv_lots(lot_name), companies(company_name)")
-      .eq("id", residentId)
-      .single();
+    const { resident: residentData, error: profileError } = await fetch(
+      `/api/portal/resident-profile?residentId=${residentId}`
+    )
+      .then((res) => res.json())
+      .catch(() => ({ resident: null, error: "Failed to load profile." }));
 
     setResidentId(residentId);
     setAutopayEnabled(!!residentData?.autopay_enabled);
@@ -189,7 +189,7 @@ export default function ResidentDashboard() {
     setRvVinOrTag(residentData?.rv_vin_or_tag || "");
     setEditingRvInfo(!residentData?.rv_make && !residentData?.rv_model && !residentData?.rv_vin_or_tag);
 
-    if (residentError || !residentData) {
+    if (profileError || !residentData) {
       setMessage("Resident not found.");
       return;
     }
