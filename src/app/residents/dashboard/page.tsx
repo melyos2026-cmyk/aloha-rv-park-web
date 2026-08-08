@@ -279,7 +279,7 @@ export default function ResidentDashboard() {
     // uses, so Outstanding Charges can show the real breakdown per charge.
     if (invs && invs.length > 0) {
       const itemsEntries = await Promise.all(
-        invs.map(async (inv) => {
+        invs.map(async (inv: any) => {
           const res = await fetch(
             `/api/portal/invoice-items?invoiceId=${inv.id}&residentId=${residentId}`
           )
