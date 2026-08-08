@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   }
 
   const columns =
-    "id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing, slide_out_compatibility";
+    "id, lot_name, base_price, max_length_ft, max_width_ft, amp_service, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing, slide_out_compatibility, max_slide_outs";
 
   const { data, error } = await supabase
     .from("rv_lots")

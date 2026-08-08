@@ -360,7 +360,9 @@ function ApplyPageInner() {
         rv_year: data.rv_year,
         rv_length_ft: Number(data.rv_length_ft) || null,
         rv_vin_or_tag: data.rv_vin_or_tag,
-        slide_out_location: data.slide_out_location,
+        slide_out_count: data.slide_out_count,
+        slide_out_driver_side: data.slide_out_driver_side,
+        slide_out_passenger_side: data.slide_out_passenger_side,
         rv_description: data.rv_description,
 
         utilities_included: data.utilities_included,

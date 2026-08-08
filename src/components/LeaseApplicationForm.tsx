@@ -69,7 +69,9 @@ export interface LeaseApplicationData {
   rv_year: string;
   rv_length_ft: string;
   rv_vin_or_tag: string;
-  slide_out_location: string;
+  slide_out_count: string;
+  slide_out_driver_side: boolean;
+  slide_out_passenger_side: boolean;
   rv_description: string;
 
   utilities_included: string; // long-term / month-to-month wording
@@ -370,7 +372,9 @@ const emptyForm: LeaseApplicationData = {
   rv_year: "",
   rv_length_ft: "",
   rv_vin_or_tag: "",
-  slide_out_location: "",
+  slide_out_count: "",
+  slide_out_driver_side: false,
+  slide_out_passenger_side: false,
   rv_description: "",
   utilities_included: "",
   utilities_included_short_stay: "",
@@ -426,6 +430,7 @@ export interface LotOption {
   max_width_ft: number | null;
   amp_service: string | null;
   slide_out_compatibility?: string | null;
+  max_slide_outs?: string | null;
   high_season_price: number | null;
   low_season_price: number | null;
   daily_rate?: number | null;
@@ -656,18 +661,27 @@ export default function LeaseApplicationForm({
     rvLengthNum > selectedLot.max_length_ft;
 
   // Aug 8 (per Mely): not every RV fits every lot — some lots can't
-  // physically accommodate a slide-out on one particular side (set per
-  // lot in melyos-builder's new Lot Compatibility screen). Warns whoever
-  // is filling this out without blocking submission — same non-blocking
-  // pattern as rvTooLong above, since the admin makes the final call.
+  // physically accommodate a slide-out on one particular side, or too
+  // many slide-outs (set per lot in the Map Builder's Lot Details
+  // editor). Warns whoever is filling this out without blocking
+  // submission — same non-blocking pattern as rvTooLong above, since
+  // the admin makes the final call.
   const lotSlideOutCompat = selectedLot?.slide_out_compatibility;
-  const slideOutMismatch =
-    !!data.slide_out_location &&
+  const lotMaxSlideOuts = selectedLot?.max_slide_outs;
+  const applicantSlideOutCount = data.slide_out_count ? Number(data.slide_out_count.replace("+", "")) : 0;
+  const slideOutSideMismatch =
+    (!!data.slide_out_driver_side || !!data.slide_out_passenger_side) &&
     !!lotSlideOutCompat &&
     lotSlideOutCompat !== "Any" &&
     (lotSlideOutCompat === "No Slide-Out" ||
-      (lotSlideOutCompat === "Driver Side Only" && data.slide_out_location !== "Driver Side") ||
-      (lotSlideOutCompat === "Passenger Side Only" && data.slide_out_location !== "Passenger Side"));
+      (lotSlideOutCompat === "Driver Side Only" && data.slide_out_passenger_side) ||
+      (lotSlideOutCompat === "Passenger Side Only" && data.slide_out_driver_side));
+  const slideOutCountMismatch =
+    !!data.slide_out_count &&
+    !!lotMaxSlideOuts &&
+    lotMaxSlideOuts !== "Any" &&
+    applicantSlideOutCount > Number(lotMaxSlideOuts.replace("+", ""));
+  const slideOutMismatch = slideOutSideMismatch || slideOutCountMismatch;
 
   const primaryApplicantAge = calculateAge(data.primary_applicant_dob);
   const primaryApplicantUnderage =
@@ -1933,17 +1947,40 @@ export default function LeaseApplicationForm({
         </div>
         <div style={styles.row}>
           <div style={styles.field}>
-            <label style={styles.label}>Slide-Out Location</label>
+            <label style={styles.label}>Number of Slide-Outs</label>
             <select
               style={styles.input}
-              value={data.slide_out_location}
-              onChange={(e) => set("slide_out_location", e.target.value)}
+              value={data.slide_out_count}
+              onChange={(e) => set("slide_out_count", e.target.value)}
             >
               <option value="">Select...</option>
-              <option value="Driver Side">Driver Side</option>
-              <option value="Passenger Side">Passenger Side</option>
-              <option value="Both Sides">Both Sides</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4+">4+</option>
             </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Slide-Out Side(s)</label>
+            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={data.slide_out_driver_side}
+                  onChange={(e) => set("slide_out_driver_side", e.target.checked)}
+                />
+                Driver Side
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={data.slide_out_passenger_side}
+                  onChange={(e) => set("slide_out_passenger_side", e.target.checked)}
+                />
+                Passenger Side
+              </label>
+            </div>
             {slideOutMismatch && (
               <div
                 style={{
@@ -1953,8 +1990,10 @@ export default function LeaseApplicationForm({
                   marginTop: 6,
                 }}
               >
-                ⚠️ This lot's slide-out compatibility is "{lotSlideOutCompat}" — please
-                confirm with the park before proceeding.
+                ⚠️ {slideOutCountMismatch
+                  ? `This lot supports up to ${lotMaxSlideOuts} slide-out(s).`
+                  : `This lot's slide-out compatibility is "${lotSlideOutCompat}".`}{" "}
+                Please confirm with the park before proceeding.
               </div>
             )}
           </div>
