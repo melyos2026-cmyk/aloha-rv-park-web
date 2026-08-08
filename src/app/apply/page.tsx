@@ -209,6 +209,23 @@ function ApplyPageInner() {
               : {}),
           }));
           setInvitationLoaded(true);
+
+          // Aug 8 (per Mely): the admin's assigned lot is typically
+          // Reserved (no longer "available"), so it can be missing from
+          // the lots list fetched above — merge it in explicitly so the
+          // locked <select> has a matching <option> instead of falling
+          // back to "Select a lot..." with the real value invisible
+          // underneath.
+          if (data.space_id) {
+            fetch(
+              `/api/get-available-lots?company_id=${data.company_id}&locked_lot_id=${data.space_id}`
+            )
+              .then((res) => res.json())
+              .then((result) => {
+                setLots((result.lots ?? []).slice().sort(naturalSort));
+              })
+              .catch(() => {});
+          }
         },
         // Same PromiseLike/.catch() type issue as the park_settings query
         // above — Supabase's builder has no .catch(), only the
