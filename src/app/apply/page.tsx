@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import LeaseApplicationForm, {
   LeaseApplicationData,
@@ -61,6 +61,35 @@ function ApplyPageInner() {
   // the form can mount before it's ready and never pick it up. settingsLoaded
   // gates a one-time remount (via the `key` prop below) once it's actually in.
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Aug 8 (per Mely): polls the same Service Role Key route every 20s
+  // while the applicant has this page open, so the "Lot X allows: ..."
+  // summary (and the mismatch warnings) reflect a Map Builder edit the
+  // admin makes mid-session — a real WebSocket/Supabase Realtime
+  // subscription isn't an option here since rv_lots' RLS requires a real
+  // admin session, which this public, unauthenticated page never has (it
+  // would just go silent, same as a direct anon-key read). A ref (not
+  // state) avoids restarting the interval on every keystroke elsewhere
+  // in the form.
+  const spaceIdRef = useRef("");
+  useEffect(() => {
+    spaceIdRef.current = initialData?.space_id || "";
+  }, [initialData?.space_id]);
+
+  useEffect(() => {
+    if (!company) return;
+    const interval = setInterval(() => {
+      const lockedId = spaceIdRef.current;
+      const url = lockedId
+        ? `/api/get-available-lots?company_id=${company.id}&locked_lot_id=${lockedId}`
+        : `/api/get-available-lots?company_id=${company.id}`;
+      fetch(url)
+        .then((res) => res.json())
+        .then((result) => setLots((result.lots ?? []).slice().sort(naturalSort)))
+        .catch(() => {});
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [company]);
 
   useEffect(() => {
     if (companyLoading) return;
