@@ -69,9 +69,8 @@ export interface LeaseApplicationData {
   rv_year: string;
   rv_length_ft: string;
   rv_vin_or_tag: string;
-  slide_out_count: string;
-  slide_out_driver_side: boolean;
-  slide_out_passenger_side: boolean;
+  slide_out_driver_count: string;
+  slide_out_passenger_count: string;
   rv_description: string;
 
   utilities_included: string; // long-term / month-to-month wording
@@ -372,9 +371,8 @@ const emptyForm: LeaseApplicationData = {
   rv_year: "",
   rv_length_ft: "",
   rv_vin_or_tag: "",
-  slide_out_count: "",
-  slide_out_driver_side: false,
-  slide_out_passenger_side: false,
+  slide_out_driver_count: "",
+  slide_out_passenger_count: "",
   rv_description: "",
   utilities_included: "",
   utilities_included_short_stay: "",
@@ -668,19 +666,25 @@ export default function LeaseApplicationForm({
   // the admin makes the final call.
   const lotSlideOutCompat = selectedLot?.slide_out_compatibility;
   const lotMaxSlideOuts = selectedLot?.max_slide_outs;
-  const applicantSlideOutCount = data.slide_out_count ? Number(data.slide_out_count.replace("+", "")) : 0;
+  const driverCountNum = data.slide_out_driver_count
+    ? Number(data.slide_out_driver_count.replace("+", ""))
+    : 0;
+  const passengerCountNum = data.slide_out_passenger_count
+    ? Number(data.slide_out_passenger_count.replace("+", ""))
+    : 0;
+  const totalSlideOutCount = driverCountNum + passengerCountNum;
   const slideOutSideMismatch =
-    (!!data.slide_out_driver_side || !!data.slide_out_passenger_side) &&
+    (driverCountNum > 0 || passengerCountNum > 0) &&
     !!lotSlideOutCompat &&
     lotSlideOutCompat !== "Any" &&
     (lotSlideOutCompat === "No Slide-Out" ||
-      (lotSlideOutCompat === "Driver Side Only" && data.slide_out_passenger_side) ||
-      (lotSlideOutCompat === "Passenger Side Only" && data.slide_out_driver_side));
+      (lotSlideOutCompat === "Driver Side Only" && passengerCountNum > 0) ||
+      (lotSlideOutCompat === "Passenger Side Only" && driverCountNum > 0));
   const slideOutCountMismatch =
-    !!data.slide_out_count &&
+    (!!data.slide_out_driver_count || !!data.slide_out_passenger_count) &&
     !!lotMaxSlideOuts &&
     lotMaxSlideOuts !== "Any" &&
-    applicantSlideOutCount > Number(lotMaxSlideOuts.replace("+", ""));
+    totalSlideOutCount > Number(lotMaxSlideOuts.replace("+", ""));
   const slideOutMismatch = slideOutSideMismatch || slideOutCountMismatch;
 
   const primaryApplicantAge = calculateAge(data.primary_applicant_dob);
@@ -1995,17 +1999,15 @@ export default function LeaseApplicationForm({
         <div style={styles.row}>
           <div style={styles.field}>
             <label style={styles.label}>
-              Number of Slide-Outs{" "}
-              {lotMaxSlideOuts && lotMaxSlideOuts !== "Any" && (
-                <span style={{ fontWeight: 400, color: "#999" }}>
-                  (max {lotMaxSlideOuts} for this lot)
-                </span>
-              )}
+              Driver Side Slide-Outs{" "}
+              {lotSlideOutCompat === "Passenger Side Only" || lotSlideOutCompat === "No Slide-Out" ? (
+                <span style={{ fontWeight: 400, color: "#999" }}>(not allowed on this lot)</span>
+              ) : null}
             </label>
             <select
               style={styles.input}
-              value={data.slide_out_count}
-              onChange={(e) => set("slide_out_count", e.target.value)}
+              value={data.slide_out_driver_count}
+              onChange={(e) => set("slide_out_driver_count", e.target.value)}
             >
               <option value="">Select...</option>
               <option value="0">0</option>
@@ -2017,31 +2019,28 @@ export default function LeaseApplicationForm({
           </div>
           <div style={styles.field}>
             <label style={styles.label}>
-              Slide-Out Side(s){" "}
-              {lotSlideOutCompat && lotSlideOutCompat !== "Any" && (
-                <span style={{ fontWeight: 400, color: "#999" }}>
-                  ({lotSlideOutCompat} for this lot)
-                </span>
-              )}
+              Passenger Side Slide-Outs{" "}
+              {lotSlideOutCompat === "Driver Side Only" || lotSlideOutCompat === "No Slide-Out" ? (
+                <span style={{ fontWeight: 400, color: "#999" }}>(not allowed on this lot)</span>
+              ) : null}
             </label>
-            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                <input
-                  type="checkbox"
-                  checked={data.slide_out_driver_side}
-                  onChange={(e) => set("slide_out_driver_side", e.target.checked)}
-                />
-                Driver Side
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-                <input
-                  type="checkbox"
-                  checked={data.slide_out_passenger_side}
-                  onChange={(e) => set("slide_out_passenger_side", e.target.checked)}
-                />
-                Passenger Side
-              </label>
-            </div>
+            <select
+              style={styles.input}
+              value={data.slide_out_passenger_count}
+              onChange={(e) => set("slide_out_passenger_count", e.target.value)}
+            >
+              <option value="">Select...</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4+">4+</option>
+            </select>
+            {lotMaxSlideOuts && lotMaxSlideOuts !== "Any" && (
+              <p style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+                (max {lotMaxSlideOuts} total for this lot)
+              </p>
+            )}
             {slideOutMismatch && (
               <div
                 style={{
@@ -2052,7 +2051,7 @@ export default function LeaseApplicationForm({
                 }}
               >
                 ⚠️ {slideOutCountMismatch
-                  ? `This lot supports up to ${lotMaxSlideOuts} slide-out(s).`
+                  ? `This lot supports up to ${lotMaxSlideOuts} slide-out(s) total.`
                   : `This lot's slide-out compatibility is "${lotSlideOutCompat}".`}{" "}
                 Please confirm with the park before proceeding.
               </div>
