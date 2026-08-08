@@ -427,8 +427,8 @@ export interface LotOption {
   max_length_ft: number | null;
   max_width_ft: number | null;
   amp_service: string | null;
-  slide_out_compatibility?: string | null;
-  max_slide_outs?: string | null;
+  max_driver_slide_outs?: string | null;
+  max_passenger_slide_outs?: string | null;
   high_season_price: number | null;
   low_season_price: number | null;
   daily_rate?: number | null;
@@ -664,28 +664,25 @@ export default function LeaseApplicationForm({
   // editor). Warns whoever is filling this out without blocking
   // submission — same non-blocking pattern as rvTooLong above, since
   // the admin makes the final call.
-  const lotSlideOutCompat = selectedLot?.slide_out_compatibility;
-  const lotMaxSlideOuts = selectedLot?.max_slide_outs;
+  const lotMaxDriverSlideOuts = selectedLot?.max_driver_slide_outs;
+  const lotMaxPassengerSlideOuts = selectedLot?.max_passenger_slide_outs;
   const driverCountNum = data.slide_out_driver_count
     ? Number(data.slide_out_driver_count.replace("+", ""))
     : 0;
   const passengerCountNum = data.slide_out_passenger_count
     ? Number(data.slide_out_passenger_count.replace("+", ""))
     : 0;
-  const totalSlideOutCount = driverCountNum + passengerCountNum;
-  const slideOutSideMismatch =
-    (driverCountNum > 0 || passengerCountNum > 0) &&
-    !!lotSlideOutCompat &&
-    lotSlideOutCompat !== "Any" &&
-    (lotSlideOutCompat === "No Slide-Out" ||
-      (lotSlideOutCompat === "Driver Side Only" && passengerCountNum > 0) ||
-      (lotSlideOutCompat === "Passenger Side Only" && driverCountNum > 0));
-  const slideOutCountMismatch =
-    (!!data.slide_out_driver_count || !!data.slide_out_passenger_count) &&
-    !!lotMaxSlideOuts &&
-    lotMaxSlideOuts !== "Any" &&
-    totalSlideOutCount > Number(lotMaxSlideOuts.replace("+", ""));
-  const slideOutMismatch = slideOutSideMismatch || slideOutCountMismatch;
+  const driverSlideOutMismatch =
+    !!data.slide_out_driver_count &&
+    !!lotMaxDriverSlideOuts &&
+    lotMaxDriverSlideOuts !== "Any" &&
+    driverCountNum > Number(lotMaxDriverSlideOuts.replace("+", ""));
+  const passengerSlideOutMismatch =
+    !!data.slide_out_passenger_count &&
+    !!lotMaxPassengerSlideOuts &&
+    lotMaxPassengerSlideOuts !== "Any" &&
+    passengerCountNum > Number(lotMaxPassengerSlideOuts.replace("+", ""));
+  const slideOutMismatch = driverSlideOutMismatch || passengerSlideOutMismatch;
 
   const primaryApplicantAge = calculateAge(data.primary_applicant_dob);
   const primaryApplicantUnderage =
@@ -1893,8 +1890,8 @@ export default function LeaseApplicationForm({
         </div>
         {selectedLot &&
           (selectedLot.max_length_ft ||
-            (selectedLot.slide_out_compatibility && selectedLot.slide_out_compatibility !== "Any") ||
-            (selectedLot.max_slide_outs && selectedLot.max_slide_outs !== "Any")) && (
+            (selectedLot.max_driver_slide_outs && selectedLot.max_driver_slide_outs !== "Any") ||
+            (selectedLot.max_passenger_slide_outs && selectedLot.max_passenger_slide_outs !== "Any")) && (
             // Aug 8 (per Mely): reads live from the same rv_lots row Map
             // Builder's Lot Details editor writes to — whatever the admin
             // last saved there is what shows here, no separate copy to
@@ -1922,16 +1919,16 @@ export default function LeaseApplicationForm({
                   <strong>{selectedLot.max_length_ft} ft</strong>
                 </span>
               )}
-              {selectedLot.slide_out_compatibility && selectedLot.slide_out_compatibility !== "Any" && (
+              {selectedLot.max_driver_slide_outs && selectedLot.max_driver_slide_outs !== "Any" && (
                 <span>
-                  <span style={{ color: "#6b7280" }}>Slide-Out: </span>
-                  <strong>{selectedLot.slide_out_compatibility}</strong>
+                  <span style={{ color: "#6b7280" }}>Max Driver-Side Slide-Outs: </span>
+                  <strong>{selectedLot.max_driver_slide_outs}</strong>
                 </span>
               )}
-              {selectedLot.max_slide_outs && selectedLot.max_slide_outs !== "Any" && (
+              {selectedLot.max_passenger_slide_outs && selectedLot.max_passenger_slide_outs !== "Any" && (
                 <span>
-                  <span style={{ color: "#6b7280" }}>Max Slide-Outs: </span>
-                  <strong>{selectedLot.max_slide_outs}</strong>
+                  <span style={{ color: "#6b7280" }}>Max Passenger-Side Slide-Outs: </span>
+                  <strong>{selectedLot.max_passenger_slide_outs}</strong>
                 </span>
               )}
             </div>
@@ -2000,9 +1997,11 @@ export default function LeaseApplicationForm({
           <div style={styles.field}>
             <label style={styles.label}>
               Driver Side Slide-Outs{" "}
-              {lotSlideOutCompat === "Passenger Side Only" || lotSlideOutCompat === "No Slide-Out" ? (
-                <span style={{ fontWeight: 400, color: "#999" }}>(not allowed on this lot)</span>
-              ) : null}
+              {lotMaxDriverSlideOuts && lotMaxDriverSlideOuts !== "Any" && (
+                <span style={{ fontWeight: 400, color: "#999" }}>
+                  (max {lotMaxDriverSlideOuts} for this lot)
+                </span>
+              )}
             </label>
             <select
               style={styles.input}
@@ -2016,13 +2015,28 @@ export default function LeaseApplicationForm({
               <option value="3">3</option>
               <option value="4+">4+</option>
             </select>
+            {driverSlideOutMismatch && (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#c00",
+                  fontWeight: 600,
+                  marginTop: 6,
+                }}
+              >
+                ⚠️ This lot supports up to {lotMaxDriverSlideOuts} driver-side slide-out(s).
+                Please confirm with the park before proceeding.
+              </div>
+            )}
           </div>
           <div style={styles.field}>
             <label style={styles.label}>
               Passenger Side Slide-Outs{" "}
-              {lotSlideOutCompat === "Driver Side Only" || lotSlideOutCompat === "No Slide-Out" ? (
-                <span style={{ fontWeight: 400, color: "#999" }}>(not allowed on this lot)</span>
-              ) : null}
+              {lotMaxPassengerSlideOuts && lotMaxPassengerSlideOuts !== "Any" && (
+                <span style={{ fontWeight: 400, color: "#999" }}>
+                  (max {lotMaxPassengerSlideOuts} for this lot)
+                </span>
+              )}
             </label>
             <select
               style={styles.input}
@@ -2036,12 +2050,7 @@ export default function LeaseApplicationForm({
               <option value="3">3</option>
               <option value="4+">4+</option>
             </select>
-            {lotMaxSlideOuts && lotMaxSlideOuts !== "Any" && (
-              <p style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
-                (max {lotMaxSlideOuts} total for this lot)
-              </p>
-            )}
-            {slideOutMismatch && (
+            {passengerSlideOutMismatch && (
               <div
                 style={{
                   fontSize: 13,
@@ -2050,9 +2059,7 @@ export default function LeaseApplicationForm({
                   marginTop: 6,
                 }}
               >
-                ⚠️ {slideOutCountMismatch
-                  ? `This lot supports up to ${lotMaxSlideOuts} slide-out(s) total.`
-                  : `This lot's slide-out compatibility is "${lotSlideOutCompat}".`}{" "}
+                ⚠️ This lot supports up to {lotMaxPassengerSlideOuts} passenger-side slide-out(s).
                 Please confirm with the park before proceeding.
               </div>
             )}
