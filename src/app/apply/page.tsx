@@ -84,43 +84,49 @@ function ApplyPageInner() {
       )
       .eq("company_id", company.id)
       .single()
-      .then(({ data: settingsData, error: settingsError }) => {
-        if (!settingsError && settingsData) {
-          setRentDuePolicy(
-            (settingsData.rent_due_day_policy as
-              | "fixed"
-              | "move_in_anniversary") ?? "fixed"
-          );
-          setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
-          setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
-          setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
-          // Every applicant — invited or not — starts pre-filled with the
-          // park's saved Fees & Deposits / Late Fee / Utilities /
-          // Parking-Pets-Smoking / Additional Terms / RV Removal / Park
-          // Rules defaults, instead of blank. Safe regardless of which
-          // effect resolves first: this spreads defaults first, then prev
-          // (whatever the invitation-specific effect already set) on top,
-          // so invitation-specific values always win on conflicting keys.
-          if (settingsData.lease_defaults) {
-            const defaults = { ...settingsData.lease_defaults };
-            // An empty/never-customized park_rules shouldn't wipe out the
-            // sensible generic defaults (Quiet Hours, Speed Limit, etc.) —
-            // only override once the admin has actually saved custom rules.
-            if (!defaults.park_rules || defaults.park_rules.length === 0) {
-              defaults.park_rules = defaultParkRules;
+      .then(
+        ({ data: settingsData, error: settingsError }) => {
+          if (!settingsError && settingsData) {
+            setRentDuePolicy(
+              (settingsData.rent_due_day_policy as
+                | "fixed"
+                | "move_in_anniversary") ?? "fixed"
+            );
+            setRentDueFixed(settingsData.rent_due_day_fixed ?? 1);
+            setHighSeasonStart(settingsData.high_season_start_month_day ?? undefined);
+            setHighSeasonEnd(settingsData.high_season_end_month_day ?? undefined);
+            // Every applicant — invited or not — starts pre-filled with the
+            // park's saved Fees & Deposits / Late Fee / Utilities /
+            // Parking-Pets-Smoking / Additional Terms / RV Removal / Park
+            // Rules defaults, instead of blank. Safe regardless of which
+            // effect resolves first: this spreads defaults first, then prev
+            // (whatever the invitation-specific effect already set) on top,
+            // so invitation-specific values always win on conflicting keys.
+            if (settingsData.lease_defaults) {
+              const defaults = { ...settingsData.lease_defaults };
+              // An empty/never-customized park_rules shouldn't wipe out the
+              // sensible generic defaults (Quiet Hours, Speed Limit, etc.) —
+              // only override once the admin has actually saved custom rules.
+              if (!defaults.park_rules || defaults.park_rules.length === 0) {
+                defaults.park_rules = defaultParkRules;
+              }
+              setInitialData((prev) => ({
+                ...defaults,
+                ...prev,
+              }));
             }
-            setInitialData((prev) => ({
-              ...defaults,
-              ...prev,
-            }));
           }
-        }
-        setSettingsLoaded(true);
-      })
-      // Aug 7: the form render is now gated on settingsLoaded (see below),
-      // so this MUST flip even if the query rejects outright — otherwise
-      // the applicant would sit on "Loading..." forever.
-      .catch(() => setSettingsLoaded(true));
+          setSettingsLoaded(true);
+        },
+        // Aug 7: the form render is now gated on settingsLoaded (see below),
+        // so this MUST flip even if the query rejects outright — otherwise
+        // the applicant would sit on "Loading..." forever. Supabase's query
+        // builder types its thenable as PromiseLike, which has no .catch()
+        // (only the two-argument .then(onFulfilled, onRejected) form) —
+        // using .then().catch() here was a TypeScript build error, not
+        // just a lint warning, so the whole app failed to deploy.
+        () => setSettingsLoaded(true)
+      );
   }, [company, companyLoading, companyError, inviteToken]);
 
   useEffect(() => {
@@ -131,68 +137,73 @@ function ApplyPageInner() {
       .select("*")
       .eq("invite_token", inviteToken)
       .maybeSingle()
-      .then(({ data, error }) => {
-        if (error || !data) {
+      .then(
+        ({ data, error }) => {
+          if (error || !data) {
+            setInvitationError(
+              "This invitation link is invalid or has expired. Please contact the park directly."
+            );
+            setInvitationLoaded(true);
+            return;
+          }
+
+          setInvitationId(data.id);
+          setIsRentToOwn(!!data.is_rent_to_own);
+          setIsReturningResident(!!data.is_returning_resident);
+          setBackgroundCheckOverride(data.background_check_override || "");
+          setIsFamilyFriend(!!data.is_family_friend);
+          // Lock rent/deposit/lot for the applicant only when the admin
+          // actually set them at invite time (a plain invite with no rent
+          // entered still lets the applicant see the lot's normal rate) —
+          // this is independent of Family/Friends, which only affects
+          // background check.
+          setLockAdminFields(data.monthly_rent != null);
+          setRentToOwnTerms({
+            totalPrice: data.rent_to_own_total_price ?? null,
+            monthlyPayment: data.rent_to_own_monthly_payment ?? null,
+            numPayments: data.rent_to_own_num_payments ?? null,
+            deposit: data.rent_to_own_deposit ?? null,
+            depositPaid: !!data.rent_to_own_deposit_paid,
+          });
+          setInitialData((prev) => ({
+            ...prev,
+            tenant_names: data.full_name ?? data.tenant_names ?? "",
+            tenant_email: data.email ?? "",
+            tenant_phone: data.phone ?? "",
+            space_id: data.space_id ?? "",
+            lease_start_date: data.lease_start ?? "",
+            rent_amount: data.monthly_rent != null ? String(data.monthly_rent) : "",
+            security_deposit_amount:
+              data.security_deposit != null ? String(data.security_deposit) : "",
+            // Aug 7 (per Mely): the admin can override electric/laundry per
+            // invite. These were saved on the application row but never
+            // loaded into the form, so the applicant never saw them. Only
+            // override when the admin actually set one — otherwise leave
+            // whatever came from the park's Lease Defaults in place.
+            ...(data.electric_type ? { electric_type: data.electric_type } : {}),
+            ...(data.electric_included_kwh != null
+              ? { electric_included_kwh: String(data.electric_included_kwh) }
+              : {}),
+            ...(data.electric_rate_per_kwh != null
+              ? { electric_rate_per_kwh: String(data.electric_rate_per_kwh) }
+              : {}),
+            ...(data.laundry_type ? { laundry_type: data.laundry_type } : {}),
+            ...(data.laundry_monthly_fee != null
+              ? { laundry_monthly_fee: String(data.laundry_monthly_fee) }
+              : {}),
+          }));
+          setInvitationLoaded(true);
+        },
+        // Same PromiseLike/.catch() type issue as the park_settings query
+        // above — Supabase's builder has no .catch(), only the
+        // two-argument .then(onFulfilled, onRejected) form.
+        () => {
           setInvitationError(
             "This invitation link is invalid or has expired. Please contact the park directly."
           );
           setInvitationLoaded(true);
-          return;
         }
-
-        setInvitationId(data.id);
-        setIsRentToOwn(!!data.is_rent_to_own);
-        setIsReturningResident(!!data.is_returning_resident);
-        setBackgroundCheckOverride(data.background_check_override || "");
-        setIsFamilyFriend(!!data.is_family_friend);
-        // Lock rent/deposit/lot for the applicant only when the admin
-        // actually set them at invite time (a plain invite with no rent
-        // entered still lets the applicant see the lot's normal rate) —
-        // this is independent of Family/Friends, which only affects
-        // background check.
-        setLockAdminFields(data.monthly_rent != null);
-        setRentToOwnTerms({
-          totalPrice: data.rent_to_own_total_price ?? null,
-          monthlyPayment: data.rent_to_own_monthly_payment ?? null,
-          numPayments: data.rent_to_own_num_payments ?? null,
-          deposit: data.rent_to_own_deposit ?? null,
-          depositPaid: !!data.rent_to_own_deposit_paid,
-        });
-        setInitialData((prev) => ({
-          ...prev,
-          tenant_names: data.full_name ?? data.tenant_names ?? "",
-          tenant_email: data.email ?? "",
-          tenant_phone: data.phone ?? "",
-          space_id: data.space_id ?? "",
-          lease_start_date: data.lease_start ?? "",
-          rent_amount: data.monthly_rent != null ? String(data.monthly_rent) : "",
-          security_deposit_amount:
-            data.security_deposit != null ? String(data.security_deposit) : "",
-          // Aug 7 (per Mely): the admin can override electric/laundry per
-          // invite. These were saved on the application row but never
-          // loaded into the form, so the applicant never saw them. Only
-          // override when the admin actually set one — otherwise leave
-          // whatever came from the park's Lease Defaults in place.
-          ...(data.electric_type ? { electric_type: data.electric_type } : {}),
-          ...(data.electric_included_kwh != null
-            ? { electric_included_kwh: String(data.electric_included_kwh) }
-            : {}),
-          ...(data.electric_rate_per_kwh != null
-            ? { electric_rate_per_kwh: String(data.electric_rate_per_kwh) }
-            : {}),
-          ...(data.laundry_type ? { laundry_type: data.laundry_type } : {}),
-          ...(data.laundry_monthly_fee != null
-            ? { laundry_monthly_fee: String(data.laundry_monthly_fee) }
-            : {}),
-        }));
-        setInvitationLoaded(true);
-      })
-      .catch(() => {
-        setInvitationError(
-          "This invitation link is invalid or has expired. Please contact the park directly."
-        );
-        setInvitationLoaded(true);
-      });
+      );
   }, [inviteToken]);
 
   async function uploadLicensePhoto(
