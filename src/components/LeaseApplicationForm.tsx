@@ -997,10 +997,7 @@ export default function LeaseApplicationForm({
               )}
           </div>
           <div style={styles.field}>
-            <label style={styles.label}>
-              Phone Number{" "}
-              <span style={{ fontWeight: 400, color: "#999" }}>(optional)</span>
-            </label>
+            <label style={styles.label}>Phone</label>
             <input
               type="tel"
               style={styles.input}
@@ -2856,6 +2853,20 @@ export default function LeaseApplicationForm({
           ? "Submit Application"
           : "Save Application"}
       </button>
+
+      {attemptedSubmit && !canSubmit && !submitting && (
+        <p
+          style={{
+            color: "#991b1b",
+            fontSize: 13,
+            textAlign: "center",
+            marginTop: 8,
+          }}
+        >
+          Please review the application again — some required fields above
+          still need to be filled in.
+        </p>
+      )}
 
       {showConfirmModal && (
         <div
