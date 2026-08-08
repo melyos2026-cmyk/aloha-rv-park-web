@@ -172,6 +172,22 @@ function ApplyPageInner() {
             tenant_phone: data.phone ?? "",
             space_id: data.space_id ?? "",
             lease_start_date: data.lease_start ?? "",
+            // Aug 8 (per Mely): the applicant's lease term (month-to-month
+            // vs fixed end date) was never loaded from the invitation row —
+            // hasDecidedTerm (which gates Utilities and a few other
+            // sections) stayed permanently false for any locked/admin-set
+            // invite, since the applicant couldn't set it themselves either
+            // (the field is disabled when lockAdminFields is true). Only
+            // set these when the admin actually set rent at invite time
+            // (data.monthly_rent != null, matching lockAdminFields above)
+            // — a plain invite with no rent entered should still let the
+            // applicant freely choose their own term as before.
+            ...(data.monthly_rent != null
+              ? {
+                  month_to_month: data.lease_end == null,
+                  lease_end_date: data.lease_end ?? "",
+                }
+              : {}),
             rent_amount: data.monthly_rent != null ? String(data.monthly_rent) : "",
             security_deposit_amount:
               data.security_deposit != null ? String(data.security_deposit) : "",
