@@ -69,6 +69,8 @@ export interface LeaseApplicationData {
   rv_year: string;
   rv_length_ft: string;
   rv_vin_or_tag: string;
+  slide_out_location: string;
+  rv_description: string;
 
   utilities_included: string; // long-term / month-to-month wording
   utilities_included_short_stay: string; // short-stay wording
@@ -368,6 +370,8 @@ const emptyForm: LeaseApplicationData = {
   rv_year: "",
   rv_length_ft: "",
   rv_vin_or_tag: "",
+  slide_out_location: "",
+  rv_description: "",
   utilities_included: "",
   utilities_included_short_stay: "",
   hazardous_materials_clause:
@@ -1911,6 +1915,34 @@ export default function LeaseApplicationForm({
               onChange={(e) => set("rv_vin_or_tag", e.target.value)}
             />
           </div>
+        </div>
+        <div style={styles.row}>
+          <div style={styles.field}>
+            <label style={styles.label}>Slide-Out Location</label>
+            <select
+              style={styles.input}
+              value={data.slide_out_location}
+              onChange={(e) => set("slide_out_location", e.target.value)}
+            >
+              <option value="">Select...</option>
+              <option value="Driver Side">Driver Side</option>
+              <option value="Passenger Side">Passenger Side</option>
+              <option value="Both Sides">Both Sides</option>
+            </select>
+          </div>
+        </div>
+        <div style={styles.field}>
+          <label style={styles.label}>RV Description (Optional)</label>
+          <p style={{ fontSize: 12, color: "#777", marginTop: 0, marginBottom: 6 }}>
+            Please provide any additional details about your RV that may help us assign the
+            appropriate site, including special features, oversized equipment, or other space
+            requirements.
+          </p>
+          <textarea
+            style={{ ...styles.input, minHeight: 70 }}
+            value={data.rv_description}
+            onChange={(e) => set("rv_description", e.target.value)}
+          />
         </div>
         {rvTooLong && (
           <div
