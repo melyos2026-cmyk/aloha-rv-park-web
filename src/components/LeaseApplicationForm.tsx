@@ -862,7 +862,7 @@ export default function LeaseApplicationForm({
         tenantLastName &&
         data.tenant_email &&
         emailValid &&
-        data.property_address &&
+        (availableLots ? !!data.space_id : !!data.property_address) &&
         data.rent_amount &&
         data.primary_applicant_dob &&
         data.primary_applicant_license &&
@@ -945,9 +945,6 @@ export default function LeaseApplicationForm({
                 <span style={{ color: "#c00" }}> *</span>
               )}
             </label>
-            <div style={{ fontSize: 10, color: "#999", marginBottom: 4 }}>
-              DEBUG: space_id="{data.space_id}" | lockAdminFields={String(lockAdminFields)} | availableLots count={availableLots?.length ?? "null"} | matches={availableLots?.some((l) => l.id === data.space_id) ? "yes" : "no"}
-            </div>
             {availableLots ? (
               <select
                 style={styles.input}
@@ -1001,9 +998,11 @@ export default function LeaseApplicationForm({
                 onChange={(e) => set("property_address", e.target.value)}
               />
             )}
-            {mode === "applicant" && attemptedSubmit && !data.property_address && (
-              <div style={styles.requiredNote}>Field required</div>
-            )}
+            {mode === "applicant" &&
+              attemptedSubmit &&
+              !(availableLots ? data.space_id : data.property_address) && (
+                <div style={styles.requiredNote}>Field required</div>
+              )}
           </div>
         </div>
         <div style={styles.row}>
