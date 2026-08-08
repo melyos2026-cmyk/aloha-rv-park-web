@@ -1885,6 +1885,51 @@ export default function LeaseApplicationForm({
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, marginTop: 4 }}>
           RV / Unit Information
         </div>
+        {selectedLot &&
+          (selectedLot.max_length_ft ||
+            (selectedLot.slide_out_compatibility && selectedLot.slide_out_compatibility !== "Any") ||
+            (selectedLot.max_slide_outs && selectedLot.max_slide_outs !== "Any")) && (
+            // Aug 8 (per Mely): reads live from the same rv_lots row Map
+            // Builder's Lot Details editor writes to — whatever the admin
+            // last saved there is what shows here, no separate copy to
+            // keep in sync. Refreshes on page load, not a live socket —
+            // if the admin changes it while this page is already open,
+            // reload to see the update.
+            <div
+              style={{
+                background: "#f9fafb",
+                borderRadius: 8,
+                padding: "10px 12px",
+                marginBottom: 10,
+                display: "flex",
+                gap: 16,
+                flexWrap: "wrap",
+                fontSize: 12,
+              }}
+            >
+              <span style={{ fontWeight: 700, color: "#374151" }}>
+                Lot {selectedLot.lot_name} allows:
+              </span>
+              {selectedLot.max_length_ft && (
+                <span>
+                  <span style={{ color: "#6b7280" }}>Max RV Length: </span>
+                  <strong>{selectedLot.max_length_ft} ft</strong>
+                </span>
+              )}
+              {selectedLot.slide_out_compatibility && selectedLot.slide_out_compatibility !== "Any" && (
+                <span>
+                  <span style={{ color: "#6b7280" }}>Slide-Out: </span>
+                  <strong>{selectedLot.slide_out_compatibility}</strong>
+                </span>
+              )}
+              {selectedLot.max_slide_outs && selectedLot.max_slide_outs !== "Any" && (
+                <span>
+                  <span style={{ color: "#6b7280" }}>Max Slide-Outs: </span>
+                  <strong>{selectedLot.max_slide_outs}</strong>
+                </span>
+              )}
+            </div>
+          )}
         <div style={styles.row}>
           <div style={styles.field}>
             <label style={styles.label}>RV Make</label>
