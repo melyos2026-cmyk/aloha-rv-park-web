@@ -425,6 +425,7 @@ export interface LotOption {
   max_length_ft: number | null;
   max_width_ft: number | null;
   amp_service: string | null;
+  slide_out_compatibility?: string | null;
   high_season_price: number | null;
   low_season_price: number | null;
   daily_rate?: number | null;
@@ -653,6 +654,20 @@ export default function LeaseApplicationForm({
     !!selectedLot?.max_length_ft &&
     rvLengthNum > 0 &&
     rvLengthNum > selectedLot.max_length_ft;
+
+  // Aug 8 (per Mely): not every RV fits every lot — some lots can't
+  // physically accommodate a slide-out on one particular side (set per
+  // lot in melyos-builder's new Lot Compatibility screen). Warns whoever
+  // is filling this out without blocking submission — same non-blocking
+  // pattern as rvTooLong above, since the admin makes the final call.
+  const lotSlideOutCompat = selectedLot?.slide_out_compatibility;
+  const slideOutMismatch =
+    !!data.slide_out_location &&
+    !!lotSlideOutCompat &&
+    lotSlideOutCompat !== "Any" &&
+    (lotSlideOutCompat === "No Slide-Out" ||
+      (lotSlideOutCompat === "Driver Side Only" && data.slide_out_location !== "Driver Side") ||
+      (lotSlideOutCompat === "Passenger Side Only" && data.slide_out_location !== "Passenger Side"));
 
   const primaryApplicantAge = calculateAge(data.primary_applicant_dob);
   const primaryApplicantUnderage =
@@ -1929,6 +1944,19 @@ export default function LeaseApplicationForm({
               <option value="Passenger Side">Passenger Side</option>
               <option value="Both Sides">Both Sides</option>
             </select>
+            {slideOutMismatch && (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#c00",
+                  fontWeight: 600,
+                  marginTop: 6,
+                }}
+              >
+                ⚠️ This lot's slide-out compatibility is "{lotSlideOutCompat}" — please
+                confirm with the park before proceeding.
+              </div>
+            )}
           </div>
         </div>
         <div style={styles.field}>
