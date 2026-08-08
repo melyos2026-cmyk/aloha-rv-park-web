@@ -497,6 +497,8 @@ function ApplyPageInner() {
         rentToOwnTerms={rentToOwnTerms}
         applicationId={invitationId}
         lockAdminFields={lockAdminFields}
+        isFamilyFriend={isFamilyFriend}
+        backgroundCheckOverride={backgroundCheckOverride}
         onUploadFile={uploadLicensePhoto}
         onSubmit={handleSubmit}
       />

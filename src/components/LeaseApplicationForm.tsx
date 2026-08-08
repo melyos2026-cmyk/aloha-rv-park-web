@@ -451,6 +451,16 @@ interface Props {
   // already set them at invite time (Aug 2, admin-initiated application
   // flow). The applicant can still edit their own personal info normally.
   lockAdminFields?: boolean;
+  // Aug 8 (per Mely): when the admin marks an invite as Family/Friends (or
+  // sets background_check_override='skip' directly), the background check
+  // is waived for THIS applicant specifically — the form's own
+  // backgroundCheckRequired calc (below) previously only looked at stay
+  // length/type and had no way to know about this admin override, so the
+  // full Background Check card + authorization checkbox still showed
+  // regardless. Mirrors the same precedence already used in
+  // apply/page.tsx's checkout-amount calculation.
+  isFamilyFriend?: boolean;
+  backgroundCheckOverride?: "" | "required" | "skip";
   onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
   submitting?: boolean;
@@ -554,6 +564,8 @@ export default function LeaseApplicationForm({
   rentToOwnTerms,
   applicationId,
   lockAdminFields,
+  isFamilyFriend,
+  backgroundCheckOverride,
   onSubmit,
   onUploadFile,
   submitting,
@@ -732,10 +744,18 @@ export default function LeaseApplicationForm({
   // requires one too, regardless of the configured day threshold.
   // A fixed-term stay only requires one once it's longer than the admin's
   // configured threshold.
-  const backgroundCheckRequired =
+  const automaticBackgroundCheckRequired =
     data.month_to_month ||
     isRentToOwn ||
     (stayNights !== null && stayNights > backgroundCheckThresholdDays);
+  // Aug 8 (per Mely): Family/Friends (or a direct skip override) waives
+  // the background check for this specific applicant, regardless of what
+  // the automatic stay-length/type calculation above would otherwise
+  // require — mirrors apply/page.tsx's checkout-amount precedence.
+  const backgroundCheckRequired =
+    isFamilyFriend || backgroundCheckOverride === "skip"
+      ? false
+      : automaticBackgroundCheckRequired;
 
   // $2.50 is the actual application/processing fee, always charged.
   // $75 primary / $50 per-additional-adult is the BACKGROUND CHECK fee —
