@@ -945,6 +945,9 @@ export default function LeaseApplicationForm({
                 <span style={{ color: "#c00" }}> *</span>
               )}
             </label>
+            <div style={{ fontSize: 10, color: "#999", marginBottom: 4 }}>
+              DEBUG: space_id="{data.space_id}" | lockAdminFields={String(lockAdminFields)} | availableLots count={availableLots?.length ?? "null"} | matches={availableLots?.some((l) => l.id === data.space_id) ? "yes" : "no"}
+            </div>
             {availableLots ? (
               <select
                 style={styles.input}
@@ -1992,7 +1995,14 @@ export default function LeaseApplicationForm({
         </div>
         <div style={styles.row}>
           <div style={styles.field}>
-            <label style={styles.label}>Number of Slide-Outs</label>
+            <label style={styles.label}>
+              Number of Slide-Outs{" "}
+              {lotMaxSlideOuts && lotMaxSlideOuts !== "Any" && (
+                <span style={{ fontWeight: 400, color: "#999" }}>
+                  (max {lotMaxSlideOuts} for this lot)
+                </span>
+              )}
+            </label>
             <select
               style={styles.input}
               value={data.slide_out_count}
@@ -2007,7 +2017,14 @@ export default function LeaseApplicationForm({
             </select>
           </div>
           <div style={styles.field}>
-            <label style={styles.label}>Slide-Out Side(s)</label>
+            <label style={styles.label}>
+              Slide-Out Side(s){" "}
+              {lotSlideOutCompat && lotSlideOutCompat !== "Any" && (
+                <span style={{ fontWeight: 400, color: "#999" }}>
+                  ({lotSlideOutCompat} for this lot)
+                </span>
+              )}
+            </label>
             <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
                 <input
