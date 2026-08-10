@@ -340,11 +340,16 @@ function ApplyPageInner() {
           ? Number(data.rent_amount) || 0
           : 0;
 
-      const parkSharePrimary = 10.0;
-      const parkSharePerAdditional = 5.0;
-      const parkShareTotal = backgroundCheckRequired
-        ? parkSharePrimary + parkSharePerAdditional * additionalCount
-        : 0;
+      // Aug 10 (per Mely): the background check fee Aloha charges its own
+      // applicant ($75/$50, now admin-editable — see Lease Defaults) is
+      // 100% the park's revenue now — MelyOS no longer takes a cut of
+      // this specific Stripe charge. MelyOS's own revenue for the Checkr
+      // integration comes from a SEPARATE charge to the park's admin
+      // (the Checkr Billing report, billed per background check sent —
+      // $44.99/$69.99/$99.99 depending on package), unrelated to what
+      // the applicant pays here. Only applicationProcessingFee ($2.50)
+      // remains MelyOS's cut of this checkout.
+      const parkShareTotal = backgroundCheckFeeTotal;
 
       const applicationId = invitationId || crypto.randomUUID();
 
@@ -440,8 +445,12 @@ function ApplyPageInner() {
         application_processing_fee: applicationProcessingFee,
         background_check_required: backgroundCheckRequired,
 
-        park_share_primary: parkSharePrimary,
-        park_share_per_additional: parkSharePerAdditional,
+        park_share_primary: backgroundCheckRequired
+          ? Number(data.application_fee_primary) || 0
+          : 0,
+        park_share_per_additional: backgroundCheckRequired
+          ? Number(data.application_fee_per_additional) || 0
+          : 0,
         park_share_total: parkShareTotal,
       };
 

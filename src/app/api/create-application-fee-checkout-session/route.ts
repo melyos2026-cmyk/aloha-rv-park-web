@@ -7,13 +7,23 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 /**
  * Creates a Stripe Checkout session for the Application Fee (+ Background
- * Check, when one applies). The application fee itself is Mely's revenue
- * for providing the screening service, split with the park afterward
- * (park_share_total, tracked in resident_applications). For short stays
- * (no background check required), the stay total is combined into this
- * same checkout as a second line item — that revenue belongs to the park,
- * tracked the same way rent normally is; only the accounting distinction
- * is internal (park_share_total), not a separate Stripe charge.
+ * Check, when one applies).
+ *
+ * Aug 10 (per Mely): the background check fee is now 100% the park's own
+ * revenue (park_share_total = the full backgroundCheckFeeTotal, computed
+ * in /apply/page.tsx) — MelyOS no longer takes a cut of this specific
+ * charge. MelyOS's revenue for providing the Checkr integration comes
+ * from a SEPARATE charge billed directly to the park's admin (see the
+ * Checkr Billing report in melyos-builder — $44.99/$69.99/$99.99 per
+ * background check sent, depending on package), unrelated to what the
+ * applicant pays here. Only application_processing_fee ($2.50) remains
+ * MelyOS's cut of this Stripe checkout.
+ *
+ * For short stays (no background check required), the stay total is
+ * combined into this same checkout as a second line item — that revenue
+ * is also 100% the park's, tracked the same way rent normally is; only
+ * the accounting distinction is internal (park_share_total), not a
+ * separate Stripe charge.
  */
 export async function POST(req: Request) {
   try {

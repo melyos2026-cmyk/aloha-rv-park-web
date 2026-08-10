@@ -116,11 +116,11 @@ export default function TestLeasePage() {
       const applicationFeeTotal =
         applicationProcessingFee + backgroundCheckFeeTotal;
 
-      const parkSharePrimary = 10.0;
-      const parkSharePerAdditional = 5.0;
-      const parkShareTotal = backgroundCheckRequired
-        ? parkSharePrimary + parkSharePerAdditional * additionalCount
-        : 0;
+      // Aug 10 (per Mely): background check fee now 100% the park's
+      // revenue — MelyOS's cut comes from a separate Checkr Billing
+      // charge instead. Matches the same fix applied to the real /apply
+      // flow.
+      const parkShareTotal = backgroundCheckFeeTotal;
 
       const [firstName, ...rest] = data.tenant_names.split(" ");
 
@@ -211,8 +211,12 @@ export default function TestLeasePage() {
           application_fee_additional_count: additionalCount,
           application_fee_total: applicationFeeTotal,
 
-          park_share_primary: parkSharePrimary,
-          park_share_per_additional: parkSharePerAdditional,
+          park_share_primary: backgroundCheckRequired
+            ? Number(data.application_fee_primary) || 0
+            : 0,
+          park_share_per_additional: backgroundCheckRequired
+            ? Number(data.application_fee_per_additional) || 0
+            : 0,
           park_share_total: parkShareTotal,
         });
 

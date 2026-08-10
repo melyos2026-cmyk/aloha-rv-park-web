@@ -749,6 +749,23 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
     .eq("id", occupants[0].resident_id)
     .maybeSingle();
 
+  // Aug 10 (per Mely): the background check fee residents pay is now
+  // 100% the park's revenue — MelyOS's own cut comes from a separate
+  // Checkr Billing charge to the park's admin instead, not from this
+  // payment. Reads the SAME admin-editable fee the checkout itself
+  // charged (create-occupant-background-check-checkout-session already
+  // pulls this from lease_defaults.application_fee_per_additional).
+  let occupantFeeAmount = 5.0;
+  if (occupants[0].company_id) {
+    const { data: settings } = await supabase
+      .from("park_settings")
+      .select("lease_defaults")
+      .eq("company_id", occupants[0].company_id)
+      .maybeSingle();
+    occupantFeeAmount =
+      Number(settings?.lease_defaults?.application_fee_per_additional) || 5.0;
+  }
+
   for (const occupant of occupants) {
     try {
       // customId format "occupant::<occupantId>" — distinguishes this
@@ -768,12 +785,7 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
           checkr_candidate_id: candidateId,
           background_check_status: "invitation_sent",
           background_check_fee_paid: true,
-          // Aug 4 (per Mely): same park revenue-share model already used
-          // for the initial lease application's additional-occupant
-          // background checks ($5 fixed per person, parkSharePerAdditional
-          // in src/app/apply/page.tsx) — the rest of what the resident
-          // paid is MelyOS's revenue for providing the screening service.
-          park_share_amount: 5.0,
+          park_share_amount: occupantFeeAmount,
           park_share_paid_out: false,
         })
         .eq("id", occupant.id);
