@@ -505,6 +505,29 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   });
 
   const results: CheckrResultEntry[] = [];
+
+  // Aug 10 (per Mely): same integration/settings as the main admin-
+  // triggered flow — reads the company's configured Work Location State
+  // + Default Package from Lease Defaults instead of a hardcoded package.
+  let checkrWorkLocationState = "";
+  let checkrPackageSlug = "basic_plus_criminal";
+  if (application.company_id) {
+    const { data: settings } = await supabase
+      .from("park_settings")
+      .select("checkr_work_location_state, checkr_default_package_slug")
+      .eq("company_id", application.company_id)
+      .maybeSingle();
+    checkrWorkLocationState = settings?.checkr_work_location_state || "";
+    checkrPackageSlug = settings?.checkr_default_package_slug || "basic_plus_criminal";
+  }
+
+  if (!checkrWorkLocationState) {
+    console.log(
+      "Application background check: company hasn't set Checkr Work Location State in Lease Defaults — skipping all Checkr invitations for this application."
+    );
+    return;
+  }
+
   for (const person of people) {
     try {
       const { candidateId } = await createCheckrInvitation({
@@ -512,6 +535,8 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         personKey: person.personKey,
         email: person.email,
         fullName: person.name,
+        state: checkrWorkLocationState,
+        packageSlug: checkrPackageSlug,
       });
       results.push({
         personKey: person.personKey,
@@ -526,9 +551,19 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   }
 
   const aggregateStatus = computeAggregateStatus(results);
+  const anyInvitationSent = results.some((r) => r.status !== "invitation_failed");
   await supabase
     .from("resident_applications")
-    .update({ checkr_results: results, background_check_status: aggregateStatus })
+    .update({
+      checkr_results: results,
+      background_check_status: aggregateStatus,
+      ...(anyInvitationSent
+        ? {
+            checkr_package_slug: checkrPackageSlug,
+            checkr_invitation_sent_at: new Date().toISOString(),
+          }
+        : {}),
+    })
     .eq("id", application.id);
 
   const checkrInvited = results.length > 0 && results.every((r) => r.status !== "invitation_failed");
@@ -755,15 +790,30 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
   // payment. Reads the SAME admin-editable fee the checkout itself
   // charged (create-occupant-background-check-checkout-session already
   // pulls this from lease_defaults.application_fee_per_additional).
+  // Also pulls the same Checkr Work Location State + Default Package the
+  // admin configured in Lease Defaults, so this occupant flow uses the
+  // exact same integration/settings as the main lease-application flow
+  // instead of its own separate hardcoded package.
   let occupantFeeAmount = 5.0;
+  let checkrWorkLocationState = "";
+  let checkrPackageSlug = "";
   if (occupants[0].company_id) {
     const { data: settings } = await supabase
       .from("park_settings")
-      .select("lease_defaults")
+      .select("lease_defaults, checkr_work_location_state, checkr_default_package_slug")
       .eq("company_id", occupants[0].company_id)
       .maybeSingle();
     occupantFeeAmount =
       Number(settings?.lease_defaults?.application_fee_per_additional) || 5.0;
+    checkrWorkLocationState = settings?.checkr_work_location_state || "";
+    checkrPackageSlug = settings?.checkr_default_package_slug || "basic_plus_criminal";
+  }
+
+  if (!checkrWorkLocationState) {
+    console.log(
+      "Occupant background check: company hasn't set Checkr Work Location State in Lease Defaults — skipping all Checkr invitations for this checkout."
+    );
+    return;
   }
 
   for (const occupant of occupants) {
@@ -777,6 +827,8 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
         personKey: occupant.id,
         email: occupant.email || resident?.email || "",
         fullName: occupant.full_name,
+        state: checkrWorkLocationState,
+        packageSlug: checkrPackageSlug,
       });
 
       await supabase
@@ -787,6 +839,8 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
           background_check_fee_paid: true,
           park_share_amount: occupantFeeAmount,
           park_share_paid_out: false,
+          checkr_package_slug: checkrPackageSlug,
+          checkr_invitation_sent_at: new Date().toISOString(),
         })
         .eq("id", occupant.id);
     } catch (err: any) {

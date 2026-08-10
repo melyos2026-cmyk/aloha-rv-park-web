@@ -1,9 +1,16 @@
 import crypto from "crypto";
 
+// Aug 10 (per Mely): matches melyos-builder's services/checkr.ts exactly —
+// same env var names, same staging/production host resolution, same
+// per-company configurable package (no more hardcoded CHECKR_PACKAGE_ID).
+// This repo needs its OWN CHECKR_API_KEY set in ITS OWN Vercel project —
+// env vars don't cross projects even though the name matches.
+const CHECKR_ENVIRONMENT = process.env.CHECKR_ENVIRONMENT || "staging";
 const CHECKR_API_BASE =
-  process.env.CHECKR_API_BASE_URL || "https://api.checkr-staging.com/v1";
+  CHECKR_ENVIRONMENT === "production"
+    ? "https://api.checkr.com/v1"
+    : "https://api.checkr-staging.com/v1";
 const CHECKR_API_KEY = process.env.CHECKR_API_KEY as string;
-const CHECKR_PACKAGE = process.env.CHECKR_PACKAGE_ID as string;
 
 function checkrAuthHeader() {
   const encoded = Buffer.from(`${CHECKR_API_KEY}:`).toString("base64");
@@ -43,7 +50,8 @@ export async function createCheckrInvitation(params: {
   personKey: string;
   email: string;
   fullName: string;
-  state?: string;
+  state: string;
+  packageSlug: string;
 }) {
   const { firstName, lastName } = splitName(params.fullName);
   const customId = `${params.applicationId}::${params.personKey}`;
@@ -55,7 +63,7 @@ export async function createCheckrInvitation(params: {
       first_name: firstName,
       last_name: lastName,
       custom_id: customId,
-      work_locations: [{ country: "US", state: params.state || "FL" }],
+      work_locations: [{ country: "US", state: params.state }],
     }),
   });
 
@@ -63,8 +71,8 @@ export async function createCheckrInvitation(params: {
     method: "POST",
     body: JSON.stringify({
       candidate_id: candidate.id,
-      package: CHECKR_PACKAGE,
-      work_locations: [{ country: "US", state: params.state || "FL" }],
+      package: params.packageSlug,
+      work_locations: [{ country: "US", state: params.state }],
     }),
   });
 
