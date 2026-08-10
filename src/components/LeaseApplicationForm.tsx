@@ -1537,7 +1537,7 @@ export default function LeaseApplicationForm({
             <div>
               <strong>Late Fee:</strong>{" "}
               {data.late_fee_enabled
-                ? `$${data.late_fee_amount} if rent is more than ${data.late_fee_grace_days} day(s) late.`
+                ? `$${data.late_fee_amount} per day rent remains unpaid, after a ${data.late_fee_grace_days}-day grace period.`
                 : "None."}
             </div>
             <div>
