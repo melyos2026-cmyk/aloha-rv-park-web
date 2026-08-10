@@ -529,6 +529,42 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   }
 
   for (const person of people) {
+    // Aug 10 (per Mely): mandatory — charge the company's card on file
+    // FIRST, per person checked (each person is a separate real Checkr
+    // invitation/cost). If this fails, that person's background check is
+    // NOT sent — the applicant isn't left waiting on something that will
+    // never resolve, and MelyOS never eats the Checkr cost.
+    try {
+      const chargeRes = await fetch(
+        "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: application.company_id,
+            packageSlug: checkrPackageSlug,
+          }),
+        }
+      );
+      if (!chargeRes.ok) {
+        const chargeData = await chargeRes.json().catch(() => ({}));
+        console.error(
+          `Could not charge company ${application.company_id} for ${person.name}'s background check:`,
+          chargeData.error
+        );
+        results.push({
+          personKey: person.personKey,
+          name: person.name,
+          status: "invitation_failed",
+        });
+        continue;
+      }
+    } catch (billingErr: any) {
+      console.error("Checkr billing charge request failed:", billingErr.message);
+      results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
+      continue;
+    }
+
     try {
       const { candidateId } = await createCheckrInvitation({
         applicationId: application.id,
@@ -817,6 +853,33 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
   }
 
   for (const occupant of occupants) {
+    // Aug 10 (per Mely): mandatory — charge the company's card on file
+    // FIRST, per occupant checked, same as the main-application flow.
+    try {
+      const chargeRes = await fetch(
+        "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: occupant.company_id,
+            packageSlug: checkrPackageSlug,
+          }),
+        }
+      );
+      if (!chargeRes.ok) {
+        const chargeData = await chargeRes.json().catch(() => ({}));
+        console.error(
+          `Could not charge company ${occupant.company_id} for occupant ${occupant.id}'s background check:`,
+          chargeData.error
+        );
+        continue;
+      }
+    } catch (billingErr: any) {
+      console.error("Checkr billing charge request failed:", billingErr.message);
+      continue;
+    }
+
     try {
       // customId format "occupant::<occupantId>" — distinguishes this
       // from the "<applicationId>::<personKey>" format used for lease
