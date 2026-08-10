@@ -1287,7 +1287,12 @@ export default function LeaseApplicationForm({
             </label>
             <div style={styles.row}>
               <div style={styles.field}>
-                <label style={styles.label}>Notice Period (days)</label>
+                <label style={styles.label}>
+                  Notice to Terminate Lease (days){" "}
+                  <span style={{ fontWeight: 400, color: "#999" }}>
+                    (written notice either party must give before ending)
+                  </span>
+                </label>
                 <input
                   type="number"
                   style={styles.input}
@@ -1350,7 +1355,7 @@ export default function LeaseApplicationForm({
               {shortStayRateLabel && ` (${shortStayRateLabel})`}
             </div>
             <div>
-              <strong>Notice Period:</strong> {data.notice_days || "TBD"} days
+              <strong>Notice to Terminate:</strong> {data.notice_days || "TBD"} days
             </div>
             {data.rent_payment_instructions && (
               <div>
@@ -1370,7 +1375,7 @@ export default function LeaseApplicationForm({
               month
             </div>
             <div>
-              <strong>Notice Period:</strong> {data.notice_days || "TBD"} days
+              <strong>Notice to Terminate:</strong> {data.notice_days || "TBD"} days
             </div>
             {data.rent_payment_instructions && (
               <div>
