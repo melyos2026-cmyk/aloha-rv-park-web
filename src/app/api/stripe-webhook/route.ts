@@ -529,11 +529,11 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   }
 
   for (const person of people) {
-    // Aug 10 (per Mely): mandatory — charge the company's card on file
-    // FIRST, per person checked (each person is a separate real Checkr
-    // invitation/cost). If this fails, that person's background check is
-    // NOT sent — the applicant isn't left waiting on something that will
-    // never resolve, and MelyOS never eats the Checkr cost.
+    // Aug 10 (per Mely): charges the company for this check — but a
+    // billing failure NEVER blocks the applicant's background check.
+    // If it fails, MelyOS fronts the cost and the company owes it back
+    // (tracked in checkr_pending_manual_charges) — this call always
+    // proceeds to send the invitation regardless of the result.
     try {
       const chargeRes = await fetch(
         "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
@@ -546,23 +546,14 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           }),
         }
       );
-      if (!chargeRes.ok) {
-        const chargeData = await chargeRes.json().catch(() => ({}));
-        console.error(
-          `Could not charge company ${application.company_id} for ${person.name}'s background check:`,
-          chargeData.error
+      const chargeData = await chargeRes.json().catch(() => ({}));
+      if (chargeData?.fallback) {
+        console.log(
+          `MelyOS fronted the Checkr cost for ${person.name} — company ${application.company_id} owes it back (checkr_pending_manual_charges).`
         );
-        results.push({
-          personKey: person.personKey,
-          name: person.name,
-          status: "invitation_failed",
-        });
-        continue;
       }
     } catch (billingErr: any) {
-      console.error("Checkr billing charge request failed:", billingErr.message);
-      results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
-      continue;
+      console.error("Checkr billing charge request failed (proceeding anyway):", billingErr.message);
     }
 
     try {
@@ -853,8 +844,8 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
   }
 
   for (const occupant of occupants) {
-    // Aug 10 (per Mely): mandatory — charge the company's card on file
-    // FIRST, per occupant checked, same as the main-application flow.
+    // Aug 10 (per Mely): same as the main-application flow — a billing
+    // failure never blocks sending the invitation.
     try {
       const chargeRes = await fetch(
         "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
@@ -867,17 +858,14 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
           }),
         }
       );
-      if (!chargeRes.ok) {
-        const chargeData = await chargeRes.json().catch(() => ({}));
-        console.error(
-          `Could not charge company ${occupant.company_id} for occupant ${occupant.id}'s background check:`,
-          chargeData.error
+      const chargeData = await chargeRes.json().catch(() => ({}));
+      if (chargeData?.fallback) {
+        console.log(
+          `MelyOS fronted the Checkr cost for occupant ${occupant.id} — company ${occupant.company_id} owes it back (checkr_pending_manual_charges).`
         );
-        continue;
       }
     } catch (billingErr: any) {
-      console.error("Checkr billing charge request failed:", billingErr.message);
-      continue;
+      console.error("Checkr billing charge request failed (proceeding anyway):", billingErr.message);
     }
 
     try {
