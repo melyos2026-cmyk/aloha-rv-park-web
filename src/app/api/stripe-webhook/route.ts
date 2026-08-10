@@ -529,33 +529,6 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   }
 
   for (const person of people) {
-    // Aug 10 (per Mely): charges the company for this check — but a
-    // billing failure NEVER blocks the applicant's background check.
-    // If it fails, MelyOS fronts the cost and the company owes it back
-    // (tracked in checkr_pending_manual_charges) — this call always
-    // proceeds to send the invitation regardless of the result.
-    try {
-      const chargeRes = await fetch(
-        "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyId: application.company_id,
-            packageSlug: checkrPackageSlug,
-          }),
-        }
-      );
-      const chargeData = await chargeRes.json().catch(() => ({}));
-      if (chargeData?.fallback) {
-        console.log(
-          `MelyOS fronted the Checkr cost for ${person.name} — company ${application.company_id} owes it back (checkr_pending_manual_charges).`
-        );
-      }
-    } catch (billingErr: any) {
-      console.error("Checkr billing charge request failed (proceeding anyway):", billingErr.message);
-    }
-
     try {
       const { candidateId } = await createCheckrInvitation({
         applicationId: application.id,
@@ -844,30 +817,6 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
   }
 
   for (const occupant of occupants) {
-    // Aug 10 (per Mely): same as the main-application flow — a billing
-    // failure never blocks sending the invitation.
-    try {
-      const chargeRes = await fetch(
-        "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyId: occupant.company_id,
-            packageSlug: checkrPackageSlug,
-          }),
-        }
-      );
-      const chargeData = await chargeRes.json().catch(() => ({}));
-      if (chargeData?.fallback) {
-        console.log(
-          `MelyOS fronted the Checkr cost for occupant ${occupant.id} — company ${occupant.company_id} owes it back (checkr_pending_manual_charges).`
-        );
-      }
-    } catch (billingErr: any) {
-      console.error("Checkr billing charge request failed (proceeding anyway):", billingErr.message);
-    }
-
     try {
       // customId format "occupant::<occupantId>" — distinguishes this
       // from the "<applicationId>::<personKey>" format used for lease

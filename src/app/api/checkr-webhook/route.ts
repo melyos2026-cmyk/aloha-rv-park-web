@@ -22,6 +22,14 @@ export async function POST(req: Request) {
 
   try {
     if (type === "invitation.completed") {
+      // Aug 10 (per Mely, from Checkr's own API Guided course): Checkr
+      // itself only bills MelyOS once the candidate completes the
+      // invitation, not when it's created — an abandoned/expired
+      // invitation never costs MelyOS anything. Billing the company at
+      // creation time would charge them for checks that might never
+      // actually run. Moved the charge here so it only happens once
+      // real cost is incurred, matching Checkr's own billing timing.
+      await chargeCompanyForCompletedInvitation(data.candidate_id);
       await updatePersonStatus(data.candidate_id, "in_progress");
     }
     if (type === "invitation.expired") {
@@ -37,6 +45,64 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+async function chargeCompanyForCompletedInvitation(candidateId: string | undefined) {
+  if (!candidateId) return;
+
+  const resolved = await resolveCandidate(candidateId);
+  if (!resolved) {
+    console.log(`Checkr webhook: could not resolve candidate ${candidateId} for billing`);
+    return;
+  }
+  const { applicationId, personKey } = resolved;
+
+  let companyId: string | undefined;
+  let packageSlug: string | undefined;
+
+  if (applicationId === "occupant") {
+    const { data: occupant } = await supabase
+      .from("resident_occupants")
+      .select("company_id, checkr_package_slug")
+      .eq("id", personKey)
+      .maybeSingle();
+    companyId = occupant?.company_id;
+    packageSlug = occupant?.checkr_package_slug;
+  } else {
+    const { data: application } = await supabase
+      .from("resident_applications")
+      .select("company_id, checkr_package_slug")
+      .eq("id", applicationId)
+      .maybeSingle();
+    companyId = application?.company_id;
+    packageSlug = application?.checkr_package_slug;
+  }
+
+  if (!companyId || !packageSlug) {
+    console.error(
+      `Checkr webhook: missing companyId/packageSlug for candidate ${candidateId} — cannot bill.`
+    );
+    return;
+  }
+
+  try {
+    const chargeRes = await fetch(
+      "https://admin.aloharvparkfl.com/api/admin/checkr-charge-company",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId, packageSlug }),
+      }
+    );
+    const chargeData = await chargeRes.json().catch(() => ({}));
+    if (chargeData?.fallback) {
+      console.log(
+        `MelyOS fronted the Checkr cost for candidate ${candidateId} — company ${companyId} owes it back (checkr_pending_manual_charges).`
+      );
+    }
+  } catch (billingErr: any) {
+    console.error("Checkr billing charge request failed:", billingErr.message);
+  }
 }
 
 async function updatePersonStatus(candidateId: string | undefined, status: string) {
