@@ -1410,119 +1410,94 @@ export default function ResidentDashboard() {
               resident can self-edit (they get new pets over time); every
               other value here — parking, sticker IDs, clickers, mailbox
               keys — stays admin-only, set from Resident Accounts / the
-              lease application, never editable from the portal. */}
-          <div style={{ ...card, marginTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18 }}>🅿️ Parking &amp; Pets</h2>
-            </div>
+              lease application. Same full-card view/edit swap pattern as
+              Resident Information and Emergency Contact above, for
+              visual consistency (only the Pets fields are editable in the
+              "Edit" state — everything else still just shows as text). */}
+          {!editingPets ? (
+            <div style={{ ...card, marginTop: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h2 style={{ fontWeight: 900, fontSize: 18 }}>🅿️ Parking &amp; Pets</h2>
+                <button
+                  onClick={() => {
+                    setPetsAllowedInput(!!resident?.pets_allowed);
+                    setPetsCountInput(resident?.pets_count != null ? String(resident.pets_count) : "");
+                    setPetsTypesInput(resident?.pets_types || "");
+                    setPetsMessage("");
+                    setEditingPets(true);
+                  }}
+                  style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Edit Pets
+                </button>
+              </div>
 
-            <div style={{ display: "grid", gap: 10, fontSize: 14 }}>
-              <div>
-                <strong>Parking:</strong>{" "}
+              <p><strong>Parking:</strong>{" "}
                 {resident?.parking_provided
                   ? `${resident?.parking_spaces || "Designated"} space(s), ${
                       resident?.parking_free ? "no additional cost" : `$${Number(resident?.parking_cost || 0).toFixed(2)}`
                     }`
                   : "Not provided"}
-              </div>
-
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong>Pets:</strong>
-                  {!editingPets && (
-                    <button
-                      onClick={() => {
-                        setPetsAllowedInput(!!resident?.pets_allowed);
-                        setPetsCountInput(resident?.pets_count != null ? String(resident.pets_count) : "");
-                        setPetsTypesInput(resident?.pets_types || "");
-                        setPetsMessage("");
-                        setEditingPets(true);
-                      }}
-                      style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                    >
-                      Edit
-                    </button>
-                  )}
-                </div>
-
-                {editingPets ? (
-                  <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginTop: 8 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
-                      <input
-                        type="checkbox"
-                        checked={petsAllowedInput}
-                        onChange={(e) => setPetsAllowedInput(e.target.checked)}
-                      />
-                      I have pet(s)
-                    </label>
-                    {petsAllowedInput && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                        <input
-                          placeholder="# of Pets"
-                          type="number"
-                          min="0"
-                          value={petsCountInput}
-                          onChange={(e) => setPetsCountInput(e.target.value)}
-                          style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}
-                        />
-                        <input
-                          placeholder="Pet Type(s) — e.g. 1 dog, 1 cat"
-                          value={petsTypesInput}
-                          onChange={(e) => setPetsTypesInput(e.target.value)}
-                          style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}
-                        />
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <button
-                        onClick={savePets}
-                        style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer" }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => { setEditingPets(false); setPetsMessage(""); }}
-                        style={{ background: "none", border: "1.5px solid var(--border)", borderRadius: 6, padding: "8px 16px", cursor: "pointer" }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                    {petsMessage && (
-                      <p style={{ fontSize: 13, marginTop: 8, color: petsMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>
-                        {petsMessage}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <span>
-                    {" "}
-                    {resident?.pets_allowed
-                      ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
-                      : "Not permitted"}
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <strong>Parking Sticker ID#(s):</strong>{" "}
+              </p>
+              <p style={{ marginTop: 8 }}><strong>Pets:</strong>{" "}
+                {resident?.pets_allowed
+                  ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
+                  : "Not permitted"}
+              </p>
+              <p style={{ marginTop: 8 }}><strong>Parking Sticker ID#(s):</strong>{" "}
                 {vehicles.length === 0
                   ? "No vehicles on file"
                   : vehicles.map((v) => v.parking_sticker_id || "Not yet assigned").join(", ")}
-              </div>
+              </p>
+              <p style={{ marginTop: 8 }}><strong>Gate Access Clickers Issued:</strong> {resident?.gate_clickers_count ?? 0}</p>
+              <p style={{ marginTop: 8 }}><strong>Mailbox Keys Issued:</strong> {resident?.mailbox_keys_count ?? 0}</p>
 
-              <div>
-                <strong>Gate Access Clickers Issued:</strong> {resident?.gate_clickers_count ?? 0}
-              </div>
-
-              <div>
-                <strong>Mailbox Keys Issued:</strong> {resident?.mailbox_keys_count ?? 0}
+              <p style={{ color: "var(--gray)", fontSize: 12, marginTop: 12 }}>
+                Lost or damaged items may be subject to a replacement fee — contact the office for details.
+              </p>
+            </div>
+          ) : (
+            <div style={{ ...card, marginTop: 16 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Pets</h2>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={petsAllowedInput}
+                  onChange={(e) => setPetsAllowedInput(e.target.checked)}
+                />
+                I have pet(s)
+              </label>
+              {petsAllowedInput && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}># of Pets</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={petsCountInput}
+                      onChange={(e) => setPetsCountInput(e.target.value)}
+                      style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Pet Type(s)</label>
+                    <input
+                      placeholder="e.g. 1 dog, 1 cat"
+                      value={petsTypesInput}
+                      onChange={(e) => setPetsTypesInput(e.target.value)}
+                      style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }}
+                    />
+                  </div>
+                </div>
+              )}
+              <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
+              <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
+                <button onClick={savePets} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
+                <button onClick={() => { setEditingPets(false); setPetsMessage(""); }} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                {petsMessage && <p style={{ fontSize: 13, color: petsMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{petsMessage}</p>}
               </div>
             </div>
-
-            <p style={{ color: "var(--gray)", fontSize: 12, marginTop: 12 }}>
-              Lost or damaged items may be subject to a replacement fee — contact the office for details.
-            </p>
-          </div>
+          )}
 
           <div style={{ ...card, marginTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
