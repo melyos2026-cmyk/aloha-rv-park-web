@@ -1342,6 +1342,7 @@ export default function ResidentDashboard() {
                 <p style={{ fontWeight: 700 }}>{v.vehicle_year} {v.vehicle_make} {v.vehicle_model}</p>
                 <p style={{ fontSize: 13 }}>{v.color}</p>
                 <p style={{ color: "var(--gray)", fontSize: 13 }}>Plate: {v.license_plate} {v.license_state}</p>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>Parking Sticker ID#: {v.parking_sticker_id || "Not yet assigned"}</p>
                 <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                   <button
                     onClick={() => {
@@ -1368,6 +1369,52 @@ export default function ResidentDashboard() {
               </div>
             ))}
             {vehicles.length === 0 && <p style={{ color: "var(--gray)" }}>No vehicles listed.</p>}
+          </div>
+
+          {/* Parking & Pets — Aug 11 (per Mely): read-only for the resident;
+              every value here is set by the admin from Resident Accounts /
+              the lease application, never editable from the portal. */}
+          <div style={{ ...card, marginTop: 16 }}>
+            <div style={{ marginBottom: 12 }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>🅿️ Parking &amp; Pets</h2>
+            </div>
+
+            <div style={{ display: "grid", gap: 10, fontSize: 14 }}>
+              <div>
+                <strong>Parking:</strong>{" "}
+                {resident?.parking_provided
+                  ? `${resident?.parking_spaces || "Designated"} space(s), ${
+                      resident?.parking_free ? "no additional cost" : `$${Number(resident?.parking_cost || 0).toFixed(2)}`
+                    }`
+                  : "Not provided"}
+              </div>
+
+              <div>
+                <strong>Pets:</strong>{" "}
+                {resident?.pets_allowed
+                  ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
+                  : "Not permitted"}
+              </div>
+
+              <div>
+                <strong>Parking Sticker ID#(s):</strong>{" "}
+                {vehicles.length === 0
+                  ? "No vehicles on file"
+                  : vehicles.map((v) => v.parking_sticker_id || "Not yet assigned").join(", ")}
+              </div>
+
+              <div>
+                <strong>Gate Access Clickers Issued:</strong> {resident?.gate_clickers_count ?? 0}
+              </div>
+
+              <div>
+                <strong>Mailbox Keys Issued:</strong> {resident?.mailbox_keys_count ?? 0}
+              </div>
+            </div>
+
+            <p style={{ color: "var(--gray)", fontSize: 12, marginTop: 12 }}>
+              Lost or damaged items may be subject to a replacement fee — contact the office for details.
+            </p>
           </div>
 
           <div style={{ ...card, marginTop: 16 }}>
