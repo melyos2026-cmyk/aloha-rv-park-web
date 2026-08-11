@@ -543,6 +543,33 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     console.log(
       "Application background check: company hasn't set Checkr Work Location State in Lease Defaults — skipping all Checkr invitations for this application."
     );
+    // Aug 11: FOUND REAL BUG — this used to just `return` here with no
+    // admin notification at all, unlike every other failure path in this
+    // function (which at least emails admin). That meant a paid
+    // application fee with a missing Work Location State setting failed
+    // COMPLETELY silently — applicant never got a background check
+    // invite, admin never knew why. Now sends the same kind of alert as
+    // the invitation-failed case below, with the specific reason.
+    try {
+      if (process.env.RESEND_API_KEY) {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
+            to: adminNotifyEmail,
+            subject: `Application fee paid — background check NOT sent (Checkr Work Location State missing) for ${application?.full_name || "applicant"}`,
+            html: `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee, but NO background check invitation was sent because "Checkr Work Location State" isn't set in Lease Defaults for this company.</p>
+                   <p>Set it in Lease Defaults → Background Check, then invite this applicant's background check manually from the Applications tab.</p>`,
+          }),
+        });
+      }
+    } catch (emailErr) {
+      console.error("Failed to send missing-work-location-state admin alert:", emailErr);
+    }
     return;
   }
 
