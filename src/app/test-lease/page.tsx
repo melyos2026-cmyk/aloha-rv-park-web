@@ -124,9 +124,7 @@ export default function TestLeasePage() {
 
       const [firstName, ...rest] = data.tenant_names.split(" ");
 
-      const { error: insertError } = await supabase
-        .from("resident_applications")
-        .insert({
+      const row = {
           company_id: company.id,
           full_name: data.tenant_names,
           space_id: data.space_id || null,
@@ -218,10 +216,19 @@ export default function TestLeasePage() {
             ? Number(data.application_fee_per_additional) || 0
             : 0,
           park_share_total: parkShareTotal,
-        });
+      };
 
-      if (insertError) {
-        throw new Error(insertError.message);
+      // Aug 11 (per Mely — RLS hardening pass): same fix as the real
+      // /apply flow — this dev testing tool used the anon key directly.
+      const submitRes = await fetch("/api/submit-lease-application", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row }),
+      });
+      const submitResult = await submitRes.json();
+
+      if (!submitRes.ok) {
+        throw new Error(submitResult.error || "Could not save application.");
       }
 
       setResult(

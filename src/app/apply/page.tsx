@@ -454,22 +454,18 @@ function ApplyPageInner() {
         park_share_total: parkShareTotal,
       };
 
-      let dbError;
-      if (invitationId) {
-        const { error } = await supabase
-          .from("resident_applications")
-          .update(row)
-          .eq("id", invitationId);
-        dbError = error;
-      } else {
-        const { error } = await supabase
-          .from("resident_applications")
-          .insert({ id: applicationId, ...row });
-        dbError = error;
-      }
-
-      if (dbError) {
-        throw new Error(dbError.message);
+      const submitRes = await fetch("/api/submit-lease-application", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          applicationId: invitationId ? undefined : applicationId,
+          invitationId: invitationId || undefined,
+          row,
+        }),
+      });
+      const submitResult = await submitRes.json();
+      if (!submitRes.ok) {
+        throw new Error(submitResult.error || "Could not save application.");
       }
 
       const res = await fetch(
