@@ -133,6 +133,11 @@ export default function ResidentDashboard() {
   const [occupantMessage, setOccupantMessage] = useState("");
   const [vehicleMessage, setVehicleMessage] = useState("");
   const [rvMessage, setRvMessage] = useState("");
+  const [editingPets, setEditingPets] = useState(false);
+  const [petsAllowedInput, setPetsAllowedInput] = useState(false);
+  const [petsCountInput, setPetsCountInput] = useState("");
+  const [petsTypesInput, setPetsTypesInput] = useState("");
+  const [petsMessage, setPetsMessage] = useState("");
 
   // Aug 4: resident_payments (the legacy billing table) was fully unified
   // into resident_invoices — /api/create-checkout-session only ever charges
@@ -447,6 +452,36 @@ export default function ResidentDashboard() {
       loadResidentDashboard();
     } catch (err: any) {
       setResidentInfoMessage("Could not save changes (unexpected error): " + (err?.message || err));
+    }
+  }
+
+  // Aug 11 (per Mely): the only self-editable field in the otherwise
+  // read-only "Parking & Pets" card — residents get new pets over time and
+  // should be able to update this themselves. Notifies the admin (see
+  // /api/portal/save-pets).
+  async function savePets() {
+    setPetsMessage("");
+    try {
+      const res = await fetch("/api/portal/save-pets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          residentId: resident.id,
+          petsAllowed: petsAllowedInput,
+          petsCount: petsCountInput,
+          petsTypes: petsTypesInput,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        setPetsMessage("Could not save pets: " + (result?.error || res.status));
+        return;
+      }
+
+      setEditingPets(false);
+      loadResidentDashboard();
+    } catch (err: any) {
+      setPetsMessage("Could not save pets (unexpected error): " + (err?.message || err));
     }
   }
 
@@ -1371,11 +1406,13 @@ export default function ResidentDashboard() {
             {vehicles.length === 0 && <p style={{ color: "var(--gray)" }}>No vehicles listed.</p>}
           </div>
 
-          {/* Parking & Pets — Aug 11 (per Mely): read-only for the resident;
-              every value here is set by the admin from Resident Accounts /
-              the lease application, never editable from the portal. */}
+          {/* Parking & Pets — Aug 11 (per Mely): Pets is the one field the
+              resident can self-edit (they get new pets over time); every
+              other value here — parking, sticker IDs, clickers, mailbox
+              keys — stays admin-only, set from Resident Accounts / the
+              lease application, never editable from the portal. */}
           <div style={{ ...card, marginTop: 16 }}>
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18 }}>🅿️ Parking &amp; Pets</h2>
             </div>
 
@@ -1390,10 +1427,80 @@ export default function ResidentDashboard() {
               </div>
 
               <div>
-                <strong>Pets:</strong>{" "}
-                {resident?.pets_allowed
-                  ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
-                  : "Not permitted"}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong>Pets:</strong>
+                  {!editingPets && (
+                    <button
+                      onClick={() => {
+                        setPetsAllowedInput(!!resident?.pets_allowed);
+                        setPetsCountInput(resident?.pets_count != null ? String(resident.pets_count) : "");
+                        setPetsTypesInput(resident?.pets_types || "");
+                        setPetsMessage("");
+                        setEditingPets(true);
+                      }}
+                      style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "2px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {editingPets ? (
+                  <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginTop: 8 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={petsAllowedInput}
+                        onChange={(e) => setPetsAllowedInput(e.target.checked)}
+                      />
+                      I have pet(s)
+                    </label>
+                    {petsAllowedInput && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                        <input
+                          placeholder="# of Pets"
+                          type="number"
+                          min="0"
+                          value={petsCountInput}
+                          onChange={(e) => setPetsCountInput(e.target.value)}
+                          style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}
+                        />
+                        <input
+                          placeholder="Pet Type(s) — e.g. 1 dog, 1 cat"
+                          value={petsTypesInput}
+                          onChange={(e) => setPetsTypesInput(e.target.value)}
+                          style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}
+                        />
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        onClick={savePets}
+                        style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer" }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => { setEditingPets(false); setPetsMessage(""); }}
+                        style={{ background: "none", border: "1.5px solid var(--border)", borderRadius: 6, padding: "8px 16px", cursor: "pointer" }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {petsMessage && (
+                      <p style={{ fontSize: 13, marginTop: 8, color: petsMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>
+                        {petsMessage}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <span>
+                    {" "}
+                    {resident?.pets_allowed
+                      ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
+                      : "Not permitted"}
+                  </span>
+                )}
               </div>
 
               <div>
