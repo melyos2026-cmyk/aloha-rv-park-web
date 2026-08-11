@@ -82,13 +82,14 @@ export async function POST(req: NextRequest) {
 
     // Sales tax — per-company rate (works for any state, not hardcoded).
     // tax_mode overrides the product's default "taxable" rule when set:
-    // "excluded" forces tax to be added on top, "included" means the listed
-    // price already has tax baked in (no separate line), blank/null falls
-    // back to the taxable checkbox.
+    // "excluded" forces tax to be added on top (customer pays), "included"
+    // means the listed price already has tax baked in (admin absorbs it,
+    // no separate line), "exempt" means this product never owes sales tax
+    // at all, blank/null falls back to the taxable checkbox.
     const effectiveTaxApplies =
       product.tax_mode === "excluded"
         ? true
-        : product.tax_mode === "included"
+        : product.tax_mode === "included" || product.tax_mode === "exempt"
         ? false
         : !!product.taxable;
     const taxEnabled = !!taxSettings?.enable_tax && effectiveTaxApplies;

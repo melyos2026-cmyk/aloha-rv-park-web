@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 
-type Product = { product_id: string; label: string; price: number; unit: string; taxable: boolean; tax_mode: "included" | "excluded" | null };
+type Product = { product_id: string; label: string; price: number; unit: string; taxable: boolean; tax_mode: "included" | "excluded" | "exempt" | null };
 
 export default function PropanePage() {
   const { company } = useCompany();
@@ -80,7 +80,7 @@ export default function PropanePage() {
     !!selected &&
     (selected.tax_mode === "excluded"
       ? true
-      : selected.tax_mode === "included"
+      : selected.tax_mode === "included" || selected.tax_mode === "exempt"
       ? false
       : !!selected.taxable);
   const taxIncludedInPrice = tax.enabled && selected?.tax_mode === "included";
