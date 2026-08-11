@@ -1434,8 +1434,8 @@ export default function ResidentDashboard() {
 
               <p><strong>Parking:</strong>{" "}
                 {resident?.parking_provided
-                  ? `${resident?.parking_spaces || "Designated"} space(s), ${
-                      resident?.parking_free ? "no additional cost" : `$${Number(resident?.parking_cost || 0).toFixed(2)}`
+                  ? `${resident?.parking_spaces || "Designated"} space(s)${
+                      resident?.parking_free ? "" : `, $${Number(resident?.parking_cost || 0).toFixed(2)}`
                     }`
                   : "Not provided"}
               </p>
