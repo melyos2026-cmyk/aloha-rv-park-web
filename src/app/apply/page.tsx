@@ -161,13 +161,10 @@ function ApplyPageInner() {
   useEffect(() => {
     if (!inviteToken) return;
 
-    supabase
-      .from("resident_applications")
-      .select("*")
-      .eq("invite_token", inviteToken)
-      .maybeSingle()
+    fetch(`/api/get-application-invite?token=${encodeURIComponent(inviteToken)}`)
+      .then((r) => r.json())
       .then(
-        ({ data, error }) => {
+        ({ invitation: data, error }) => {
           if (error || !data) {
             setInvitationError(
               "This invitation link is invalid or has expired. Please contact the park directly."
