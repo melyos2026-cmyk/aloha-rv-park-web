@@ -238,6 +238,24 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     )
     .single();
 
+  // Aug 11 (per Mely): the DB's unique_active_application_lot_hold index
+  // already blocks a SECOND active paid application from holding the
+  // same lot — but only discovers the conflict here, AFTER this
+  // person's card was already charged (see the 23505 handler below,
+  // which then has to clear their space_id and alert admin to sort out
+  // a refund). This is the actual fix: the moment payment is confirmed,
+  // pull the lot from 'available' immediately so a second applicant
+  // never sees it as selectable in the first place — the constraint
+  // above becomes a last-resort safety net for a genuine same-instant
+  // race, not the primary defense.
+  if (!error && application?.space_id) {
+    await supabase
+      .from("rv_lots")
+      .update({ status: "reserved" })
+      .eq("id", application.space_id)
+      .eq("status", "available");
+  }
+
   if (error) {
     // Aug 6 (per Mely: every function must work correctly with several
     // applicants at once) — unique_active_application_lot_hold can reject
