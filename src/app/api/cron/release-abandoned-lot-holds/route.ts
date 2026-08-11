@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 // became genuinely occupied by someone else since). The application
 // itself is untouched — admin can still review/approve it later, they'd
 // just need to confirm the lot (or a different one) is still free.
-const ABANDONED_HOLD_DAYS = 10;
+const ABANDONED_HOLD_DAYS = 6;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
