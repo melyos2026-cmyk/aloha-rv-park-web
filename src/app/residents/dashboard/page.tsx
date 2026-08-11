@@ -228,12 +228,13 @@ export default function ResidentDashboard() {
       .catch(() => null);
     setPendingBgChecks(pendingBgData?.pending || []);
 
-    const { data: electricData } = await supabase
-      .from("resident_electric_readings")
-      .select("*")
-      .eq("resident_id", residentId)
-      .order("created_at", { ascending: false })
-      .limit(12);
+    // FOUND (Aug 11): this was the last direct client-side Supabase read
+    // left in the dashboard — moved server-side behind the session cookie,
+    // same pattern as occupants/vehicles below.
+    const electricRes = await fetch(`/api/portal/electric-readings?residentId=${residentId}`)
+      .then((r) => r.json())
+      .catch(() => null);
+    const electricData = electricRes?.readings || [];
     // BUG FIX (Aug 4): ordering by created_at (save time) instead of the
     // actual billing period broke once admin started backfilling past
     // months — a "July 2026" reading saved AFTER an "August 2026" one has
