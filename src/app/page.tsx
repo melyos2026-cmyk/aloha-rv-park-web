@@ -1,39 +1,12 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 
 export default function Home() {
   const { company } = useCompany();
-  const mapWrapperRef = useRef<HTMLDivElement | null>(null);
-  const [mapHeight, setMapHeight] = useState(1350);
-  const [gotRealHeight, setGotRealHeight] = useState(false);
   const [extraHeroImages, setExtraHeroImages] = useState<string[]>([]);
   const [heroIndex, setHeroIndex] = useState(0);
-
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.data?.type === "aloha-map-height" && typeof event.data.height === "number") {
-        setMapHeight(Math.min(event.data.height, 4000));
-        setGotRealHeight(true);
-      }
-    }
-    window.addEventListener("message", handleMessage);
-
-    // Fallback while we wait for (or in case we never get) the real height from the map:
-    // estimate proportionally to the iframe's actual rendered width instead of a fixed desktop number.
-    function estimateHeight() {
-      if (gotRealHeight || !mapWrapperRef.current) return;
-      const width = mapWrapperRef.current.offsetWidth || 900;
-      setMapHeight(Math.round(width * 1.4));
-    }
-    estimateHeight();
-    window.addEventListener("resize", estimateHeight);
-    return () => {
-      window.removeEventListener("message", handleMessage);
-      window.removeEventListener("resize", estimateHeight);
-    };
-  }, [gotRealHeight]);
 
   const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
 
@@ -158,10 +131,10 @@ export default function Home() {
             )}
           </div>
           {company?.park_id && (
-            <div ref={mapWrapperRef} style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden" }}>
+            <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", height: "min(75vh, 700px)" }}>
               <iframe
                 src={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
-                style={{ width: "100%", height: mapHeight, border: "none" }}
+                style={{ width: "100%", height: "100%", border: "none" }}
                 title="Lot Map"
                 scrolling="no"
               />
