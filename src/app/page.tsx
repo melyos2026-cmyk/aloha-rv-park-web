@@ -7,6 +7,23 @@ export default function Home() {
   const { company } = useCompany();
   const [extraHeroImages, setExtraHeroImages] = useState<string[]>([]);
   const [heroIndex, setHeroIndex] = useState(0);
+  // Aug 12 (per Mely): the map now computes its own true natural height
+  // (header+legend+instructions + the full map graphic at the current
+  // width) and reports it a few times right after load, then stops for
+  // good — a finite, one-shot report, not the old continuous/runaway
+  // mechanism. 1300 is just the fallback shown before that first report
+  // arrives.
+  const [mapHeight, setMapHeight] = useState(1300);
+
+  useEffect(() => {
+    function handleMapHeight(event: MessageEvent) {
+      if (event.data?.type === "aloha-map-height" && typeof event.data.height === "number") {
+        setMapHeight(event.data.height);
+      }
+    }
+    window.addEventListener("message", handleMapHeight);
+    return () => window.removeEventListener("message", handleMapHeight);
+  }, []);
 
   const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
 
@@ -131,7 +148,7 @@ export default function Home() {
             )}
           </div>
           {company?.park_id && (
-            <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", height: 1300 }}>
+            <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", height: mapHeight }}>
               <iframe
                 src={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
                 style={{ width: "100%", height: "100%", border: "none" }}
