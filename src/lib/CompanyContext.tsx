@@ -41,7 +41,16 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let hostname =
       typeof window !== "undefined" ? window.location.hostname : "";
-    if (hostname === "localhost" || hostname === "127.0.0.1") {
+    // Aug 12 (per Mely): Vercel preview deployments use random
+    // *.vercel.app subdomains that never match any real company's
+    // registered domain — same problem as localhost, same fix. Scoped
+    // narrowly to *.vercel.app so this never affects the real production
+    // domain (aloharvparkfl.com).
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.endsWith(".vercel.app")
+    ) {
       hostname = process.env.NEXT_PUBLIC_DEV_COMPANY_DOMAIN || hostname;
     }
     hostname = hostname.replace(/^www\./, "");
