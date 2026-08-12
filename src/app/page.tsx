@@ -131,7 +131,7 @@ export default function Home() {
             )}
           </div>
           {company?.park_id && (
-            <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", height: "min(75vh, 700px)" }}>
+            <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", height: "min(95vh, 1300px)" }}>
               <iframe
                 src={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
                 style={{ width: "100%", height: "100%", border: "none" }}
