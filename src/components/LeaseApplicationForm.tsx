@@ -68,6 +68,7 @@ export interface LeaseApplicationData {
   rv_model: string;
   rv_year: string;
   rv_length_ft: string;
+  rv_width_ft: string;
   rv_vin_or_tag: string;
   slide_out_driver_count: string;
   slide_out_passenger_count: string;
@@ -370,6 +371,7 @@ const emptyForm: LeaseApplicationData = {
   rv_model: "",
   rv_year: "",
   rv_length_ft: "",
+  rv_width_ft: "",
   rv_vin_or_tag: "",
   slide_out_driver_count: "",
   slide_out_passenger_count: "",
@@ -1992,6 +1994,23 @@ export default function LeaseApplicationForm({
               !data.rv_length_ft && (
                 <div style={styles.requiredNote}>Field required</div>
               )}
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>
+              Width (ft){" "}
+              {selectedLot?.max_width_ft && (
+                <span style={{ fontWeight: 400, color: "#999" }}>
+                  (max {selectedLot.max_width_ft} ft for this lot)
+                </span>
+              )}
+            </label>
+            <input
+              type="number"
+              style={styles.input}
+              value={data.rv_width_ft}
+              onChange={(e) => set("rv_width_ft", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.rv_width_ft}
+            />
           </div>
           <div style={styles.field}>
             <label style={styles.label}>VIN / License Tag</label>
