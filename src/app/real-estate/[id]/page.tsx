@@ -142,10 +142,10 @@ export default function ListingDetailPage() {
           )}
           <div><div style={{ fontSize: 12, color: "var(--gray)" }}>Property Type</div><div style={{ fontSize: 16, fontWeight: 700 }}>🏠 {listing.category}</div></div>
           {listing.year_built != null && (
-            <div><div style={{ fontSize: 12, color: "var(--gray)" }}>Year Built</div><div style={{ fontSize: 16, fontWeight: 700 }}>📅 {listing.year_built}</div></div>
+            <div><div style={{ fontSize: 12, color: "var(--gray)" }}>Year Built</div><div style={{ fontSize: 16, fontWeight: 700 }}>{listing.year_built}</div></div>
           )}
           {listing.parking_info && (
-            <div><div style={{ fontSize: 12, color: "var(--gray)" }}>Parking</div><div style={{ fontSize: 16, fontWeight: 700 }}>🚗 {listing.parking_info}</div></div>
+            <div><div style={{ fontSize: 12, color: "var(--gray)" }}>Parking</div><div style={{ fontSize: 16, fontWeight: 700 }}>{listing.parking_info}</div></div>
           )}
         </div>
 
