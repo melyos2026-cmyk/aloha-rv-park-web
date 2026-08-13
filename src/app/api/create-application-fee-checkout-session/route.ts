@@ -76,7 +76,7 @@ export async function POST(req: Request) {
         .eq("id", application.space_id)
         .maybeSingle();
 
-      if (lot && lot.status !== "available") {
+      if (lot && lot.status !== "available" && lot.status !== "for_sale") {
         return NextResponse.json(
           { error: "This lot is on hold — please choose a different lot and try again." },
           { status: 409 }
