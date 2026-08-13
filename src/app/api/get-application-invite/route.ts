@@ -32,8 +32,7 @@ export async function GET(req: NextRequest) {
         "is_family_friend, full_name, tenant_names, email, phone, space_id, lease_start, lease_end, " +
         "monthly_rent, security_deposit, electric_type, electric_included_kwh, electric_rate_per_kwh, " +
         "laundry_type, laundry_monthly_fee, rent_to_own_total_price, rent_to_own_monthly_payment, " +
-        "rent_to_own_num_payments, rent_to_own_deposit, rent_to_own_deposit_paid, " +
-        "rv_make, rv_model, rv_year, rv_length_ft, rv_width_ft, rv_vin_or_tag, slide_out_driver_count, slide_out_passenger_count"
+        "rent_to_own_num_payments, rent_to_own_deposit, rent_to_own_deposit_paid"
     )
     .eq("invite_token", token)
     .maybeSingle();
@@ -42,5 +41,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invitation not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ invitation: data });
+  // Aug 13: RV/Unit details fetched separately, best-effort — if this
+  // fails (e.g. a column doesn't exist yet in a given environment), the
+  // real invitation above still loads correctly instead of the whole
+  // link showing a false "invalid or expired." A missing/failed RV
+  // fetch just means those fields stay blank for the applicant to fill.
+  let rvFields: Record<string, any> = {};
+  try {
+    const { data: rvData, error: rvError } = await supabaseAdmin
+      .from("resident_applications")
+      .select("rv_make, rv_model, rv_year, rv_length_ft, rv_width_ft, rv_vin_or_tag, slide_out_driver_count, slide_out_passenger_count")
+      .eq("invite_token", token)
+      .maybeSingle();
+    if (!rvError && rvData) rvFields = rvData;
+    else if (rvError) console.error("RV fields fetch failed (non-fatal):", rvError.message);
+  } catch (err) {
+    console.error("RV fields fetch threw (non-fatal):", err);
+  }
+
+  return NextResponse.json({ invitation: { ...(data as object), ...rvFields } });
 }
