@@ -50,6 +50,7 @@ export default function RealEstatePage() {
         .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url, image_urls")
         .eq("park_id", company!.park_id)
         .eq("available", true)
+        .eq("sold", false)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 

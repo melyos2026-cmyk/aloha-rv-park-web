@@ -59,6 +59,7 @@ export default function ListingDetailPage() {
         .eq("id", id)
         .eq("park_id", company!.park_id)
         .eq("available", true)
+        .eq("sold", false)
         .is("deleted_at", null)
         .maybeSingle();
 
