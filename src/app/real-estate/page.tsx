@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useCompany } from "@/lib/CompanyContext";
+import ListingCarousel from "@/components/ListingCarousel";
 
 type Listing = {
   id: string;
@@ -15,6 +16,7 @@ type Listing = {
   sqft: number | null;
   description: string | null;
   image_url: string | null;
+  image_urls: string[] | null;
 };
 
 const typeLabels: Record<string, string> = {
@@ -55,7 +57,7 @@ export default function RealEstatePage() {
     async function loadListings() {
       const { data, error } = await supabase
         .from("real_estate_listings")
-        .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url")
+        .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url, image_urls")
         .eq("park_id", company!.park_id)
         .eq("available", true)
         .is("deleted_at", null)
@@ -110,9 +112,9 @@ export default function RealEstatePage() {
                 <div key={l.id} style={{ background: "var(--white)", border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", transition: "transform 0.2s" }}
                   onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-4px)")}
                   onMouseLeave={e => (e.currentTarget.style.transform = "translateY(0)")}>
-                  <div style={{ height: 200, background: l.image_url ? `url(${l.image_url}) center/cover` : "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 48, position: "relative" }}>
-                    {!l.image_url && "🏠"}
-                    <div style={{ position: "absolute", top: 12, left: 12, background: typeColors[l.type] || "#374151", color: "var(--white)", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  <div style={{ position: "relative" }}>
+                    <ListingCarousel images={l.image_urls && l.image_urls.length > 0 ? l.image_urls : (l.image_url ? [l.image_url] : [])} height={200} />
+                    <div style={{ position: "absolute", top: 12, left: 12, background: typeColors[l.type] || "#374151", color: "var(--white)", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", pointerEvents: "none" }}>
                       {typeLabels[l.type] || l.type}
                     </div>
                   </div>
