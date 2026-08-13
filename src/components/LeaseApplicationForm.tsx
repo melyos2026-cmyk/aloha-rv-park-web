@@ -1945,6 +1945,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_make}
               onChange={(e) => set("rv_make", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.rv_make}
             />
           </div>
           <div style={styles.field}>
@@ -1953,6 +1954,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_model}
               onChange={(e) => set("rv_model", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.rv_model}
             />
           </div>
           <div style={styles.field}>
@@ -1961,6 +1963,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_year}
               onChange={(e) => set("rv_year", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.rv_year}
             />
           </div>
         </div>
@@ -1982,6 +1985,7 @@ export default function LeaseApplicationForm({
               }}
               value={data.rv_length_ft}
               onChange={(e) => set("rv_length_ft", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.rv_length_ft}
             />
             {mode === "applicant" &&
               attemptedSubmit &&
@@ -1995,6 +1999,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_vin_or_tag}
               onChange={(e) => set("rv_vin_or_tag", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.rv_vin_or_tag}
             />
           </div>
         </div>
@@ -2012,6 +2017,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.slide_out_driver_count}
               onChange={(e) => set("slide_out_driver_count", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.slide_out_driver_count}
             >
               <option value="">Select...</option>
               <option value="0">0</option>
@@ -2047,6 +2053,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.slide_out_passenger_count}
               onChange={(e) => set("slide_out_passenger_count", e.target.value)}
+              disabled={mode === "applicant" && lockAdminFields && !!data.slide_out_passenger_count}
             >
               <option value="">Select...</option>
               <option value="0">0</option>

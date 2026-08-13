@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
         "is_family_friend, full_name, tenant_names, email, phone, space_id, lease_start, lease_end, " +
         "monthly_rent, security_deposit, electric_type, electric_included_kwh, electric_rate_per_kwh, " +
         "laundry_type, laundry_monthly_fee, rent_to_own_total_price, rent_to_own_monthly_payment, " +
-        "rent_to_own_num_payments, rent_to_own_deposit, rent_to_own_deposit_paid"
+        "rent_to_own_num_payments, rent_to_own_deposit, rent_to_own_deposit_paid, " +
+        "rv_make, rv_model, rv_year, rv_length_ft, rv_vin_or_tag, slide_out_driver_count, slide_out_passenger_count"
     )
     .eq("invite_token", token)
     .maybeSingle();

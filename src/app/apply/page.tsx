@@ -233,6 +233,17 @@ function ApplyPageInner() {
             ...(data.laundry_monthly_fee != null
               ? { laundry_monthly_fee: String(data.laundry_monthly_fee) }
               : {}),
+            // Aug 13 (per Mely): RV/Unit details pre-filled from a
+            // connected real-estate listing at invite time, if any — the
+            // buyer doesn't know these yet, it's not their RV/home until
+            // they buy it.
+            ...(data.rv_make ? { rv_make: data.rv_make } : {}),
+            ...(data.rv_model ? { rv_model: data.rv_model } : {}),
+            ...(data.rv_year != null ? { rv_year: String(data.rv_year) } : {}),
+            ...(data.rv_length_ft != null ? { rv_length_ft: String(data.rv_length_ft) } : {}),
+            ...(data.rv_vin_or_tag ? { rv_vin_or_tag: data.rv_vin_or_tag } : {}),
+            ...(data.slide_out_driver_count ? { slide_out_driver_count: data.slide_out_driver_count } : {}),
+            ...(data.slide_out_passenger_count ? { slide_out_passenger_count: data.slide_out_passenger_count } : {}),
           }));
           setInvitationLoaded(true);
 
