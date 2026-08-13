@@ -18,6 +18,7 @@ type Listing = {
   description: string | null;
   image_url: string | null;
   image_urls: string[] | null;
+  sold: boolean;
 };
 
 const typeLabels: Record<string, string> = {
@@ -47,10 +48,9 @@ export default function RealEstatePage() {
     async function loadListings() {
       const { data, error } = await supabase
         .from("real_estate_listings")
-        .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url, image_urls")
+        .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url, image_urls, sold")
         .eq("park_id", company!.park_id)
         .eq("available", true)
-        .eq("sold", false)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -101,19 +101,19 @@ export default function RealEstatePage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 28 }}>
               {filtered.map(l => (
                 <Link key={l.id} href={`/real-estate/${l.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-                  <div style={{ background: "var(--white)", border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", transition: "transform 0.2s", cursor: "pointer" }}
+                  <div style={{ background: "var(--white)", border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", transition: "transform 0.2s", cursor: "pointer", opacity: l.sold ? 0.75 : 1 }}
                     onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-4px)")}
                     onMouseLeave={e => (e.currentTarget.style.transform = "translateY(0)")}>
                     <div style={{ position: "relative" }}>
                       <ListingCarousel images={l.image_urls && l.image_urls.length > 0 ? l.image_urls : (l.image_url ? [l.image_url] : [])} height={200} />
-                      <div style={{ position: "absolute", top: 12, left: 12, background: typeColors[l.type] || "#374151", color: "var(--white)", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", pointerEvents: "none" }}>
-                        {typeLabels[l.type] || l.type}
+                      <div style={{ position: "absolute", top: 12, left: 12, background: l.sold ? "#374151" : (typeColors[l.type] || "#374151"), color: "var(--white)", padding: "4px 12px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", pointerEvents: "none" }}>
+                        {l.sold ? "Sold" : (typeLabels[l.type] || l.type)}
                       </div>
                     </div>
                     <div style={{ padding: 24 }}>
                       <div style={{ fontSize: 11, color: "var(--gray)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>{l.category}</div>
                       <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>{l.title}</h3>
-                      <div style={{ fontSize: 24, fontFamily: "Playfair Display, serif", fontWeight: 700, color: typeColors[l.type] || "#374151", marginBottom: 12 }}>{l.price}</div>
+                      <div style={{ fontSize: 24, fontFamily: "Playfair Display, serif", fontWeight: 700, color: l.sold ? "#374151" : (typeColors[l.type] || "#374151"), marginBottom: 12 }}>{l.price}</div>
                       <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--gray)" }}>
                         {l.beds != null && <span>🛏 {l.beds} bed</span>}
                         {l.baths != null && <span>🚿 {l.baths} bath</span>}

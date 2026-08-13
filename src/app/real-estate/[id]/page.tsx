@@ -24,6 +24,7 @@ type ListingDetail = {
   year_built: number | null;
   lot_rent_info: string | null;
   parking_info: string | null;
+  sold: boolean;
 };
 
 const typeLabels: Record<string, string> = {
@@ -55,11 +56,10 @@ export default function ListingDetailPage() {
     async function loadListing() {
       const { data, error } = await supabase
         .from("real_estate_listings")
-        .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url, image_urls, address, year_built, lot_rent_info, parking_info")
+        .select("id, lot_key, type, category, title, price, beds, baths, sqft, description, image_url, image_urls, address, year_built, lot_rent_info, parking_info, sold")
         .eq("id", id)
         .eq("park_id", company!.park_id)
         .eq("available", true)
-        .eq("sold", false)
         .is("deleted_at", null)
         .maybeSingle();
 
@@ -116,8 +116,8 @@ export default function ListingDetailPage() {
 
         <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: "2px solid var(--black)", marginBottom: 24 }}>
           <ListingCarousel images={images} height={420} />
-          <div style={{ position: "absolute", top: 16, left: 16, background: typeColors[listing.type] || "#374151", color: "var(--white)", padding: "6px 14px", borderRadius: 4, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", pointerEvents: "none" }}>
-            {typeLabels[listing.type] || listing.type}
+          <div style={{ position: "absolute", top: 16, left: 16, background: listing.sold ? "#374151" : (typeColors[listing.type] || "#374151"), color: "var(--white)", padding: "6px 14px", borderRadius: 4, fontSize: 12, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", pointerEvents: "none" }}>
+            {listing.sold ? "Sold" : (typeLabels[listing.type] || listing.type)}
           </div>
         </div>
 
@@ -165,15 +165,27 @@ export default function ListingDetailPage() {
         )}
 
         <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={() => setShowInquiry(true)} style={{
-            flex: 1, textAlign: "center",
-            background: "var(--mint)", color: "var(--red-dark)",
-            padding: "14px", borderRadius: 6, fontWeight: 700, fontSize: 14,
-            letterSpacing: "0.05em", textTransform: "uppercase",
-            border: "2px solid var(--red-dark)", cursor: "pointer"
-          }}>
-            📩 Inquire Now
-          </button>
+          {listing.sold ? (
+            <div style={{
+              flex: 1, textAlign: "center",
+              background: "#f3f4f6", color: "#6b7280",
+              padding: "14px", borderRadius: 6, fontWeight: 700, fontSize: 14,
+              letterSpacing: "0.05em", textTransform: "uppercase",
+              border: "2px solid #d1d5db"
+            }}>
+              This home has sold
+            </div>
+          ) : (
+            <button onClick={() => setShowInquiry(true)} style={{
+              flex: 1, textAlign: "center",
+              background: "var(--mint)", color: "var(--red-dark)",
+              padding: "14px", borderRadius: 6, fontWeight: 700, fontSize: 14,
+              letterSpacing: "0.05em", textTransform: "uppercase",
+              border: "2px solid var(--red-dark)", cursor: "pointer"
+            }}>
+              📩 Inquire Now
+            </button>
+          )}
           <button onClick={handleShare} style={{
             width: 56, background: "var(--white)", color: "var(--black)",
             borderRadius: 6, border: "2px solid var(--black)", cursor: "pointer", fontSize: 18,
