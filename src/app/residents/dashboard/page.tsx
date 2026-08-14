@@ -1451,6 +1451,7 @@ export default function ResidentDashboard() {
               </p>
               <p style={{ marginTop: 8 }}><strong>Gate Access Clickers Issued:</strong> {resident?.gate_clickers_count ?? 0}</p>
               <p style={{ marginTop: 8 }}><strong>Mailbox Keys Issued:</strong> {resident?.mailbox_keys_count ?? 0}</p>
+              <p style={{ marginTop: 8 }}><strong>Mailbox #:</strong> {resident?.mailbox_number || "Not yet assigned"}</p>
 
               <p style={{ color: "var(--gray)", fontSize: 12, marginTop: 12 }}>
                 Lost or damaged items may be subject to a replacement fee — contact the office for details.
