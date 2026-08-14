@@ -139,6 +139,14 @@ export default function MaintenancePage() {
   return (
     <main className="min-h-screen p-6" style={{ backgroundColor: "#ffffff" }}>
       <div style={{ maxWidth: "1100px", margin: "0", padding: "0 24px" }}>
+        <button
+          onClick={() => (window.location.href = "/residents/dashboard")}
+          className="px-4 py-2 rounded-lg font-semibold text-black mb-4"
+          style={{ backgroundColor: "#d3f8e2", border: "1px solid #16a34a" }}
+        >
+          ← Back to Dashboard
+        </button>
+
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-black">
             Maintenance Requests
@@ -478,7 +486,7 @@ export default function MaintenancePage() {
               border: "1px solid #16a34a",
             }}
           >
-            Back to Dashboard
+            ← Back to Dashboard
           </button>
         </div>
       </div>

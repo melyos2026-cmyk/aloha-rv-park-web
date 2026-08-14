@@ -151,6 +151,22 @@ export default function InvoicesPage() {
   return (
     <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
       <div style={{ maxWidth: 576, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+        <button
+          onClick={() => (window.location.href = "/residents/dashboard")}
+          style={{
+            alignSelf: "flex-start",
+            background: "#d3f8e2",
+            border: "1px solid #16a34a",
+            borderRadius: 8,
+            padding: "8px 14px",
+            fontSize: 14,
+            fontWeight: 700,
+            color: "#000",
+            cursor: "pointer",
+          }}
+        >
+          ← Back to Dashboard
+        </button>
         <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Invoices</h1>
           <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
