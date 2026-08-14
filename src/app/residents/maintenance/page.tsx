@@ -136,15 +136,23 @@ export default function MaintenancePage() {
     loadRequests();
   }
 
+  const cardStyle = {
+    borderRadius: 12,
+    background: "#fff",
+    padding: 32,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+    border: "1px solid #e5e7eb",
+  };
+
   return (
-    <main className="min-h-screen p-6" style={{ backgroundColor: "#ffffff" }}>
-      <div style={{ maxWidth: "1100px", margin: "0", padding: "0 24px" }}>
+    <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
         <button
           onClick={() => (window.location.href = "/residents/dashboard")}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
-          className="mb-4"
           style={{
+            alignSelf: "flex-start",
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
@@ -164,33 +172,46 @@ export default function MaintenancePage() {
           Back to Dashboard
         </button>
 
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-black">
-            Maintenance Requests
-          </h1>
-
-          <button
-            onClick={() => setShowForm(true)}
-            className="px-4 py-2 rounded-lg font-semibold text-black"
-            style={{ backgroundColor: "#d3f8e2", border: "1px solid #16a34a" }}
-          >
-            New Request
-          </button>
+        <div style={cardStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Maintenance Requests</h1>
+              <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
+                Report issues and track maintenance progress.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowForm(true)}
+              style={{
+                background: "#000",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "10px 18px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + New Request
+            </button>
+          </div>
         </div>
 
         {message && (
-          <div className="rounded-2xl shadow p-4 mb-4 text-sm text-black" style={{ backgroundColor: "#ffffff", border: "1px solid #e5e7eb" }}>
+          <div style={{ borderRadius: 8, background: "#fefce8", padding: 16, fontSize: 14, color: "#854d0e" }}>
             {message}
           </div>
         )}
 
         {showForm && (
-          <div className="bg-white rounded-3xl shadow-lg p-8 mb-6 space-y-5">
-            <h2 className="text-xl font-bold text-black">
+          <div style={cardStyle}>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 20 }}>
               New Maintenance Request
             </h2>
 
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: "20px", padding: "20px" }}>
+            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 20 }}>
             <div style={{ width: "100%" }}>
               <input
                 value={subject}
@@ -233,16 +254,23 @@ export default function MaintenancePage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "flex-end", gap: "16px" }}>
-              <div style={{ width: "80px" }}>
-                <label className="block text-xs font-semibold mb-2 text-gray-500 uppercase tracking-wide">
+              <div style={{ width: "110px" }}>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 8 }}>
                   Priority
                 </label>
 
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
-                  className="w-full rounded-lg p-3 text-black bg-white text-base"
-                  style={{ border: "1px solid #16a34a" }}
+                  style={{
+                    width: "100%",
+                    borderRadius: 8,
+                    padding: 12,
+                    color: "#000",
+                    background: "#fff",
+                    fontSize: 15,
+                    border: "1.5px solid #d1d5db",
+                  }}
                 >
                   <option>Low</option>
                   <option>Normal</option>
@@ -300,12 +328,13 @@ export default function MaintenancePage() {
   <button
     onClick={createRequest}
     style={{
-      backgroundColor: "#d3f8e2",
-      border: "1px solid #16a34a",
-      color: "black",
-      fontWeight: 600,
-      padding: "10px 24px",
-      borderRadius: "24px",
+      background: "#000",
+      color: "#fff",
+      border: "none",
+      fontWeight: 700,
+      padding: "10px 22px",
+      borderRadius: 8,
+      fontSize: 14,
       cursor: "pointer",
     }}
   >
@@ -322,12 +351,13 @@ export default function MaintenancePage() {
       setMessage("");
     }}
     style={{
-      backgroundColor: "#d3f8e2",
-      border: "1px solid #16a34a",
-      color: "black",
-      fontWeight: 600,
-      padding: "10px 24px",
-      borderRadius: "24px",
+      backgroundColor: "#fff",
+      border: "1.5px solid #d1d5db",
+      color: "#374151",
+      fontWeight: 700,
+      padding: "10px 22px",
+      borderRadius: 8,
+      fontSize: 14,
       cursor: "pointer",
     }}
   >
@@ -338,26 +368,18 @@ export default function MaintenancePage() {
         )}
 
         {requests.length === 0 ? (
-          <div
-            className="bg-white rounded-2xl shadow p-6 text-black"
-            style={{ border: "1px solid #16a34a", marginTop: "24px" }}
-          >
-            No maintenance requests found.
+          <div style={cardStyle}>
+            <p style={{ color: "#000" }}>No maintenance requests found.</p>
           </div>
         ) : (
-          <div className="space-y-6" style={{ marginTop: "24px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {requests.map((request) => (
               <div
                 key={request.id}
-                className="bg-white rounded-2xl shadow"
-                style={{
-                  border: "1px solid #16a34a",
-                  padding: "28px",
-                }}
+                style={cardStyle}
               >
                 <h2
-                  className="text-2xl font-bold text-black"
-                  style={{ marginBottom: "8px" }}
+                  style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 8 }}
                 >
                   {request.subject}
                 </h2>
@@ -381,11 +403,11 @@ export default function MaintenancePage() {
                 </p>
 
                 <p
-                  className="text-gray-700"
                   style={{
-                    lineHeight: "30px",
-                    marginBottom: "24px",
-                    fontSize: "16px",
+                    color: "#374151",
+                    lineHeight: "26px",
+                    marginBottom: "20px",
+                    fontSize: "15px",
                   }}
                 >
                   {request.description || "No description provided."}
@@ -422,13 +444,14 @@ export default function MaintenancePage() {
                   <button
                     onClick={() => cancelRequest(request.id)}
                     style={{
-                      marginTop: "24px",
-                      backgroundColor: "#fee2e2",
-                      border: "1px solid #dc2626",
-                      color: "#991b1b",
+                      marginTop: "20px",
+                      backgroundColor: "#fff",
+                      border: "1.5px solid #dc2626",
+                      color: "#dc2626",
                       fontWeight: 700,
-                      padding: "10px 20px",
-                      borderRadius: "999px",
+                      padding: "8px 16px",
+                      borderRadius: 8,
+                      fontSize: 13,
                       cursor: "pointer",
                     }}
                   >
@@ -494,31 +517,30 @@ export default function MaintenancePage() {
           </div>
         )}
 
-        <div style={{ marginTop: "20px" }}>
-          <button
-            onClick={() => (window.location.href = "/residents/dashboard")}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              background: "none",
-              border: "none",
-              padding: 0,
-              fontSize: 14,
-              fontWeight: 600,
-              color: "#6b7280",
-              cursor: "pointer",
-              transition: "color 0.15s ease",
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-            Back to Dashboard
-          </button>
-        </div>
+        <button
+          onClick={() => (window.location.href = "/residents/dashboard")}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
+          style={{
+            alignSelf: "flex-start",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            padding: 0,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#6b7280",
+            cursor: "pointer",
+            transition: "color 0.15s ease",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back to Dashboard
+        </button>
       </div>
     </main>
   );
