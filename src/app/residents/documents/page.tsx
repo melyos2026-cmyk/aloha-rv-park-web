@@ -266,19 +266,27 @@ function DocumentsContent() {
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
         <button
           onClick={() => router.push("/residents/dashboard")}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
           style={{
             alignSelf: "flex-start",
-            background: "#d3f8e2",
-            border: "1px solid #16a34a",
-            borderRadius: 8,
-            padding: "8px 14px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            padding: 0,
             fontSize: 14,
-            fontWeight: 700,
-            color: "#000",
+            fontWeight: 600,
+            color: "#6b7280",
             cursor: "pointer",
+            transition: "color 0.15s ease",
           }}
         >
-          ← Back to Dashboard
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back to Dashboard
         </button>
         <div style={cardStyle}>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>My Documents</h1>

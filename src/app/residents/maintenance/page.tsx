@@ -141,10 +141,27 @@ export default function MaintenancePage() {
       <div style={{ maxWidth: "1100px", margin: "0", padding: "0 24px" }}>
         <button
           onClick={() => (window.location.href = "/residents/dashboard")}
-          className="px-4 py-2 rounded-lg font-semibold text-black mb-4"
-          style={{ backgroundColor: "#d3f8e2", border: "1px solid #16a34a" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
+          className="mb-4"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            background: "none",
+            border: "none",
+            padding: 0,
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#6b7280",
+            cursor: "pointer",
+            transition: "color 0.15s ease",
+          }}
         >
-          ← Back to Dashboard
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Back to Dashboard
         </button>
 
         <div className="flex justify-between items-center mb-6">
@@ -480,13 +497,26 @@ export default function MaintenancePage() {
         <div style={{ marginTop: "20px" }}>
           <button
             onClick={() => (window.location.href = "/residents/dashboard")}
-            className="px-4 py-2 rounded-lg font-semibold text-black"
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
             style={{
-              backgroundColor: "#d3f8e2",
-              border: "1px solid #16a34a",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: "none",
+              border: "none",
+              padding: 0,
+              fontSize: 14,
+              fontWeight: 600,
+              color: "#6b7280",
+              cursor: "pointer",
+              transition: "color 0.15s ease",
             }}
           >
-            ← Back to Dashboard
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+            Back to Dashboard
           </button>
         </div>
       </div>
