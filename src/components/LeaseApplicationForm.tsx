@@ -1156,7 +1156,20 @@ export default function LeaseApplicationForm({
                 excludeDateIntervals={
                   mode === "applicant" ? excludedDateIntervals : []
                 }
-                disabled={mode === "applicant" && !data.space_id}
+                disabled={
+                  (mode === "applicant" && !data.space_id) ||
+                  // Aug 16 (per Mely — resident-owned home sales): a lot
+                  // being sold is still occupied by its current resident
+                  // on the record, so their open-ended lease blocks EVERY
+                  // date on this calendar (get_lot_blocked_ranges has no
+                  // way to know a sale is about to close it out). When
+                  // the admin pre-set a Move-In/Handover Date at invite
+                  // time for exactly this case, lock the field to that
+                  // date instead of making the buyer pick from a
+                  // calendar that's entirely grayed out — same pattern
+                  // already used for rv_make/rv_model/etc. below.
+                  (mode === "applicant" && lockAdminFields && !!data.lease_start_date)
+                }
                 dateFormat="MM/dd/yyyy"
                 placeholderText="Select a date"
                 customInput={<input style={{ ...styles.input, width: "100%", boxSizing: "border-box" }} />}
@@ -1181,9 +1194,15 @@ export default function LeaseApplicationForm({
               )
             )}
             {mode === "applicant" && data.space_id && (
-              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                Already-reserved dates for this lot are grayed out.
-              </div>
+              lockAdminFields && !!data.lease_start_date ? (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  This move-in date was set by the park and can't be changed here.
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Already-reserved dates for this lot are grayed out.
+                </div>
+              )
             )}
           </div>
         </div>
