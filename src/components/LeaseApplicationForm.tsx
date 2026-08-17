@@ -806,15 +806,26 @@ export default function LeaseApplicationForm({
     : 0;
   const applicationFeeTotalForModal =
     applicationProcessingFee + backgroundCheckFeeTotal;
-  // Mirrors apply/page.tsx's stayAmountForCheckout: short stays (no
-  // background check) fold the stay total into the same Stripe checkout
-  // as the application fee, since there's no separate fee/BG-check section
-  // shown for them in the form.
-  const stayAmountForModal =
-    !backgroundCheckRequired && stayNights !== null
-      ? Number(data.rent_amount) || 0
+  // Aug 17 (per Mely — "si el background no se paga, este cargo se cobra
+  // junto con el primer mes, renta y depósito para que todo sea un
+  // pago"): this used to only bundle rent for a SHORT stay with a
+  // defined end date (stayNights !== null) — a month-to-month lease with
+  // background check also skipped (John Smith buying C11's exact
+  // scenario) fell through to $0 here, leaving only the $2.50 fee
+  // charged today. Now bundles whenever background check isn't required,
+  // regardless of term length — data.rent_amount already holds the right
+  // figure either way (full stay total for a short stay, one month's
+  // rent for month-to-month). Deposit shown as its own line, not
+  // silently folded in — see depositAmountForModal below.
+  const stayAmountForModal = !backgroundCheckRequired
+    ? Number(data.rent_amount) || 0
+    : 0;
+  const depositAmountForModal =
+    !backgroundCheckRequired && data.security_deposit_enabled
+      ? Number(data.security_deposit_amount) || 0
       : 0;
-  const totalChargeForModal = applicationFeeTotalForModal + stayAmountForModal;
+  const totalChargeForModal =
+    applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal;
 
   // Aug 17 (per Mely — John stuck on "This lot is already booked..." even
   // with his Move-In date already locked in): the date FIELD being locked
@@ -3212,12 +3223,26 @@ export default function LeaseApplicationForm({
                     }}
                   >
                     <span>
-                      RV Lot Stay
+                      {stayNights !== null ? "RV Lot Stay" : "First Month's Rent"}
                       {data.lease_start_date && data.lease_end_date
                         ? ` (${data.lease_start_date} \u2013 ${data.lease_end_date})`
                         : ""}
                     </span>
                     <strong>${stayAmountForModal.toFixed(2)}</strong>
+                  </div>
+                )}
+                {depositAmountForModal > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>Security Deposit</span>
+                    <strong>${depositAmountForModal.toFixed(2)}</strong>
                   </div>
                 )}
                 {backgroundCheckRequired && (

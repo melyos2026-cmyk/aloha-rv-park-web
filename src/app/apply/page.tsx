@@ -341,12 +341,26 @@ function ApplyPageInner() {
       const applicationFeeTotal =
         applicationProcessingFee + backgroundCheckFeeTotal;
 
-      // For short stays (no background check), the application never showed
-      // a separate fee/BG-check section — instead the application fee gets
-      // folded into this same Stripe checkout alongside the stay total.
-      const stayAmountForCheckout =
-        !backgroundCheckRequired && stayNights !== null
-          ? Number(data.rent_amount) || 0
+      // Aug 17 (per Mely — "si el background no se paga, este cargo se
+      // cobra junto con el primer mes, renta y depósito para que todo sea
+      // un pago"): this only ever bundled the stay/rent total for a SHORT
+      // stay with a defined end date (stayNights !== null) — a
+      // month-to-month lease with background check also skipped (John
+      // Smith buying C11's exact scenario) fell through to $0 here,
+      // leaving only the $2.50 fee charged today and rent+deposit
+      // deferred to the first invoice after approval, contradicting the
+      // stated rule. Now bundles first month's rent (data.rent_amount
+      // already holds the right figure either way — the full stay total
+      // for a short stay, or one month's rent for month-to-month)
+      // whenever background check isn't required, regardless of term
+      // length. Deposit is billed as its own separate line item, not
+      // silently folded into "RV Lot Stay" — see depositAmountForCheckout.
+      const stayAmountForCheckout = !backgroundCheckRequired
+        ? Number(data.rent_amount) || 0
+        : 0;
+      const depositAmountForCheckout =
+        !backgroundCheckRequired && data.security_deposit_enabled
+          ? Number(data.security_deposit_amount) || 0
           : 0;
 
       // Aug 10 (per Mely): the background check fee Aloha charges its own
@@ -486,6 +500,7 @@ function ApplyPageInner() {
           body: JSON.stringify({
             applicationId,
             stayAmount: stayAmountForCheckout || undefined,
+            depositAmount: depositAmountForCheckout || undefined,
             stayStartDate: data.lease_start_date || undefined,
             stayEndDate: data.lease_end_date || undefined,
             requiresBackgroundCheck: backgroundCheckRequired,

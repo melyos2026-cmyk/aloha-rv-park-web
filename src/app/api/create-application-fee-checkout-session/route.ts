@@ -30,6 +30,7 @@ export async function POST(req: Request) {
     const {
       applicationId,
       stayAmount,
+      depositAmount,
       stayStartDate,
       stayEndDate,
       requiresBackgroundCheck,
@@ -87,7 +88,8 @@ export async function POST(req: Request) {
     const smsFee = Number(application.sms_fee_amount) || 0;
     const feeAmount = (Number(application.application_fee_total) || 0) + smsFee;
     const stayAmountNum = Number(stayAmount) || 0;
-    if (feeAmount <= 0 && stayAmountNum <= 0) {
+    const depositAmountNum = Number(depositAmount) || 0;
+    if (feeAmount <= 0 && stayAmountNum <= 0 && depositAmountNum <= 0) {
       return NextResponse.json(
         { error: "Nothing to charge." },
         { status: 400 }
@@ -139,12 +141,30 @@ export async function POST(req: Request) {
       });
     }
 
+    // Aug 17 (per Mely): billed as its own line item, not silently folded
+    // into "RV Lot Stay" — a security deposit is a different kind of
+    // charge (refundable, held on the resident's behalf) and the
+    // applicant should see it broken out.
+    if (depositAmountNum > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(depositAmountNum * 100),
+          product_data: {
+            name: "Security Deposit",
+            description: "Refundable deposit, per your lease terms.",
+          },
+        },
+      });
+    }
+
     // Aug 4 (per Mely, Phase 2): Aloha's share is their already-computed
     // park_share_total from this application, PLUS the full stay amount
     // (that's rent revenue, 100% the park's). MelyOS keeps the rest of
     // the application fee. No split if not connected yet.
-    const totalChargeAmount = feeAmount + stayAmountNum;
-    const alohaShare = (Number(application.park_share_total) || 0) + stayAmountNum;
+    const totalChargeAmount = feeAmount + stayAmountNum + depositAmountNum;
+    const alohaShare = (Number(application.park_share_total) || 0) + stayAmountNum + depositAmountNum;
     const connectSplit = application.company_id
       ? await resolveConnectSplit(application.company_id, totalChargeAmount, alohaShare)
       : null;
@@ -168,6 +188,7 @@ export async function POST(req: Request) {
         requires_background_check:
           requiresBackgroundCheck === false ? "false" : "true",
         stay_amount: String(stayAmountNum || 0),
+        deposit_amount: String(depositAmountNum || 0),
       },
       success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/apply?application_id=${application.id}`,

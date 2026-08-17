@@ -216,6 +216,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   const requiresBackgroundCheck =
     session.metadata?.requires_background_check !== "false";
   const stayAmount = Number(session.metadata?.stay_amount) || 0;
+  const depositAmount = Number(session.metadata?.deposit_amount) || 0;
 
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -231,6 +232,15 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       background_check_status: requiresBackgroundCheck
         ? "payment_confirmed"
         : "not_required",
+      // Aug 17 (per Mely — "si el background no se paga, este cargo se
+      // cobra junto con el primer mes, renta y depósito"): persisted so
+      // Approve Application (melyos-builder) can see what was already
+      // collected here and avoid double-charging the same first month's
+      // rent/deposit again through the normal billing-profile/first-
+      // invoice flow. NOT YET WIRED UP on the approval side — see Mely's
+      // note in system-connections-audit.md before relying on this.
+      rent_prepaid_amount: stayAmount || null,
+      deposit_prepaid_amount: depositAmount || null,
     })
     .eq("id", applicationId)
     .select(
