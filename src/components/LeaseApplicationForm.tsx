@@ -7,7 +7,6 @@ import {
   getExcludedIntervals,
   type BlockedRange,
 } from "@/services/lotAvailability";
-import { calculateProcessingFee } from "@/lib/platformFee";
 
 /**
  * LeaseApplicationForm
@@ -151,6 +150,19 @@ function calculateAge(dateOfBirth: string): number | null {
     age--;
   }
   return age;
+}
+
+// Aug 17: local copy of src/lib/platformFee.ts's calculateProcessingFee —
+// deliberately NOT imported from there, since that file also exports
+// resolveConnectSplit (which imports the server-only Service Role Key
+// client). Importing ANYTHING from that module pulls its whole import
+// chain into this CLIENT component's bundle, crashing the entire public
+// /apply page on load ("This page couldn't load" — found live, Aug 17).
+// Same exact formula, kept in sync by hand since it's this simple.
+const PROCESSING_FEE_PERCENT = 0.04;
+const PROCESSING_FEE_MINIMUM = 1.5;
+function calculateProcessingFee(amount: number): number {
+  return Math.max(amount * PROCESSING_FEE_PERCENT, PROCESSING_FEE_MINIMUM);
 }
 
 export interface ProrationResult {
