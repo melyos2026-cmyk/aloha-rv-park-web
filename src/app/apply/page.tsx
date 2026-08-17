@@ -539,6 +539,11 @@ function ApplyPageInner() {
     } catch (err: any) {
       setErrorMsg(err.message ?? "Something went wrong. Please try again.");
       setSubmitting(false);
+      // Aug 17 (per Mely — "despues de OK, Submit no aparecio nada"): the
+      // error message was real, it just rendered at the very top of the
+      // page while she was scrolled down near the Submit button — same
+      // off-screen-message pattern hit repeatedly in the admin app today.
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
 
