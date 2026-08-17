@@ -816,7 +816,18 @@ export default function LeaseApplicationForm({
       : 0;
   const totalChargeForModal = applicationFeeTotalForModal + stayAmountForModal;
 
+  // Aug 17 (per Mely — John stuck on "This lot is already booked..." even
+  // with his Move-In date already locked in): the date FIELD being locked
+  // only fixed the calendar picker itself — this SEPARATE check re-runs
+  // the same conflict test against the full requested range and still
+  // correctly found a real overlap (the seller's lease genuinely hasn't
+  // closed yet — that only happens once the admin actually Approves this
+  // application). Same exception as the locked date field itself: when
+  // the admin pre-set this exact date for this exact reason, skip this
+  // check too — the admin already knows and accepts the handover.
+  const isLockedSaleDate = mode === "applicant" && lockAdminFields && !!data.lease_start_date;
   const lotAvailabilityConflict =
+    !isLockedSaleDate &&
     mode === "applicant" &&
     !!selectedLot &&
     !!data.lease_start_date &&
