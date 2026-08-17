@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { resolveConnectSplit } from "@/lib/platformFee";
+import { resolveConnectSplit, calculateProcessingFee } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -195,11 +195,48 @@ export async function POST(req: Request) {
       });
     }
 
+    // Aug 17 (per Mely — "y donde se cobra el 4% de la tarjeta que no lo
+    // veo pq cada transacion de stripe cobra eso?"): this route never
+    // wired up the same processing-fee surcharge already used everywhere
+    // else money gets charged (propane, rent, RTO deposit, autopay — see
+    // src/lib/platformFee.ts) — Stripe's own cut (2.9% + $0.30, more with
+    // Connect) was being silently absorbed out of Aloha's/MelyOS's share
+    // instead of passed to whoever's configured to pay it. Same formula,
+    // same company_fee_settings.pass_processing_fee_to_resident toggle,
+    // shown as its own line item so it's never hidden from the applicant.
+    const { data: feeSettings } = await supabase
+      .from("company_fee_settings")
+      .select("pass_processing_fee_to_resident")
+      .eq("company_id", application.company_id || "")
+      .maybeSingle();
+    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
+    const preSurchargeTotal = feeAmount + stayAmountNum + depositAmountNum;
+    const cardProcessingFee = passFeeToResident ? calculateProcessingFee(preSurchargeTotal) : 0;
+
+    if (cardProcessingFee > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(cardProcessingFee * 100),
+          product_data: {
+            name: "Card Processing Fee",
+            description: "Covers the cost of paying by card online.",
+          },
+        },
+      });
+    }
+
     // Aug 4 (per Mely, Phase 2): Aloha's share is their already-computed
     // park_share_total from this application, PLUS the full stay amount
     // (that's rent revenue, 100% the park's). MelyOS keeps the rest of
     // the application fee. No split if not connected yet.
-    const totalChargeAmount = feeAmount + stayAmountNum + depositAmountNum;
+    // Aug 17: totalChargeAmount now includes the card processing fee
+    // surcharge above — alohaShare deliberately does NOT, since MelyOS
+    // keeps 100% of that surcharge (it exists specifically to cover
+    // MelyOS's own Stripe/Connect costs), same as every other checkout
+    // that already uses this same processing-fee pattern.
+    const totalChargeAmount = feeAmount + stayAmountNum + depositAmountNum + cardProcessingFee;
     const alohaShare = (Number(application.park_share_total) || 0) + stayAmountNum + depositAmountNum;
     const connectSplit = application.company_id
       ? await resolveConnectSplit(application.company_id, totalChargeAmount, alohaShare)

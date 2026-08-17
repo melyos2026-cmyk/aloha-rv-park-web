@@ -588,6 +588,7 @@ function ApplyPageInner() {
         mode="applicant"
         submitting={submitting}
        company={{
+          id: company.id,
           name: company.company_name,
           address: company.address ?? "",
           logoUrl: company.logo_url ?? undefined,

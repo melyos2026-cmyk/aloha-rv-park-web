@@ -7,6 +7,7 @@ import {
   getExcludedIntervals,
   type BlockedRange,
 } from "@/services/lotAvailability";
+import { calculateProcessingFee } from "@/lib/platformFee";
 
 /**
  * LeaseApplicationForm
@@ -417,6 +418,7 @@ const emptyForm: LeaseApplicationData = {
 };
 
 export interface CompanyInfo {
+  id?: string;
   name: string;
   address: string;
   logoUrl?: string;
@@ -591,6 +593,18 @@ export default function LeaseApplicationForm({
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [triedLeaseStartClick, setTriedLeaseStartClick] = useState(false);
   const [blockedRanges, setBlockedRanges] = useState<BlockedRange[]>([]);
+  // Aug 17 (per Mely — "donde se cobra el 4% de la tarjeta"): fetched once
+  // per company so the "Charged Today" preview can show the same card
+  // processing surcharge the actual Stripe checkout now applies, instead
+  // of it only appearing as a surprise on the payment page.
+  const [passProcessingFeeToResident, setPassProcessingFeeToResident] = useState(true);
+  useEffect(() => {
+    if (!company.id) return;
+    fetch(`/api/get-processing-fee-settings?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((json) => setPassProcessingFeeToResident(json.passProcessingFeeToResident !== false))
+      .catch(() => setPassProcessingFeeToResident(true));
+  }, [company.id]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [rentToOwnAcknowledged, setRentToOwnAcknowledged] = useState(false);
   const [payingDeposit, setPayingDeposit] = useState(false);
@@ -835,8 +849,17 @@ export default function LeaseApplicationForm({
     !backgroundCheckRequired && data.security_deposit_enabled
       ? Number(data.security_deposit_amount) || 0
       : 0;
+  // Aug 17 (per Mely — "donde se cobra el 4% de la tarjeta que no lo veo
+  // pq cada transaccion de stripe cobra eso?"): same formula and same
+  // company_fee_settings.pass_processing_fee_to_resident toggle used
+  // everywhere else money gets charged (propane, rent, RTO deposit —
+  // src/lib/platformFee.ts) — was never shown here before, meaning it
+  // only ever appeared as a surprise on the actual Stripe payment page.
+  const cardProcessingFeeForModal = passProcessingFeeToResident
+    ? calculateProcessingFee(applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal)
+    : 0;
   const totalChargeForModal =
-    applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal;
+    applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal + cardProcessingFeeForModal;
 
   // Aug 17 (per Mely — John stuck on "This lot is already booked..." even
   // with his Move-In date already locked in): the date FIELD being locked
@@ -3254,6 +3277,20 @@ export default function LeaseApplicationForm({
                   >
                     <span>Security Deposit</span>
                     <strong>${depositAmountForModal.toFixed(2)}</strong>
+                  </div>
+                )}
+                {cardProcessingFeeForModal > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>Card Processing Fee</span>
+                    <strong>${cardProcessingFeeForModal.toFixed(2)}</strong>
                   </div>
                 )}
                 {backgroundCheckRequired && (
