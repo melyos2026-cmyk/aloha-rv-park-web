@@ -262,6 +262,7 @@ export async function POST(req: Request) {
           requiresBackgroundCheck === false ? "false" : "true",
         stay_amount: String(stayAmountNum || 0),
         deposit_amount: String(depositAmountNum || 0),
+        card_processing_fee: String(cardProcessingFee || 0),
       },
       success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/apply?application_id=${application.id}`,

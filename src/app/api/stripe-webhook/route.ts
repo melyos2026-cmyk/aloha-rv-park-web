@@ -217,6 +217,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     session.metadata?.requires_background_check !== "false";
   const stayAmount = Number(session.metadata?.stay_amount) || 0;
   const depositAmount = Number(session.metadata?.deposit_amount) || 0;
+  const cardProcessingFee = Number(session.metadata?.card_processing_fee) || 0;
 
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -411,6 +412,31 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           qty: 1,
           unitPrice: stayAmount,
           amount: stayAmount,
+        });
+      }
+
+      // Aug 17 (per Mely — "el pdf que me llego de pago no dice todo lo
+      // que se cobro"): depositAmount was already parsed above but never
+      // actually pushed onto the receipt — the deposit and card fee were
+      // silently missing from the itemized breakdown even though the
+      // Amount Paid total (computed from the real Stripe charge) was
+      // always correct. Same gap for the card processing surcharge,
+      // which this receipt-builder didn't even know existed until now.
+      if (depositAmount > 0) {
+        lineItems.push({
+          description: "Security Deposit",
+          qty: 1,
+          unitPrice: depositAmount,
+          amount: depositAmount,
+        });
+      }
+
+      if (cardProcessingFee > 0) {
+        lineItems.push({
+          description: "Card Processing Fee",
+          qty: 1,
+          unitPrice: cardProcessingFee,
+          amount: cardProcessingFee,
         });
       }
 
