@@ -152,7 +152,7 @@ function calculateAge(dateOfBirth: string): number | null {
   return age;
 }
 
-interface ProrationResult {
+export interface ProrationResult {
   proratedAmount: number;
   daysUsed: number;
   daysInMonth: number;
@@ -160,7 +160,7 @@ interface ProrationResult {
   isFullMonth: boolean;
 }
 
-function calculateProration(
+export function calculateProration(
   leaseStartDate: string,
   monthlyRent: number,
   method: string = "prorate_monthly",
@@ -817,8 +817,19 @@ export default function LeaseApplicationForm({
   // figure either way (full stay total for a short stay, one month's
   // rent for month-to-month). Deposit shown as its own line, not
   // silently folded in — see depositAmountForModal below.
+  // Aug 17 (per Mely — "lo que debería cobrar es $354.84 + $200 + $2.50,
+  // NO el monthly rent completo"): this used Number(data.rent_amount)
+  // directly for a month-to-month lease, which holds the FULL monthly
+  // rate ($1000) — the actual amount due today for a partial first month
+  // is the PRORATED figure already computed above as
+  // proration.proratedAmount (same number shown in the "First month is
+  // prorated: $X for Y of Z days" text below). For a short stay with a
+  // defined end date, data.rent_amount already IS the correct total for
+  // that whole stay (not month-based), so that path is unchanged.
   const stayAmountForModal = !backgroundCheckRequired
-    ? Number(data.rent_amount) || 0
+    ? stayNights !== null
+      ? Number(data.rent_amount) || 0
+      : proration?.proratedAmount || 0
     : 0;
   const depositAmountForModal =
     !backgroundCheckRequired && data.security_deposit_enabled

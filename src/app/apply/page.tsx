@@ -5,6 +5,7 @@ import LeaseApplicationForm, {
   LeaseApplicationData,
   LotOption,
   defaultParkRules,
+  calculateProration,
 } from "@/components/LeaseApplicationForm";
 import { supabase } from "@/lib/supabase";
 import { useCompany } from "@/lib/CompanyContext";
@@ -355,8 +356,28 @@ function ApplyPageInner() {
       // whenever background check isn't required, regardless of term
       // length. Deposit is billed as its own separate line item, not
       // silently folded into "RV Lot Stay" — see depositAmountForCheckout.
+      // Aug 17 (per Mely — "lo que debería cobrar es $354.84 + $200 +
+      // $2.50, NO el monthly rent completo"): for a month-to-month lease
+      // this must be the PRORATED first-period amount (calculateProration,
+      // the same figure shown to the applicant as "First month is
+      // prorated: $X for Y of Z days"), not the flat monthly rate — using
+      // data.rent_amount directly would have charged the FULL $1000
+      // instead of the correct $354.84 for an Aug 21 move-in. For a short
+      // stay with a defined end date, data.rent_amount already IS the
+      // correct total for that whole stay (not month-based), unchanged.
+      const selectedLotForProration = lots.find((l) => l.id === data.space_id);
+      const proration = !backgroundCheckRequired && stayNights === null
+        ? calculateProration(
+            data.lease_start_date,
+            Number(data.rent_amount) || 0,
+            data.first_month_proration_method || "prorate_monthly",
+            selectedLotForProration?.daily_rate ?? null
+          )
+        : null;
       const stayAmountForCheckout = !backgroundCheckRequired
-        ? Number(data.rent_amount) || 0
+        ? stayNights !== null
+          ? Number(data.rent_amount) || 0
+          : proration?.proratedAmount || 0
         : 0;
       const depositAmountForCheckout =
         !backgroundCheckRequired && data.security_deposit_enabled
