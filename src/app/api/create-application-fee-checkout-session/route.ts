@@ -70,14 +70,50 @@ export async function POST(req: Request) {
     // payment already put this exact lot on hold, stop here and never
     // even create a Stripe session — their card is never charged at all,
     // so there's nothing to refund.
+    // Aug 17 (per Mely — "no me llegó el mensaje de que tengo que pagar
+    // por stripe"): this held-lot check only ever allowed 'available' or
+    // 'for_sale' — a lot being sold by its CURRENT resident (like C11,
+    // still legitimately 'occupied' by the seller until the sale closes
+    // on approval) was silently rejected here, before the buyer's
+    // checkout session was ever created. Now also allows through when a
+    // real active resident-owned sale/RTO listing exists for this exact
+    // lot — the same underlying fact every other part of this flow
+    // today (the locked Move-In date, the conflict-check bypass) already
+    // relies on to know this occupied-but-being-sold case is legitimate.
     if (application.space_id) {
       const { data: lot } = await supabase
         .from("rv_lots")
-        .select("status")
+        .select("status, lot_name, company_id")
         .eq("id", application.space_id)
         .maybeSingle();
 
-      if (lot && lot.status !== "available" && lot.status !== "for_sale") {
+      let hasActiveSaleListing = false;
+      if (lot?.lot_name && lot.company_id) {
+        const { data: companyRow } = await supabase
+          .from("companies")
+          .select("park_id")
+          .eq("id", lot.company_id)
+          .maybeSingle();
+        if (companyRow?.park_id) {
+          const { data: listing } = await supabase
+            .from("real_estate_listings")
+            .select("id")
+            .eq("park_id", companyRow.park_id)
+            .eq("lot_key", lot.lot_name)
+            .eq("sold", false)
+            .eq("seller_type", "resident")
+            .in("type", ["sale", "rent-to-own"])
+            .maybeSingle();
+          hasActiveSaleListing = !!listing;
+        }
+      }
+
+      if (
+        lot &&
+        lot.status !== "available" &&
+        lot.status !== "for_sale" &&
+        !hasActiveSaleListing
+      ) {
         return NextResponse.json(
           { error: "This lot is on hold — please choose a different lot and try again." },
           { status: 409 }
