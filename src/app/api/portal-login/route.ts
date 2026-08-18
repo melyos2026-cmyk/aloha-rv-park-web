@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   const { data: resident, error } = await supabaseAdmin
     .from("resident_accounts")
-    .select("id, full_name, company_id, portal_password")
+    .select("id, full_name, company_id, portal_password, portal_enabled")
     .eq("email", email)
     .is("deleted_at", null)
     .maybeSingle();
@@ -36,6 +36,28 @@ export async function POST(req: Request) {
       success: false,
     });
     return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+  }
+
+  // Aug 18 (per Mely — "como se ve el portal de Merarys ahora que
+  // vendio?"): found a real gap while checking — portal_enabled=false
+  // (set when a resident's home sells, or on any move-out) was never
+  // actually enforced at login. Only 2 of 80+ /api/portal/* routes even
+  // reference it, and none of them are login itself — meaning someone
+  // whose access was supposed to have ended could still log in and see
+  // almost everything, as long as they remembered their password. Fixed
+  // at the one real chokepoint: block it right here, before a session
+  // cookie is ever issued, so nothing downstream needs its own check.
+  if (resident.portal_enabled === false) {
+    await supabaseAdmin.from("resident_login_attempts").insert({
+      resident_id: resident.id,
+      attempted_email: email,
+      ip,
+      success: false,
+    });
+    return NextResponse.json(
+      { error: "Your portal access has ended. Please contact the park office if you believe this is a mistake." },
+      { status: 403 }
+    );
   }
 
   const matches = await bcrypt.compare(password, resident.portal_password);
