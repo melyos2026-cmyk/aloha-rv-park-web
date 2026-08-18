@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   const { data: resident, error } = await supabaseAdmin
     .from("resident_accounts")
-    .select("id, full_name, company_id, portal_password, portal_enabled")
+    .select("id, full_name, company_id, portal_password, portal_enabled, portal_access_ends_at")
     .eq("email", email)
     .is("deleted_at", null)
     .maybeSingle();
@@ -47,7 +47,17 @@ export async function POST(req: Request) {
   // almost everything, as long as they remembered their password. Fixed
   // at the one real chokepoint: block it right here, before a session
   // cookie is ever issued, so nothing downstream needs its own check.
-  if (resident.portal_enabled === false) {
+  //
+  // Aug 18 (continued, per Mely — "se puede dejar abierto por al menos
+  // 7 dias ya que ellos tienen documentos que pueden printiar"): a home
+  // sale specifically no longer disables portal_enabled at all — it sets
+  // portal_access_ends_at (now + 7 days) instead, checked here too, so
+  // the seller keeps real login access for a week to download/print
+  // their documents before it actually cuts off.
+  if (
+    resident.portal_enabled === false ||
+    (resident.portal_access_ends_at && new Date(resident.portal_access_ends_at) <= new Date())
+  ) {
     await supabaseAdmin.from("resident_login_attempts").insert({
       resident_id: resident.id,
       attempted_email: email,
