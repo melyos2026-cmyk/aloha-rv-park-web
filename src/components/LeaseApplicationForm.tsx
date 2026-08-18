@@ -3270,8 +3270,20 @@ export default function LeaseApplicationForm({
                   >
                     <span>
                       {stayNights !== null ? "RV Lot Stay" : "First Month's Rent"}
-                      {data.lease_start_date && data.lease_end_date
+                      {/* Aug 18 (per Mely — "debe decir los dias exactos por
+                          lo que se esta pagando pq esa renta no esta
+                          completa"): the old condition needed BOTH
+                          lease_start_date AND lease_end_date, so a
+                          month-to-month lease (John's exact case — no end
+                          date at all) showed no date detail whatsoever.
+                          Uses the same proration figures already computed
+                          for the "First month is prorated" text below,
+                          instead of requiring an end date that doesn't
+                          exist for an open-ended lease. */}
+                      {stayNights !== null && data.lease_start_date && data.lease_end_date
                         ? ` (${data.lease_start_date} \u2013 ${data.lease_end_date})`
+                        : proration && !proration.isFullMonth
+                        ? ` (${data.lease_start_date} \u2013 ${proration.periodEndLabel}, ${proration.daysUsed} day${proration.daysUsed === 1 ? "" : "s"})`
                         : ""}
                     </span>
                     <strong>${stayAmountForModal.toFixed(2)}</strong>
@@ -3291,20 +3303,16 @@ export default function LeaseApplicationForm({
                     <strong>${depositAmountForModal.toFixed(2)}</strong>
                   </div>
                 )}
-                {cardProcessingFeeForModal > 0 && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: 14,
-                      color: "#111",
-                      marginBottom: 8,
-                    }}
-                  >
-                    <span>Card Processing Fee</span>
-                    <strong>${cardProcessingFeeForModal.toFixed(2)}</strong>
-                  </div>
-                )}
+                {/* Aug 18 (per Mely — "el card Processing fee y application
+                    fee debe aparecer despues de OK, Submit en la pantalla
+                    de stripe"): this "Before You Submit" screen is Aloha's
+                    own page, meant to stay simple — just what the stay
+                    actually costs (Rent + Deposit). The full breakdown
+                    including Card Processing Fee and the Application Fee
+                    itself already shows on Stripe's own hosted checkout
+                    page right after, which lists all four as separate
+                    line items — removed the duplicate/early display here
+                    instead of showing it twice. */}
                 {backgroundCheckRequired && (
                   <div
                     style={{
@@ -3342,18 +3350,27 @@ export default function LeaseApplicationForm({
                     </strong>
                   </div>
                 )}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 14,
-                    color: "#111",
-                    marginBottom: 4,
-                  }}
-                >
-                  <span>Application Fee</span>
-                  <strong>${applicationProcessingFee.toFixed(2)}</strong>
-                </div>
+                {backgroundCheckRequired && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {/* Aug 18 (per Mely): same reasoning as Card Processing
+                        Fee above — for the no-background-check path
+                        (John's exact case), this fee also belongs on
+                        Stripe's own next screen, not duplicated here. Left
+                        untouched for the background-check-required path —
+                        a separate, already-working flow she didn't flag as
+                        a problem. */}
+                    <span>Application Fee</span>
+                    <strong>${applicationProcessingFee.toFixed(2)}</strong>
+                  </div>
+                )}
                 {stayAmountForModal === 0 && (
                   <div
                     style={{
@@ -3388,19 +3405,34 @@ export default function LeaseApplicationForm({
                     of all non-refundable fees already paid.
                   </div>
                 )}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    borderTop: "1px solid #e5e7eb",
-                    paddingTop: 10,
-                    fontSize: 15,
-                  }}
-                >
-                  <strong>Total Due Today</strong>
-                  <strong>${totalChargeForModal.toFixed(2)}</strong>
-                </div>
+                {!backgroundCheckRequired && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#6b7280",
+                      marginBottom: 12,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    The application fee and card processing fee will show as
+                    separate line items on the next screen, when you pay.
+                  </div>
+                )}
+                {backgroundCheckRequired && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      borderTop: "1px solid #e5e7eb",
+                      paddingTop: 10,
+                      fontSize: 15,
+                    }}
+                  >
+                    <strong>Total Due Today</strong>
+                    <strong>${totalChargeForModal.toFixed(2)}</strong>
+                  </div>
+                )}
               </div>
             </div>
 
