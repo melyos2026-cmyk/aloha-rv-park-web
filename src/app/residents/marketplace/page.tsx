@@ -76,20 +76,12 @@ export default function MarketplacePage() {
 
   async function load(residentIdParam: string) {
     setLoading(true);
-    const { data: resident } = await supabase
-      .from("resident_accounts")
-      .select("company_id")
-      .eq("id", residentIdParam)
-      .single();
-
-    if (!resident) {
-      setLoading(false);
-      return;
-    }
-    setCompanyId(resident.company_id);
-
+    // Aug 19 (public-site audit): company_id is now resolved server-side
+    // by the route itself, using the resident's already-verified session
+    // — removed the direct anon-key read of resident_accounts this used
+    // to do first (relied on a policy far broader than this needed).
     const res = await fetch(
-      `/api/portal/marketplace-listings?residentId=${residentIdParam}&companyId=${resident.company_id}`
+      `/api/portal/marketplace-listings?residentId=${residentIdParam}`
     );
     const result = await res.json();
     if (!res.ok) {
@@ -98,6 +90,7 @@ export default function MarketplacePage() {
     }
     setListings(result.listings || []);
     setSavedIds(result.savedIds || []);
+    setCompanyId(result.companyId || null);
 
     setLoading(false);
   }

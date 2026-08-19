@@ -3,7 +3,6 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCompany } from "@/lib/CompanyContext";
-import { supabase } from "@/lib/supabase";
 
 const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
 
@@ -54,19 +53,14 @@ function PublicMarketplaceContent() {
 
   useEffect(() => {
     if (!company?.id) return;
-    supabase
-      .from("marketplace_listings")
-      .select("*, resident_accounts(full_name, rv_lots(lot_name)), marketplace_listing_photos(photo_url, sort_order)")
-      .eq("company_id", company.id)
-      .eq("status", "active")
-      .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setListings(data || []);
+    fetch(`/api/public-marketplace-listings?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((result) => {
+        setListings(result.listings || []);
         setLoading(false);
         const listingId = searchParams.get("listing");
-        if (listingId && data) {
-          const match = data.find((l) => l.id === listingId);
+        if (listingId && result.listings) {
+          const match = result.listings.find((l: any) => l.id === listingId);
           if (match) setSelected(match);
         }
       });

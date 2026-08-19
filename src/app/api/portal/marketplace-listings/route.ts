@@ -13,15 +13,34 @@ import { requireMatchingSession } from "@/lib/portalSession";
 // read directly with the anon key, relying entirely on that open policy.
 // This is the missing read-side counterpart, so the policy can be dropped
 // without breaking the marketplace page.
+//
+// Aug 19, later same day (public-site audit): companyId is now optional —
+// residents/marketplace/page.tsx used to look its own company_id up via a
+// direct anon-key read of resident_accounts before calling this route,
+// relying on a policy ("resident_accounts_anon_login_select") far broader
+// than it needed (full row, any column, any company) — resolved here
+// server-side instead so that policy can be narrowed/dropped.
 export async function GET(req: NextRequest) {
   const residentId = req.nextUrl.searchParams.get("residentId");
-  const companyId = req.nextUrl.searchParams.get("companyId");
-  if (!residentId || !companyId) {
-    return NextResponse.json({ error: "residentId and companyId are required." }, { status: 400 });
+  let companyId = req.nextUrl.searchParams.get("companyId");
+  if (!residentId) {
+    return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
 
   const authError = requireMatchingSession(req, residentId);
   if (authError) return authError;
+
+  if (!companyId) {
+    const { data: resident } = await supabase
+      .from("resident_accounts")
+      .select("company_id")
+      .eq("id", residentId)
+      .maybeSingle();
+    companyId = resident?.company_id || null;
+    if (!companyId) {
+      return NextResponse.json({ error: "Could not resolve company for this resident." }, { status: 404 });
+    }
+  }
 
   const { data: listings, error: listingsError } = await supabase
     .from("marketplace_listings")
@@ -42,5 +61,6 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     listings: listings || [],
     savedIds: (saved || []).map((s) => s.listing_id),
+    companyId,
   });
 }
