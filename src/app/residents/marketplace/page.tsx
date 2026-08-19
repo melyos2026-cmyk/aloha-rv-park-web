@@ -88,20 +88,16 @@ export default function MarketplacePage() {
     }
     setCompanyId(resident.company_id);
 
-    const { data } = await supabase
-      .from("marketplace_listings")
-      .select("*, resident_accounts(full_name, rv_lots(lot_name)), marketplace_listing_photos(photo_url, sort_order)")
-      .eq("company_id", resident.company_id)
-      .neq("status", "removed")
-      .order("created_at", { ascending: false });
-
-    setListings(data || []);
-
-    const { data: saved } = await supabase
-      .from("marketplace_saved_listings")
-      .select("listing_id")
-      .eq("resident_id", residentIdParam);
-    setSavedIds((saved || []).map((s) => s.listing_id));
+    const res = await fetch(
+      `/api/portal/marketplace-listings?residentId=${residentIdParam}&companyId=${resident.company_id}`
+    );
+    const result = await res.json();
+    if (!res.ok) {
+      setLoading(false);
+      return;
+    }
+    setListings(result.listings || []);
+    setSavedIds(result.savedIds || []);
 
     setLoading(false);
   }

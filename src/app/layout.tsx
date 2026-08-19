@@ -26,7 +26,7 @@ async function getHostCompany() {
     .split(":")[0];
 
   const { data } = await supabase
-    .from("companies")
+    .from("public_company_profile")
     .select("company_name, address, contact_phone, seo_description, business_type, logo_url, primary_color, secondary_color")
     .eq("domain", hostname)
     .maybeSingle();

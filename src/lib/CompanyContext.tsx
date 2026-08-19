@@ -56,7 +56,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     hostname = hostname.replace(/^www\./, "");
 
     supabase
-      .from("companies")
+      .from("public_company_profile")
       .select("id, company_name, address, logo_url, domain, contact_email, contact_phone, ai_assistant_info, park_id, hero_image_url, rate_daily, rate_weekly, rate_monthly_offpeak, rate_monthly_peak, events_calendar_pdf_url")
       .eq("domain", hostname)
       .maybeSingle()

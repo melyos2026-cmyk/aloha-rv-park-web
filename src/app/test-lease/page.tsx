@@ -34,7 +34,7 @@ export default function TestLeasePage() {
 
   useEffect(() => {
     supabase
-      .from("companies")
+      .from("public_company_profile")
       .select("id, company_name, address, logo_url")
       .eq("domain", "aloharvparkfl.com")
       .single()
