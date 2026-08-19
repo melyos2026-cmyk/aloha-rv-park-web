@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 
 type Payment = {
   id: string;
@@ -97,20 +96,17 @@ function PaymentReviewContent() {
 
     const ids = JSON.parse(savedIds);
 
-    const { data, error } = await supabase
-      .from("resident_payments")
-      .select("*")
-      .in("id", ids)
-      .eq("status", "Pending");
+    const res = await fetch(`/api/portal/payment-review?ids=${ids.join(",")}`);
+    const result = await res.json();
 
-    if (error) {
-      console.error("PAYMENT REVIEW ERROR:", error);
+    if (!res.ok) {
+      console.error("PAYMENT REVIEW ERROR:", result.error);
       setMessage("Could not load selected charges.");
       setLoading(false);
       return;
     }
 
-    setPayments(data || []);
+    setPayments(result.payments || []);
     setLoading(false);
   }
 
