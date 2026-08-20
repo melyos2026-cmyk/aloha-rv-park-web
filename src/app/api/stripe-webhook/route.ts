@@ -267,6 +267,23 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       .eq("status", "available");
   }
 
+  // Aug 20 (per Mely — "no se vio la notificacion que el residente
+  // pago"): every OTHER successful checkout in this codebase (propane,
+  // etc.) notifies the admin via resident_update_notifications — this
+  // one only ever did it for the lot-conflict edge case below, never
+  // for a normal successful payment with no conflict at all.
+  if (!error && application?.company_id) {
+    const backgroundCheckLabel = requiresBackgroundCheck
+      ? " (includes background check)"
+      : "";
+    await supabase.from("resident_update_notifications").insert({
+      company_id: application.company_id,
+      resident_name: application.full_name,
+      update_type: "application_fee_paid",
+      message: `${application.full_name} paid their application fee${backgroundCheckLabel}: $${Number(application.application_fee_total || 0).toFixed(2)}.`,
+    });
+  }
+
   if (error) {
     // Aug 6 (per Mely: every function must work correctly with several
     // applicants at once) — unique_active_application_lot_hold can reject
