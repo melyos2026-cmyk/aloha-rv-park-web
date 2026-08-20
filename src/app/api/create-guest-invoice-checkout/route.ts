@@ -41,6 +41,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No balance due on this invoice." }, { status: 400 });
     }
 
+    // Aug 20 (per Mely — "se puede mejor anadirles los dias por los que
+    // se esta pagando... tal y como le muestra en la aplicacion a las
+    // personas para que no se vallan a confundir"): a bare "Invoice —
+    // August 2026" line doesn't say what it actually covers. Uses the
+    // real per-item descriptions already created alongside this invoice
+    // (e.g. "Prorated rent — 10 of 31 days", "Security Deposit"),
+    // concatenated into one Stripe line description, falling back to the
+    // generic month label only if this invoice somehow has no items.
+    const { data: invoiceItemsForCheckout } = await supabase
+      .from("resident_invoice_items")
+      .select("description")
+      .eq("invoice_id", invoice.id);
+    const invoiceLineDescription =
+      invoiceItemsForCheckout && invoiceItemsForCheckout.length > 0
+        ? invoiceItemsForCheckout.map((i) => i.description).join(" + ")
+        : `Invoice — ${invoice.invoice_month}`;
+
     const { data: resident } = await supabase
       .from("resident_accounts")
       .select("company_id")
@@ -77,7 +94,7 @@ export async function POST(req: Request) {
           unit_amount: Math.round(totalAmount * 100),
           product_data: {
             name: "Aloha RV Park Balance",
-            description: `Invoice — ${invoice.invoice_month}`,
+            description: invoiceLineDescription,
           },
         },
       },

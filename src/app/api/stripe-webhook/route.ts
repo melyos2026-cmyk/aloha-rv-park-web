@@ -69,12 +69,41 @@ export async function POST(req: Request) {
         .select("id, total_amount, invoice_month")
         .in("id", invoiceIds);
 
-      chargesPaid = chargesPaid.concat(
-        (paidInvoices || []).map((inv) => ({
-          label: `Invoice — ${inv.invoice_month}`,
-          amount: Number(inv.total_amount || 0),
-        }))
-      );
+      // Aug 20 (per Mely — "se puede mejor anadirles los dias por los que
+      // se esta pagando los dias exactos... tal y como le muestra en la
+      // aplicacion"): a bare "Invoice — August 2026" label doesn't tell
+      // the resident WHAT they paid for — the exact day-range description
+      // (e.g. "Prorated rent — 10 of 31 days") already exists per line
+      // item on resident_invoice_items, the same one the applicant sees
+      // when the invoice is first created. Break the receipt out into
+      // those real line items instead of one generic per-invoice label,
+      // falling back to the old generic label only if an invoice
+      // somehow has no items (shouldn't normally happen).
+      const { data: invoiceItemsRows } = await supabase
+        .from("resident_invoice_items")
+        .select("invoice_id, description, amount")
+        .in("invoice_id", invoiceIds);
+
+      const itemsByInvoiceId = new Map<string, { description: string; amount: number }[]>();
+      (invoiceItemsRows || []).forEach((item) => {
+        const list = itemsByInvoiceId.get(item.invoice_id) || [];
+        list.push({ description: item.description, amount: Number(item.amount) || 0 });
+        itemsByInvoiceId.set(item.invoice_id, list);
+      });
+
+      (paidInvoices || []).forEach((inv) => {
+        const items = itemsByInvoiceId.get(inv.id);
+        if (items && items.length > 0) {
+          items.forEach((item) => {
+            chargesPaid.push({ label: item.description, amount: item.amount });
+          });
+        } else {
+          chargesPaid.push({
+            label: `Invoice — ${inv.invoice_month}`,
+            amount: Number(inv.total_amount || 0),
+          });
+        }
+      });
       if (taxCharged > 0) {
         chargesPaid.push({ label: `Sales Tax (${taxRatePercent}%)`, amount: taxCharged });
       }

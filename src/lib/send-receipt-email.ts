@@ -60,7 +60,11 @@ export async function sendReceiptEmail(data: ReceiptData) {
       <div style="font-size:13px; color:#555; line-height:1.6;">
         <p style="margin:2px 0;"><strong>Receipt #:</strong> ${data.receiptNumber}</p>
         <p style="margin:2px 0;"><strong>Transaction ID:</strong> ${data.transactionId}</p>
-        <p style="margin:2px 0;"><strong>Date:</strong> ${data.paymentDate.toLocaleString()}</p>
+        <p style="margin:2px 0;"><strong>Date:</strong> ${data.paymentDate.toLocaleString("en-US", {
+          timeZone: "America/New_York",
+          dateStyle: "short",
+          timeStyle: "short",
+        })}</p>
         <p style="margin:2px 0;"><strong>Remaining Balance:</strong> ${formatMoney(data.remainingBalance)}</p>
       </div>
     </div>

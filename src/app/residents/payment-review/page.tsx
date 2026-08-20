@@ -209,7 +209,14 @@ function PaymentReviewContent() {
 
             <InfoRow label="Receipt #" value={confirmation.receiptNumber} />
             <InfoRow label="Transaction ID" value={confirmation.transactionId} />
-            <InfoRow label="Payment Date" value={new Date(confirmation.paymentDate).toLocaleString()} />
+            <InfoRow
+              label="Payment Date"
+              value={new Date(confirmation.paymentDate).toLocaleString("en-US", {
+                timeZone: "America/New_York",
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
+            />
             <InfoRow
               label="Payment Method"
               value={`${confirmation.paymentMethodBrand.toUpperCase()} •••• ${confirmation.paymentMethodLast4}`}
