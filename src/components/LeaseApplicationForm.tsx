@@ -1354,6 +1354,47 @@ export default function LeaseApplicationForm({
           </div>
         )}
 
+        {/* Aug 20 (per Mely — "dado que ellos no tienen que llenar
+            aplicacion se puede parecer un aviso... o los diriga hacer
+            una reservacion normal"): a short, fixed-length stay under
+            the park's own background-check threshold doesn't need this
+            whole application — it's a simple reservation. Shown right
+            where the dates are picked, before the applicant fills out
+            everything else, instead of only finding out at the very end. */}
+        {mode === "applicant" &&
+          stayNights !== null &&
+          stayNights > 0 &&
+          !automaticBackgroundCheckRequired && (
+            <div
+              style={{
+                background: "#eff6ff",
+                border: "1px solid #bfdbfe",
+                borderRadius: 8,
+                padding: "12px 14px",
+                marginTop: 4,
+                marginBottom: 4,
+              }}
+            >
+              <p style={{ fontSize: 13, color: "#1e40af", margin: 0, lineHeight: 1.5 }}>
+                Looks like you're booking a short stay of {stayNights} day{stayNights === 1 ? "" : "s"} —
+                that doesn't need this application at all, just a quick reservation.
+              </p>
+              <a
+                href="/#map"
+                style={{
+                  display: "inline-block",
+                  marginTop: 8,
+                  color: "#1e40af",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  textDecoration: "underline",
+                }}
+              >
+                Go to Reservations →
+              </a>
+            </div>
+          )}
+
         {mode === "applicant" && checkingAvailability && (
           <div style={{ fontSize: 12, color: "#777", marginBottom: 12 }}>
             Checking lot availability...

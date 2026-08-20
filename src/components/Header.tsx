@@ -5,6 +5,11 @@ import { useCompany } from "@/lib/CompanyContext";
 
 const nav = [
   { label: "Home", href: "/" },
+  // Aug 20 (per Mely): added so visitors looking for a short stay (a
+  // few days/weeks) find the map/reservation flow directly from the
+  // menu, instead of landing on Apply — which is the long-term
+  // residency application, not a simple booking.
+  { label: "Reservations", href: "/#map" },
   { label: "Apply", href: "/apply" },
   { label: "Propane", href: "/propane" },
   { label: "Real Estate", href: "/real-estate" },
