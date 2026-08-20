@@ -2147,13 +2147,22 @@ export default function LeaseApplicationForm({
           </div>
           <div style={styles.field}>
             <label style={styles.label}>
-              Width (ft){" "}
+              Width (ft) — with slide-outs extended{" "}
               {selectedLot?.max_width_ft && (
                 <span style={{ fontWeight: 400, color: "#999" }}>
                   (max {selectedLot.max_width_ft} ft for this lot)
                 </span>
               )}
             </label>
+            {/* Aug 20 (per Mely — "ese ancho incluye los max driver/
+                passenger side out?"): it didn't say either way before —
+                a real ambiguity, since slide-out count/side is validated
+                separately (lotMaxDriverSlideOuts/lotMaxPassengerSlideOuts
+                below) but never folded into this width figure. Made
+                explicit: this should be the RV's full width with any
+                slide-outs extended, since that's what actually
+                determines whether it fits the lot without encroaching on
+                the neighboring site. */}
             <input
               type="number"
               style={{
