@@ -5,19 +5,44 @@ import { resolveConnectSplit, calculateProcessingFee } from "@/lib/platformFee";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
+// Aug 20 (per Mely — "ok si la persona hace el background check sea
+// aporvado o no el dinero... no se devuelve pq el background check fue
+// utilizado"): local copy of melyos-builder's services/checkr.ts
+// MELYOS_CHECKR_PRICING — deliberately NOT imported directly, same
+// reasoning as calculateProcessingFee below (that module's other
+// exports pull in server-only dependencies that would crash this
+// client-facing checkout page's bundle). Kept in sync by hand.
+const MELYOS_CHECKR_PRICING: Record<string, number> = {
+  basic_plus_criminal: 44.99,
+  essential_criminal: 69.99,
+  complete_criminal: 99.99,
+  rv_park_tenant_screening: 44.99,
+};
+
 /**
  * Creates a Stripe Checkout session for the Application Fee (+ Background
  * Check, when one applies).
  *
- * Aug 10 (per Mely): the background check fee is now 100% the park's own
- * revenue (park_share_total = the full backgroundCheckFeeTotal, computed
- * in /apply/page.tsx) — MelyOS no longer takes a cut of this specific
- * charge. MelyOS's revenue for providing the Checkr integration comes
- * from a SEPARATE charge billed directly to the park's admin (see the
- * Checkr Billing report in melyos-builder — $44.99/$69.99/$99.99 per
- * background check sent, depending on package), unrelated to what the
- * applicant pays here. Only application_processing_fee ($2.50) remains
- * MelyOS's cut of this Stripe checkout.
+ * Aug 20 (per Mely — real-money design decision, confirmed after testing
+ * a live payment): MelyOS's cut of the background check now comes
+ * straight out of THIS SAME checkout via the existing Connect split,
+ * calculated the moment the applicant pays — not a separate monthly
+ * invoice. This works because Checkr's invitation is sent automatically
+ * in the SAME stripe-webhook handler that confirms this payment
+ * (createCheckrInvitation runs right after application_fee_paid gets set
+ * — see handleApplicationFeePayment), so the real package/cost is
+ * already a known fact by the time this checkout completes, not a guess
+ * about a future approval. And per Mely: this fee is never refunded
+ * regardless of whether the application is later approved or rejected —
+ * the background check was already run and already cost MelyOS money
+ * either way, so charging it here (rather than waiting to see if the
+ * admin approves) carries no real risk.
+ *
+ * Earlier design (Aug 10): background check fee was 100% the park's own
+ * revenue, with MelyOS's cut billed separately via the Checkr Billing
+ * report in melyos-builder. Only application_processing_fee ($2.50)
+ * used to be MelyOS's cut of this specific checkout — now MelyOS's
+ * Checkr cost is ALSO deducted from Aloha's share here, automatically.
  *
  * For short stays (no background check required), the stay total is
  * combined into this same checkout as a second line item — that revenue
@@ -148,6 +173,24 @@ export async function POST(req: Request) {
     // The flat $2.50 processing fee is whatever's left of application_fee_total
     // once the background check portion (if any) is accounted for.
     const applicationProcessingFeeOnly = feeAmount - applicationFeePrimary - applicationFeeAdditional;
+
+    // Aug 20 (per Mely): MelyOS's real Checkr cost for THIS application,
+    // deducted from Aloha's share below. Uses the same package the
+    // stripe-webhook will actually send moments from now (both read the
+    // same park_settings.checkr_default_package_slug), so this is the
+    // real cost, not an estimate.
+    let checkrCostTotal = 0;
+    if (requiresBgCheck && application.company_id) {
+      const { data: parkSettings } = await supabase
+        .from("park_settings")
+        .select("checkr_default_package_slug")
+        .eq("company_id", application.company_id)
+        .maybeSingle();
+      const packageSlug = parkSettings?.checkr_default_package_slug || "basic_plus_criminal";
+      const costPerCheck = MELYOS_CHECKR_PRICING[packageSlug] ?? MELYOS_CHECKR_PRICING.basic_plus_criminal;
+      const numChecks = 1 + additionalCount;
+      checkrCostTotal = Math.round(costPerCheck * numChecks * 100) / 100;
+    }
 
     // Aug 20 (per Mely — "el aplication fee debe apareces luego de OK,
     // Submit en la pantalla de stripe junto al procesing fee... asi que
@@ -283,7 +326,10 @@ export async function POST(req: Request) {
     // MelyOS's own Stripe/Connect costs), same as every other checkout
     // that already uses this same processing-fee pattern.
     const totalChargeAmount = feeAmount + stayAmountNum + depositAmountNum + cardProcessingFee;
-    const alohaShare = (Number(application.park_share_total) || 0) + stayAmountNum + depositAmountNum;
+    const alohaShare = Math.max(
+      0,
+      (Number(application.park_share_total) || 0) + stayAmountNum + depositAmountNum - checkrCostTotal
+    );
     const connectSplit = application.company_id
       ? await resolveConnectSplit(application.company_id, totalChargeAmount, alohaShare)
       : null;
@@ -309,6 +355,7 @@ export async function POST(req: Request) {
         stay_amount: String(stayAmountNum || 0),
         deposit_amount: String(depositAmountNum || 0),
         card_processing_fee: String(cardProcessingFee || 0),
+        checkr_fee_charged_via_connect: String(checkrCostTotal > 0),
       },
       success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/apply?application_id=${application.id}`,

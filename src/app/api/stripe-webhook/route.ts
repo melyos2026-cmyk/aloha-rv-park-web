@@ -218,6 +218,12 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   const stayAmount = Number(session.metadata?.stay_amount) || 0;
   const depositAmount = Number(session.metadata?.deposit_amount) || 0;
   const cardProcessingFee = Number(session.metadata?.card_processing_fee) || 0;
+  // Aug 20 (per Mely — real-money design decision): true when MelyOS's
+  // Checkr cost was already deducted from Aloha's share right in this
+  // same checkout, via Stripe Connect — checkr-billing-report.ts (which
+  // tracks money still owed by other means) needs to exclude these so
+  // Aloha is never billed twice for the same background check.
+  const checkrFeeChargedViaConnect = session.metadata?.checkr_fee_charged_via_connect === "true";
 
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -242,6 +248,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       // note in system-connections-audit.md before relying on this.
       rent_prepaid_amount: stayAmount || null,
       deposit_prepaid_amount: depositAmount || null,
+      checkr_fee_charged_via_connect: checkrFeeChargedViaConnect,
     })
     .eq("id", applicationId)
     .select(
