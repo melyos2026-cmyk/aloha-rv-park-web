@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const { data: application, error } = await supabase
       .from("resident_applications")
       .select(
-        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total, space_id"
+        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total, space_id, application_fee_primary, application_fee_per_additional, application_fee_additional_count"
       )
       .eq("id", applicationId)
       .single();
@@ -140,18 +140,64 @@ export async function POST(req: Request) {
 
     const requiresBgCheck = requiresBackgroundCheck !== false;
 
-    if (feeAmount > 0) {
+    const applicationFeePrimary = requiresBgCheck ? (Number(application.application_fee_primary) || 0) : 0;
+    const additionalCount = Number(application.application_fee_additional_count) || 0;
+    const applicationFeeAdditional = requiresBgCheck
+      ? (Number(application.application_fee_per_additional) || 0) * additionalCount
+      : 0;
+    // The flat $2.50 processing fee is whatever's left of application_fee_total
+    // once the background check portion (if any) is accounted for.
+    const applicationProcessingFeeOnly = feeAmount - applicationFeePrimary - applicationFeeAdditional;
+
+    // Aug 20 (per Mely — "el aplication fee debe apareces luego de OK,
+    // Submit en la pantalla de stripe junto al procesing fee... asi que
+    // en before you submit> charged today> Background Check (Primary
+    // Applicant)>Additional Background Checks, 'Ok, Submit'. Stripe
+    // Background Check (Primary Applicant)>Additional Background Checks
+    // >Application Fee> Procesing fee"): Stripe's own line items (and
+    // the email receipt it generates) now break these out exactly the
+    // same way the "Before You Submit" modal already does on the apply
+    // page, instead of folding them into one combined line — same order:
+    // Background Check (Primary Applicant) -> Additional Background
+    // Checks -> Application Fee -> Card Processing Fee.
+    if (applicationFeePrimary > 0) {
       lineItems.push({
         quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: Math.round(feeAmount * 100),
+          unit_amount: Math.round(applicationFeePrimary * 100),
           product_data: {
-            name: requiresBgCheck
-              ? "Rental Application Fee & Background Check"
-              : "Rental Application Fee",
+            name: "Background Check (Primary Applicant)",
+            description: `For ${application.full_name || "the primary applicant"}`,
+          },
+        },
+      });
+    }
+
+    if (applicationFeeAdditional > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(applicationFeeAdditional * 100),
+          product_data: {
+            name: "Additional Background Checks",
+            description: `${additionalCount} additional occupant${additionalCount === 1 ? "" : "s"} requiring a background check`,
+          },
+        },
+      });
+    }
+
+    if (applicationProcessingFeeOnly > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency: "usd",
+          unit_amount: Math.round(applicationProcessingFeeOnly * 100),
+          product_data: {
+            name: "Application Fee",
             description: smsFee > 0
-              ? `Application fee for ${application.full_name || "applicant"} (includes $${smsFee.toFixed(2)} SMS delivery fee)`
+              ? `Includes $${smsFee.toFixed(2)} SMS delivery fee`
               : `Application fee for ${application.full_name || "applicant"}`,
           },
         },

@@ -152,6 +152,17 @@ function calculateAge(dateOfBirth: string): number | null {
   return age;
 }
 
+// Aug 20 (per Mely): auto-formats a phone number with dashes as the
+// applicant types (XXX-XXX-XXXX), so no one has to remember to add them
+// themselves. Strips anything that isn't a digit first, so pasting a
+// number in any format still comes out formatted correctly.
+function formatPhoneAsTyped(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
 // Aug 17: local copy of src/lib/platformFee.ts's calculateProcessingFee —
 // deliberately NOT imported from there, since that file also exports
 // resolveConnectSplit (which imports the server-only Service Role Key
@@ -981,7 +992,7 @@ export default function LeaseApplicationForm({
             <label style={styles.label}>First Name</label>
             <input
               style={styles.input}
-              placeholder="John"
+              placeholder="First name"
               value={tenantFirstName}
               onChange={(e) => {
                 const first = e.target.value;
@@ -997,7 +1008,7 @@ export default function LeaseApplicationForm({
             <label style={styles.label}>Last Name</label>
             <input
               style={styles.input}
-              placeholder="Smith"
+              placeholder="Last name"
               value={tenantLastName}
               onChange={(e) => {
                 const last = e.target.value;
@@ -1107,9 +1118,9 @@ export default function LeaseApplicationForm({
             <input
               type="tel"
               style={styles.input}
-              placeholder="(555) 555-5555"
+              placeholder="555-555-5555"
               value={data.tenant_phone}
-              onChange={(e) => set("tenant_phone", e.target.value)}
+              onChange={(e) => set("tenant_phone", formatPhoneAsTyped(e.target.value))}
             />
           </div>
         </div>
@@ -1534,39 +1545,6 @@ export default function LeaseApplicationForm({
             <label style={styles.checkboxRow}>
               <input
                 type="checkbox"
-                checked={data.late_fee_enabled}
-                onChange={(e) => set("late_fee_enabled", e.target.checked)}
-              />
-              Charge a late fee
-            </label>
-            {data.late_fee_enabled && (
-              <div style={styles.row}>
-                <div style={styles.field}>
-                  <label style={styles.label}>Late Fee Amount ($)</label>
-                  <input
-                    type="number"
-                    style={styles.input}
-                    value={data.late_fee_amount}
-                    onChange={(e) => set("late_fee_amount", e.target.value)}
-                  />
-                </div>
-                <div style={styles.field}>
-                  <label style={styles.label}>Grace Period (days)</label>
-                  <input
-                    type="number"
-                    style={styles.input}
-                    value={data.late_fee_grace_days}
-                    onChange={(e) =>
-                      set("late_fee_grace_days", e.target.value)
-                    }
-                  />
-                </div>
-              </div>
-            )}
-
-            <label style={styles.checkboxRow}>
-              <input
-                type="checkbox"
                 checked={data.security_deposit_enabled}
                 onChange={(e) =>
                   set("security_deposit_enabled", e.target.checked)
@@ -1604,6 +1582,39 @@ export default function LeaseApplicationForm({
             <label style={styles.checkboxRow}>
               <input
                 type="checkbox"
+                checked={data.late_fee_enabled}
+                onChange={(e) => set("late_fee_enabled", e.target.checked)}
+              />
+              Charge a late fee
+            </label>
+            {data.late_fee_enabled && (
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <label style={styles.label}>Late Fee Amount ($)</label>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={data.late_fee_amount}
+                    onChange={(e) => set("late_fee_amount", e.target.value)}
+                  />
+                </div>
+                <div style={styles.field}>
+                  <label style={styles.label}>Grace Period (days)</label>
+                  <input
+                    type="number"
+                    style={styles.input}
+                    value={data.late_fee_grace_days}
+                    onChange={(e) =>
+                      set("late_fee_grace_days", e.target.value)
+                    }
+                  />
+                </div>
+              </div>
+            )}
+
+            <label style={styles.checkboxRow}>
+              <input
+                type="checkbox"
                 checked={data.nsf_fee_enabled}
                 onChange={(e) => set("nsf_fee_enabled", e.target.checked)}
               />
@@ -1624,16 +1635,16 @@ export default function LeaseApplicationForm({
         ) : (
           <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}>
             <div>
-              <strong>Late Fee:</strong>{" "}
-              {data.late_fee_enabled
-                ? `$${data.late_fee_amount} per day rent remains unpaid, after a ${data.late_fee_grace_days}-day grace period.`
-                : "None."}
-            </div>
-            <div>
               <strong>Security Deposit:</strong>{" "}
               {data.security_deposit_enabled
                 ? `$${data.security_deposit_amount}, returned within ${data.security_deposit_return_days} days after lease ends.`
                 : "None required."}
+            </div>
+            <div>
+              <strong>Late Fee:</strong>{" "}
+              {data.late_fee_enabled
+                ? `$${data.late_fee_amount} per day rent remains unpaid, after a ${data.late_fee_grace_days}-day grace period.`
+                : "None."}
             </div>
             <div>
               <strong>Returned Check Fee:</strong>{" "}
@@ -3072,7 +3083,7 @@ export default function LeaseApplicationForm({
               }}
               value={data.tenant_signature_name}
               onChange={(e) => set("tenant_signature_name", e.target.value)}
-              placeholder="e.g. John A. Smith"
+              placeholder="Type your full legal name"
             />
             {attemptedSubmit && !data.tenant_signature_name && (
               <div style={styles.requiredNote}>Field required</div>

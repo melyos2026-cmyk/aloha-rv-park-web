@@ -378,7 +378,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         const primaryFee = Number(application.application_fee_primary) || 0;
         if (primaryFee > 0) {
           lineItems.push({
-            description: "Background Check — Primary Applicant",
+            description: "Background Check (Primary Applicant)",
             qty: 1,
             unitPrice: primaryFee,
             amount: primaryFee,
@@ -388,7 +388,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         const additionalFee = Number(application.application_fee_per_additional) || 0;
         if (additionalCount > 0 && additionalFee > 0) {
           lineItems.push({
-            description: "Background Check — Additional Occupant",
+            description: "Additional Background Checks",
             qty: additionalCount,
             unitPrice: additionalFee,
             amount: additionalFee * additionalCount,
@@ -399,7 +399,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       const processingFee = Number(application.application_processing_fee) || 0;
       if (processingFee > 0) {
         lineItems.push({
-          description: "Application Processing Fee",
+          description: "Application Fee",
           qty: 1,
           unitPrice: processingFee,
           amount: processingFee,
