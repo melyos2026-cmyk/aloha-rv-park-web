@@ -20,6 +20,12 @@ function naturalSort(a: { lot_name: string }, b: { lot_name: string }): number {
 function ApplyPageInner() {
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token");
+  // Stripe's own cancel_url already includes this (built before the
+  // localStorage-based recovery below existed, but never actually wired
+  // up on this side) — hitting the browser's own Back button from
+  // Stripe lands here with a real, reliable applicationId straight from
+  // the checkout session itself, so it takes priority over localStorage.
+  const draftApplicationIdFromUrl = searchParams.get("application_id");
 
   const { company, loading: companyLoading, error: companyError } = useCompany();
 
@@ -289,7 +295,7 @@ function ApplyPageInner() {
   // row instead of creating a second, duplicate application.
   useEffect(() => {
     if (inviteToken || !company?.id) return;
-    const savedId = localStorage.getItem(`melyos_draft_application_${company.id}`);
+    const savedId = draftApplicationIdFromUrl || localStorage.getItem(`melyos_draft_application_${company.id}`);
     if (!savedId) {
       setInvitationLoaded(true);
       return;
@@ -313,7 +319,7 @@ function ApplyPageInner() {
         () => setInvitationLoaded(true)
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteToken, company?.id]);
+  }, [inviteToken, company?.id, draftApplicationIdFromUrl]);
 
   async function uploadLicensePhoto(
     file: File,
