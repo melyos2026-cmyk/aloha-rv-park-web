@@ -356,6 +356,7 @@ export async function POST(req: Request) {
         deposit_amount: String(depositAmountNum || 0),
         card_processing_fee: String(cardProcessingFee || 0),
         checkr_fee_charged_via_connect: String(checkrCostTotal > 0),
+        checkr_fee_deducted_amount: String(checkrCostTotal || 0),
       },
       success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/apply?application_id=${application.id}`,

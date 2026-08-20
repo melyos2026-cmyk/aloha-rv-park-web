@@ -224,6 +224,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   // tracks money still owed by other means) needs to exclude these so
   // Aloha is never billed twice for the same background check.
   const checkrFeeChargedViaConnect = session.metadata?.checkr_fee_charged_via_connect === "true";
+  const checkrFeeDeductedAmount = Number(session.metadata?.checkr_fee_deducted_amount) || 0;
 
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -249,6 +250,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       rent_prepaid_amount: stayAmount || null,
       deposit_prepaid_amount: depositAmount || null,
       checkr_fee_charged_via_connect: checkrFeeChargedViaConnect,
+      checkr_fee_deducted_amount: checkrFeeDeductedAmount,
     })
     .eq("id", applicationId)
     .select(
@@ -309,6 +311,8 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           application_fee_stripe_payment_intent_id: paymentIntentId,
           background_check_status: requiresBackgroundCheck ? "payment_confirmed" : "not_required",
           space_id: null,
+          checkr_fee_charged_via_connect: checkrFeeChargedViaConnect,
+          checkr_fee_deducted_amount: checkrFeeDeductedAmount,
         })
         .eq("id", applicationId)
         .select("id, full_name, email, company_id, application_fee_total")
