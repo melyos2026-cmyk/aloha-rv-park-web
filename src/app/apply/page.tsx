@@ -278,6 +278,43 @@ function ApplyPageInner() {
       );
   }, [inviteToken]);
 
+  // Aug 20 (per Mely — "quise volver para atras haber la aplicacion que
+  // habia llenado y la aplicacion se me borraron los datos"): recovers an
+  // in-progress application if the applicant already submitted once this
+  // session (e.g. they clicked through to Stripe, then hit back) instead
+  // of showing a blank form. Deliberately skipped when a real invite
+  // token is present — that flow already loads its own data above and
+  // takes priority. Setting `invitationId` here (same state the invite
+  // flow uses) is what makes the eventual re-submit UPDATE this exact
+  // row instead of creating a second, duplicate application.
+  useEffect(() => {
+    if (inviteToken || !company?.id) return;
+    const savedId = localStorage.getItem(`melyos_draft_application_${company.id}`);
+    if (!savedId) {
+      setInvitationLoaded(true);
+      return;
+    }
+
+    fetch(`/api/get-application-draft?id=${encodeURIComponent(savedId)}`)
+      .then((r) => r.json())
+      .then(
+        ({ application: data, error }) => {
+          if (error || !data) {
+            // Already paid/approved, or genuinely gone — nothing to
+            // recover, so clear the stale pointer and start fresh.
+            localStorage.removeItem(`melyos_draft_application_${company.id}`);
+            setInvitationLoaded(true);
+            return;
+          }
+          setInvitationId(data.id);
+          setInitialData((prev) => ({ ...prev, ...(data.form_draft_json || {}) }));
+          setInvitationLoaded(true);
+        },
+        () => setInvitationLoaded(true)
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteToken, company?.id]);
+
   async function uploadLicensePhoto(
     file: File,
     slotId: string
@@ -398,6 +435,13 @@ function ApplyPageInner() {
       const applicationId = invitationId || crypto.randomUUID();
 
       const row: Record<string, any> = {
+        // Aug 20 (per Mely — draft recovery after navigating back from
+        // Stripe): the exact form shape, stored verbatim — recovering
+        // from this avoids having to hand-map dozens of fields whose
+        // column name differs from the form field name (email vs
+        // tenant_email, monthly_rent vs rent_amount, etc.), which is
+        // fragile and easy to get subtly wrong.
+        form_draft_json: data,
         company_id: company.id,
         full_name: data.tenant_names,
         tenant_names: data.tenant_names,
@@ -511,6 +555,14 @@ function ApplyPageInner() {
       const submitResult = await submitRes.json();
       if (!submitRes.ok) {
         throw new Error(submitResult.error || "Could not save application.");
+      }
+
+      // Aug 20 (per Mely): save this application's own id right after a
+      // successful save, so if they navigate back from Stripe (or just
+      // close the tab and return later) before paying, the effect above
+      // recovers everything instead of showing a blank form again.
+      if (company?.id) {
+        localStorage.setItem(`melyos_draft_application_${company.id}`, invitationId || applicationId);
       }
 
       const res = await fetch(
