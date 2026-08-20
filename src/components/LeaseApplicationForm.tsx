@@ -697,6 +697,16 @@ export default function LeaseApplicationForm({
     rvLengthNum > 0 &&
     rvLengthNum > selectedLot.max_length_ft;
 
+  // Aug 20 (per Mely): mirrors rvTooLong above — max_width_ft was already
+  // stored per lot and shown to the applicant as plain info text, but
+  // never actually validated, so an application could be submitted with
+  // an RV wider than the lot allows with no warning at all.
+  const rvWidthNum = Number(data.rv_width_ft) || 0;
+  const rvTooWide =
+    !!selectedLot?.max_width_ft &&
+    rvWidthNum > 0 &&
+    rvWidthNum > selectedLot.max_width_ft;
+
   // Aug 8 (per Mely): not every RV fits every lot — some lots can't
   // physically accommodate a slide-out on one particular side, or too
   // many slide-outs (set per lot in the Map Builder's Lot Details
@@ -959,6 +969,7 @@ export default function LeaseApplicationForm({
         (!backgroundCheckRequired || data.background_check_consent_given) &&
         !!data.rv_length_ft &&
         !rvTooLong &&
+        !rvTooWide &&
         !lotAvailabilityConflict &&
         (!isRentToOwn || rentToOwnAcknowledged);
 
@@ -2145,7 +2156,10 @@ export default function LeaseApplicationForm({
             </label>
             <input
               type="number"
-              style={styles.input}
+              style={{
+                ...styles.input,
+                borderColor: rvTooWide ? "#c00" : "#ccc",
+              }}
               value={data.rv_width_ft}
               onChange={(e) => set("rv_width_ft", e.target.value)}
               disabled={mode === "applicant" && lockAdminFields && !!data.rv_width_ft}
@@ -2266,7 +2280,25 @@ export default function LeaseApplicationForm({
             or double-check the length entered.
           </div>
         )}
-        {selectedLot?.max_width_ft && (
+        {rvTooWide && (
+          <div
+            style={{
+              fontSize: 13,
+              color: "#c00",
+              fontWeight: 600,
+              marginBottom: 12,
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: 6,
+              padding: "8px 12px",
+            }}
+          >
+            This RV ({data.rv_width_ft} ft) is too wide for this lot (max{" "}
+            {selectedLot?.max_width_ft} ft). Please choose a different lot
+            or double-check the width entered.
+          </div>
+        )}
+        {selectedLot?.max_width_ft && !rvTooWide && (
           <div style={{ fontSize: 12, color: "#777", marginBottom: 12 }}>
             This lot's max width: {selectedLot.max_width_ft} ft
             {selectedLot.amp_service ? ` · ${selectedLot.amp_service} amp service` : ""}
