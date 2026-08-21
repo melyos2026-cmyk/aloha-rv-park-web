@@ -15,6 +15,16 @@ export async function GET(req: NextRequest) {
   const CHECKR_API_KEY = process.env.CHECKR_API_KEY as string;
   const encoded = Buffer.from(`${CHECKR_API_KEY}:`).toString("base64");
 
+  // Aug 21: now accepts real params so we can reproduce the EXACT
+  // failing case (Test 5's real email/name/state) instead of a fake
+  // diagnostic email, which itself gets correctly rejected by Checkr
+  // and was masking the real error.
+  const email = req.nextUrl.searchParams.get("email") || "diagnostic-test@example.com";
+  const firstName = req.nextUrl.searchParams.get("firstName") || "Diagnostic";
+  const lastName = req.nextUrl.searchParams.get("lastName") || "Test";
+  const state = req.nextUrl.searchParams.get("state") || "FL";
+  const customId = req.nextUrl.searchParams.get("customId") || "diagnostic-test-temp";
+
   try {
     const res = await fetch(`${CHECKR_API_BASE}/candidates`, {
       method: "POST",
@@ -23,11 +33,11 @@ export async function GET(req: NextRequest) {
         Authorization: `Basic ${encoded}`,
       },
       body: JSON.stringify({
-        email: "diagnostic-test@example.com",
-        first_name: "Diagnostic",
-        last_name: "Test",
-        custom_id: "diagnostic-test-temp",
-        work_locations: [{ country: "US", state: "FL" }],
+        email,
+        first_name: firstName,
+        last_name: lastName,
+        custom_id: customId,
+        work_locations: [{ country: "US", state }],
       }),
     });
 
