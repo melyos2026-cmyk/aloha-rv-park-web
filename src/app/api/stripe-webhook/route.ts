@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
+import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import crypto from "crypto";
@@ -283,7 +284,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     })
     .eq("id", applicationId)
     .select(
-      "id, full_name, email, application_fee_total, application_fee_primary, application_fee_per_additional, application_fee_additional_count, application_processing_fee, background_check_required, company_id, occupants, space_id"
+      "id, full_name, email, application_fee_total, application_fee_primary, application_fee_per_additional, application_fee_additional_count, application_processing_fee, background_check_required, company_id, occupants, space_id, park_share_total"
     )
     .single();
 
@@ -303,6 +304,22 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       .update({ status: "reserved" })
       .eq("id", application.space_id)
       .eq("status", "available");
+  }
+
+  // Aug 21 (per Mely): records an itemized, permanent row the company
+  // can see for themselves under Settings > Billing > Charges — amount
+  // is MelyOS's own cut (what was deducted), markup is what the company
+  // actually netted from this same background check.
+  if (!error && checkrFeeChargedViaConnect && checkrFeeDeductedAmount > 0 && application?.company_id) {
+    await recordMelyOSBillingCharge({
+      companyId: application.company_id,
+      chargeType: "Background Check",
+      source: "MelyOS",
+      description: `Background Check — ${application.full_name}`,
+      amount: checkrFeeDeductedAmount,
+      markup: Math.max(0, Number(application.park_share_total || 0) - checkrFeeDeductedAmount),
+      residentApplicationId: application.id,
+    });
   }
 
   // Aug 20 (per Mely — "no se vio la notificacion que el residente
@@ -344,8 +361,20 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           checkr_fee_deducted_amount: checkrFeeDeductedAmount,
         })
         .eq("id", applicationId)
-        .select("id, full_name, email, company_id, application_fee_total")
+        .select("id, full_name, email, company_id, application_fee_total, park_share_total")
         .single();
+
+      if (checkrFeeChargedViaConnect && checkrFeeDeductedAmount > 0 && retryApplication?.company_id) {
+        await recordMelyOSBillingCharge({
+          companyId: retryApplication.company_id,
+          chargeType: "Background Check",
+          source: "MelyOS",
+          description: `Background Check — ${retryApplication.full_name}`,
+          amount: checkrFeeDeductedAmount,
+          markup: Math.max(0, Number(retryApplication.park_share_total || 0) - checkrFeeDeductedAmount),
+          residentApplicationId: applicationId,
+        });
+      }
 
       if (retryApplication?.company_id) {
         await supabase.from("resident_update_notifications").insert({
