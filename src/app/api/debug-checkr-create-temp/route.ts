@@ -43,6 +43,38 @@ export async function GET(req: NextRequest) {
 
     const json = await res.json();
 
+    // Aug 21: also attempt the invitation step (the part createCheckrInvitation
+    // does right after candidate creation) using the real candidate just
+    // created and the real package slug, since /candidates alone succeeding
+    // doesn't confirm /invitations does too.
+    let invitationStep: any = null;
+    if (res.ok && json.id) {
+      const packageSlug = req.nextUrl.searchParams.get("packageSlug") || "rv_park_tenant_screening";
+      try {
+        const invRes = await fetch(`${CHECKR_API_BASE}/invitations`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Basic ${encoded}`,
+          },
+          body: JSON.stringify({
+            candidate_id: json.id,
+            package: packageSlug,
+            work_locations: [{ country: "US", state }],
+          }),
+        });
+        const invJson = await invRes.json();
+        invitationStep = {
+          packageSlugUsed: packageSlug,
+          responseStatus: invRes.status,
+          responseOk: invRes.ok,
+          rawResponse: invJson,
+        };
+      } catch (invErr: any) {
+        invitationStep = { caughtError: invErr?.message || String(invErr) };
+      }
+    }
+
     return NextResponse.json({
       environmentUsed: CHECKR_ENVIRONMENT,
       apiBaseUsed: CHECKR_API_BASE,
@@ -51,6 +83,7 @@ export async function GET(req: NextRequest) {
       responseStatus: res.status,
       responseOk: res.ok,
       rawResponse: json,
+      invitationStep,
     });
   } catch (err: any) {
     return NextResponse.json({
