@@ -311,11 +311,17 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   // is MelyOS's own cut (what was deducted), markup is what the company
   // actually netted from this same background check.
   if (!error && checkrFeeChargedViaConnect && checkrFeeDeductedAmount > 0 && application?.company_id) {
+    // Aug 21 (per Mely — "si se hacen '3' background check por ejemplo
+    // eso se vera ahi?"): amount/markup here are the TOTAL across all
+    // people on this application (1 primary + N additional), combined
+    // into one row — the description needs to say how many, or it
+    // reads as if only one check happened when it might be several.
+    const totalCheckCount = 1 + (Number(application.application_fee_additional_count) || 0);
     await recordMelyOSBillingCharge({
       companyId: application.company_id,
       chargeType: "Background Check",
       source: "MelyOS",
-      description: `Background Check — ${application.full_name}`,
+      description: `Background Check (${totalCheckCount}) — ${application.full_name}`,
       amount: checkrFeeDeductedAmount,
       markup: Math.max(0, Number(application.park_share_total || 0) - checkrFeeDeductedAmount),
       residentApplicationId: application.id,
@@ -361,15 +367,16 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           checkr_fee_deducted_amount: checkrFeeDeductedAmount,
         })
         .eq("id", applicationId)
-        .select("id, full_name, email, company_id, application_fee_total, park_share_total")
+        .select("id, full_name, email, company_id, application_fee_total, park_share_total, application_fee_additional_count")
         .single();
 
       if (checkrFeeChargedViaConnect && checkrFeeDeductedAmount > 0 && retryApplication?.company_id) {
+        const totalCheckCount = 1 + (Number(retryApplication.application_fee_additional_count) || 0);
         await recordMelyOSBillingCharge({
           companyId: retryApplication.company_id,
           chargeType: "Background Check",
           source: "MelyOS",
-          description: `Background Check — ${retryApplication.full_name}`,
+          description: `Background Check (${totalCheckCount}) — ${retryApplication.full_name}`,
           amount: checkrFeeDeductedAmount,
           markup: Math.max(0, Number(retryApplication.park_share_total || 0) - checkrFeeDeductedAmount),
           residentApplicationId: applicationId,
