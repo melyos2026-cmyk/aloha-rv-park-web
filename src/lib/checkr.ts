@@ -99,7 +99,12 @@ export interface CheckrResultEntry {
 export function computeAggregateStatus(results: CheckrResultEntry[]): string {
   if (results.length === 0) return "payment_confirmed";
   if (results.some((r) => r.status === "Needs Review")) return "Needs Review";
-  if (results.some((r) => r.status === "invitation_failed")) return "invitation_sent";
+  // Aug 21 (per Mely — found live testing "test 6": checkr_results showed
+  // the real per-person failure ("invitation_failed"), but this always
+  // returned "invitation_sent" instead — the exact opposite of what
+  // happened, misleading the admin into thinking the invitation went out
+  // successfully when it never did).
+  if (results.some((r) => r.status === "invitation_failed")) return "invitation_failed";
   if (results.some((r) => r.status === "invitation_expired")) return "invitation_expired";
   if (results.every((r) => r.status === "Passed")) return "Passed";
   if (results.some((r) => r.status === "in_progress")) return "in_progress";
