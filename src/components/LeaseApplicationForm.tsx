@@ -483,6 +483,12 @@ interface Props {
     depositPaid: boolean;
   };
   applicationId?: string | null;
+  // Aug 24 (per Mely): true only for a walk-in physically in the office
+  // via "+ New Application" — the ONLY thing this controls is showing
+  // the "pay in person instead" note near the payment screen. A remote
+  // applicant (on their own, or via a Send Application invite link)
+  // never gets this — they always pay online, no exceptions.
+  isWalkIn?: boolean;
   // When true, the applicant can't edit rent/deposit/lot — the admin
   // already set them at invite time (Aug 2, admin-initiated application
   // flow). The applicant can still edit their own personal info normally.
@@ -599,6 +605,7 @@ export default function LeaseApplicationForm({
   isRentToOwn,
   rentToOwnTerms,
   applicationId,
+  isWalkIn,
   lockAdminFields,
   isFamilyFriend,
   backgroundCheckOverride,
@@ -3150,14 +3157,11 @@ export default function LeaseApplicationForm({
                 <strong>Total</strong>
                 <strong>${applicationFeeTotalForModal.toFixed(2)}</strong>
               </div>
-              {company.phone && (
+              {isWalkIn && (
                 <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
                   Prefer to pay in person (cash or card at the office) instead of by card here?
-                  Submit this application as normal, then call{" "}
-                  <a href={`tel:${company.phone}`} style={{ color: "#666" }}>
-                    {company.phone}
-                  </a>{" "}
-                  — the office can collect your payment directly and continue your application without you paying on this screen.
+                  Let the office staff know now — they can collect your payment directly and
+                  continue your application without you paying on this screen.
                 </p>
               )}
             </div>

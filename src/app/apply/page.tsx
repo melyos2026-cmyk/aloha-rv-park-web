@@ -20,6 +20,17 @@ function naturalSort(a: { lot_name: string }, b: { lot_name: string }): number {
 function ApplyPageInner() {
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token");
+  // Aug 24 (per Mely — "no quiero que se le de la opcion a la persona
+  // que este remote de pagar en cash... tiene que completar todo
+  // online"): "+ New Application" and a real remote applicant both land
+  // on this exact same /apply URL with no other way to tell them apart
+  // — this param is the one deliberate signal that this is a walk-in
+  // physically in the office (added only by melyos-builder's own "+ New
+  // Application" button), used solely to show the in-person-payment
+  // note. A remote applicant reaching this page on their own, or via a
+  // Send Application invite link, never has this param and never sees
+  // that note — they always pay online.
+  const isWalkIn = searchParams.get("walkin") === "true";
   // Stripe's own cancel_url already includes this (built before the
   // localStorage-based recovery below existed, but never actually wired
   // up on this side) — hitting the browser's own Back button from
@@ -661,6 +672,7 @@ function ApplyPageInner() {
         isRentToOwn={isRentToOwn}
         rentToOwnTerms={rentToOwnTerms}
         applicationId={invitationId}
+        isWalkIn={isWalkIn}
         lockAdminFields={lockAdminFields}
         isFamilyFriend={isFamilyFriend}
         backgroundCheckOverride={backgroundCheckOverride}
