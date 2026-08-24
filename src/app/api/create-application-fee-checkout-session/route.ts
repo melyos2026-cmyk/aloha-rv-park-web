@@ -59,6 +59,7 @@ export async function POST(req: Request) {
       stayStartDate,
       stayEndDate,
       requiresBackgroundCheck,
+      isWalkIn,
     } = await req.json();
 
     if (!applicationId) {
@@ -359,7 +360,13 @@ export async function POST(req: Request) {
         checkr_fee_deducted_amount: String(checkrCostTotal || 0),
       },
       success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl}/apply?application_id=${application.id}`,
+      // Aug 24 (per Mely — found live: after cancelling/backing out of
+      // Stripe, the walk-in note disappeared from the confirm modal on
+      // return because this URL never preserved the walkin=true param
+      // the original /apply?walkin=true link had): carries isWalkIn
+      // through so a walk-in returning here (to fix something and
+      // resubmit) still sees the in-person-payment option.
+      cancel_url: `${siteUrl}/apply?application_id=${application.id}${isWalkIn ? "&walkin=true" : ""}`,
     });
 
     return NextResponse.json({ url: session.url });

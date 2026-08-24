@@ -594,6 +594,7 @@ function ApplyPageInner() {
             stayStartDate: data.lease_start_date || undefined,
             stayEndDate: data.lease_end_date || undefined,
             requiresBackgroundCheck: backgroundCheckRequired,
+            isWalkIn,
           }),
         }
       );
