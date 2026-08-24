@@ -650,6 +650,7 @@ function ApplyPageInner() {
           name: company.company_name,
           address: company.address ?? "",
           logoUrl: company.logo_url ?? undefined,
+          phone: company.contact_phone ?? undefined,
         }}
         availableLots={lots}
         rentDueDayPolicy={rentDuePolicy}

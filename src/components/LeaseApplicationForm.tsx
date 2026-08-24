@@ -445,6 +445,7 @@ export interface CompanyInfo {
   name: string;
   address: string;
   logoUrl?: string;
+  phone?: string;
 }
 
 export interface LotOption {
@@ -3149,6 +3150,16 @@ export default function LeaseApplicationForm({
                 <strong>Total</strong>
                 <strong>${applicationFeeTotalForModal.toFixed(2)}</strong>
               </div>
+              {company.phone && (
+                <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
+                  Prefer to pay in person (cash or card at the office) instead of by card here?
+                  Submit this application as normal, then call{" "}
+                  <a href={`tel:${company.phone}`} style={{ color: "#666" }}>
+                    {company.phone}
+                  </a>{" "}
+                  — the office can collect your payment directly and continue your application without you paying on this screen.
+                </p>
+              )}
             </div>
           )}
 
