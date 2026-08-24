@@ -3157,13 +3157,6 @@ export default function LeaseApplicationForm({
                 <strong>Total</strong>
                 <strong>${applicationFeeTotalForModal.toFixed(2)}</strong>
               </div>
-              {isWalkIn && (
-                <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
-                  Prefer to pay in person (cash or card at the office) instead of by card here?
-                  Let the office staff know now — they can collect your payment directly and
-                  continue your application without you paying on this screen.
-                </p>
-              )}
             </div>
           )}
 
@@ -3565,6 +3558,13 @@ export default function LeaseApplicationForm({
                     <strong>Total Due Today</strong>
                     <strong>${totalChargeForModal.toFixed(2)}</strong>
                   </div>
+                )}
+                {isWalkIn && (
+                  <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
+                    Prefer to pay in person (cash or card at the office) instead of by card on
+                    the next screen? Let the office staff know now — they can collect your
+                    payment directly and continue your application without you paying there.
+                  </p>
                 )}
               </div>
             </div>
