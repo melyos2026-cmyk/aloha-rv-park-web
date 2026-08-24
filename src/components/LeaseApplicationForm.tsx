@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import {
@@ -611,6 +611,31 @@ export default function LeaseApplicationForm({
     landlord_address: company.address,
     ...initialData,
   });
+  // Aug 24 (per Mely — found live: typing "3" into RV Make/Length/
+  // Slide-Outs locked the field right after the first keystroke, with
+  // no way to fix a typo): these fields used `lockAdminFields &&
+  // !!data.rv_make` (etc.) to only lock a field the admin ACTUALLY
+  // pre-filled from a connected Real Estate listing (rvMake/rvModel/
+  // etc. in handleSendInvite) — not fields the applicant is meant to
+  // fill in themselves, like plain RV info on a normal invite. The bug:
+  // checking the CURRENT `data.rv_make` re-evaluates on every keystroke,
+  // so the moment the applicant typed anything at all, the field
+  // instantly looked "admin-filled" and locked itself. Freezing the
+  // ORIGINAL initialData value here (captured once, never changes as
+  // the applicant types) is what these checks should have used all
+  // along — locks a field the admin genuinely pre-filled, never locks
+  // one the applicant is actively filling in themselves.
+  const initialRvDataRef = useRef({
+    rv_make: initialData?.rv_make,
+    rv_model: initialData?.rv_model,
+    rv_year: initialData?.rv_year,
+    rv_length_ft: initialData?.rv_length_ft,
+    rv_width_ft: initialData?.rv_width_ft,
+    rv_vin_or_tag: initialData?.rv_vin_or_tag,
+    slide_out_driver_count: initialData?.slide_out_driver_count,
+    slide_out_passenger_count: initialData?.slide_out_passenger_count,
+    lease_start_date: initialData?.lease_start_date,
+  });
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
@@ -903,7 +928,7 @@ export default function LeaseApplicationForm({
   // application). Same exception as the locked date field itself: when
   // the admin pre-set this exact date for this exact reason, skip this
   // check too — the admin already knows and accepts the handover.
-  const isLockedSaleDate = mode === "applicant" && lockAdminFields && !!data.lease_start_date;
+  const isLockedSaleDate = mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.lease_start_date;
   const lotAvailabilityConflict =
     !isLockedSaleDate &&
     mode === "applicant" &&
@@ -1258,7 +1283,7 @@ export default function LeaseApplicationForm({
                   // date instead of making the buyer pick from a
                   // calendar that's entirely grayed out — same pattern
                   // already used for rv_make/rv_model/etc. below.
-                  (mode === "applicant" && lockAdminFields && !!data.lease_start_date)
+                  (mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.lease_start_date)
                 }
                 dateFormat="MM/dd/yyyy"
                 placeholderText="Select a date"
@@ -1284,7 +1309,7 @@ export default function LeaseApplicationForm({
               )
             )}
             {mode === "applicant" && data.space_id && (
-              lockAdminFields && !!data.lease_start_date ? (
+              lockAdminFields && !!initialRvDataRef.current.lease_start_date ? (
                 <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                   This move-in date was set by the park and can't be changed here.
                 </div>
@@ -2097,7 +2122,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_make}
               onChange={(e) => set("rv_make", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.rv_make}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.rv_make}
             />
           </div>
           <div style={styles.field}>
@@ -2106,7 +2131,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_model}
               onChange={(e) => set("rv_model", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.rv_model}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.rv_model}
             />
           </div>
           <div style={styles.field}>
@@ -2115,7 +2140,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_year}
               onChange={(e) => set("rv_year", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.rv_year}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.rv_year}
             />
           </div>
         </div>
@@ -2137,7 +2162,7 @@ export default function LeaseApplicationForm({
               }}
               value={data.rv_length_ft}
               onChange={(e) => set("rv_length_ft", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.rv_length_ft}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.rv_length_ft}
             />
             {mode === "applicant" &&
               attemptedSubmit &&
@@ -2171,7 +2196,7 @@ export default function LeaseApplicationForm({
               }}
               value={data.rv_width_ft}
               onChange={(e) => set("rv_width_ft", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.rv_width_ft}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.rv_width_ft}
             />
           </div>
           <div style={styles.field}>
@@ -2180,7 +2205,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.rv_vin_or_tag}
               onChange={(e) => set("rv_vin_or_tag", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.rv_vin_or_tag}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.rv_vin_or_tag}
             />
           </div>
         </div>
@@ -2198,7 +2223,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.slide_out_driver_count}
               onChange={(e) => set("slide_out_driver_count", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.slide_out_driver_count}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.slide_out_driver_count}
             >
               <option value="">Select...</option>
               <option value="0">0</option>
@@ -2234,7 +2259,7 @@ export default function LeaseApplicationForm({
               style={styles.input}
               value={data.slide_out_passenger_count}
               onChange={(e) => set("slide_out_passenger_count", e.target.value)}
-              disabled={mode === "applicant" && lockAdminFields && !!data.slide_out_passenger_count}
+              disabled={mode === "applicant" && lockAdminFields && !!initialRvDataRef.current.slide_out_passenger_count}
             >
               <option value="">Select...</option>
               <option value="0">0</option>
