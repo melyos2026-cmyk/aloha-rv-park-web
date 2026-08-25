@@ -3570,16 +3570,17 @@ export default function LeaseApplicationForm({
                       fontSize: 15,
                     }}
                   >
-                    <strong>{isWalkIn ? "Total Due Today (if paying by card)" : "Total Due Today"}</strong>
-                    <strong>${totalChargeForModal.toFixed(2)}</strong>
+                    <strong>Total Due Today</strong>
+                    <strong>${(isWalkIn ? totalChargeInPersonForModal : totalChargeForModal).toFixed(2)}</strong>
                   </div>
                 )}
                 {isWalkIn && (
                   <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
-                    Prefer to pay in person (cash or card at the office) instead of by card on
-                    the next screen? That's ${totalChargeInPersonForModal.toFixed(2)} — no card
-                    processing fee applies. Let the office staff know now — they can collect your
-                    payment directly and continue your application without you paying there.
+                    Paying by card instead of in person? The card processing fee gets added on
+                    the next screen (Stripe's own checkout) — it isn't included in the amount
+                    above. Prefer to pay in person (cash or card at the office)? Let the office
+                    staff know now — they can collect your payment directly and continue your
+                    application without you paying on the next screen.
                   </p>
                 )}
               </div>
@@ -3658,7 +3659,7 @@ export default function LeaseApplicationForm({
                       cursor: "pointer",
                     }}
                   >
-                    OK, Submit (pay by card)
+                    OK, Submit (pay online)
                   </button>
                   <button
                     onClick={() => {
