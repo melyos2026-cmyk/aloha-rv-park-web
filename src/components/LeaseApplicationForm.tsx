@@ -1021,6 +1021,41 @@ export default function LeaseApplicationForm({
         !lotAvailabilityConflict &&
         (!isRentToOwn || rentToOwnAcknowledged);
 
+  // Aug 25 (per Mely — found live: applicant stuck on "some required
+  // fields above still need to be filled in" with zero red markers
+  // visible, no way to tell which of the ~20 conditions above was the
+  // real blocker). Named list of exactly which conditions are unmet,
+  // shown under the generic message so this is never a guessing game
+  // again — for the applicant AND for us debugging it remotely.
+  const unmetRequirements: string[] =
+    mode === "admin"
+      ? []
+      : [
+          !data.landlord_name && "Property/landlord name is missing (contact the office — this is a setup issue, not something you can fix)",
+          !tenantFirstName && "First name",
+          !tenantLastName && "Last name",
+          !data.tenant_email && "Email",
+          data.tenant_email && !emailValid && "Email format looks invalid",
+          !(availableLots ? !!data.space_id : !!data.property_address) && "Lot/space selection",
+          !data.rent_amount && "Rent amount (select a lot and lease dates so this can calculate)",
+          !data.primary_applicant_dob && "Date of birth",
+          !data.primary_applicant_license && "Driver's license number",
+          !data.primary_applicant_license_photo_url && "Photo of driver's license",
+          primaryApplicantUnderage && "Primary applicant must be 18 or older",
+          adultOccupantsMissingLicense && "An adult occupant is missing their license number or photo",
+          adultOccupantsMissingEmail && "An adult occupant is missing their email",
+          !data.tenant_signature_name && "Signature (type your name)",
+          data.tenant_signature_name && !signatureMatchesName && "Signature must exactly match your first + last name above",
+          !data.tenant_signature_agreed && "You must check the signature agreement box",
+          !data.park_rules_acknowledged && "You must check the park rules acknowledgment box",
+          backgroundCheckRequired && !data.background_check_consent_given && "You must check the background check consent box",
+          !data.rv_length_ft && "RV length",
+          rvTooLong && "RV is too long for the selected lot",
+          rvTooWide && "RV is too wide for the selected lot",
+          lotAvailabilityConflict && "Selected lot/dates conflict with an existing reservation",
+          isRentToOwn && !rentToOwnAcknowledged && "You must acknowledge the Rent-to-Own terms",
+        ].filter(Boolean) as string[];
+
   return (
     <div style={styles.page}>
       <div
@@ -3308,7 +3343,7 @@ export default function LeaseApplicationForm({
       </button>
 
       {attemptedSubmit && !canSubmit && !submitting && (
-        <p
+        <div
           style={{
             color: "#991b1b",
             fontSize: 13,
@@ -3316,9 +3351,25 @@ export default function LeaseApplicationForm({
             marginTop: 8,
           }}
         >
-          Please review the application again — some required fields above
-          still need to be filled in.
-        </p>
+          <p style={{ margin: 0 }}>
+            Please review the application again — some required fields above
+            still need to be filled in.
+          </p>
+          {unmetRequirements.length > 0 && (
+            <ul
+              style={{
+                textAlign: "left",
+                display: "inline-block",
+                marginTop: 8,
+                paddingLeft: 20,
+              }}
+            >
+              {unmetRequirements.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       {showConfirmModal && (
