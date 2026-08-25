@@ -79,6 +79,21 @@ function ApplyPageInner() {
   }>({ totalPrice: null, monthlyPayment: null, numPayments: null, deposit: null, depositPaid: false });
   const [initialData, setInitialData] = useState<Partial<LeaseApplicationData> | undefined>(undefined);
   const [invitationLoaded, setInvitationLoaded] = useState(!inviteToken);
+  // Aug 25 (per Mely — found live: "vuelves para atras... la info de la
+  // aplicacion desaparece"): REAL BUG — invitationLoaded starts out
+  // TRUE whenever there's no invite token (the normal "+ New
+  // Application"/no-invite case), which is what actually gates when
+  // LeaseApplicationForm first mounts (and therefore reads its
+  // useState-initialized `data` from initialData, only ever once). That
+  // meant a walk-in returning from Stripe rendered the form IMMEDIATELY
+  // with empty initialData, and by the time the separate draft-recovery
+  // fetch below finished (confirmed working correctly — hasData: true,
+  // hasDraftJson: true), the form had already mounted and silently
+  // ignored the update. This new state starts false UNCONDITIONALLY —
+  // true only once draft recovery has genuinely run its course (whether
+  // it found something, found nothing, or failed) — and gates the
+  // form's mount together with invitationLoaded/settingsLoaded below.
+  const [draftRecoveryDone, setDraftRecoveryDone] = useState(false);
   const [invitationError, setInvitationError] = useState<string | null>(null);
   // LeaseApplicationForm only reads `initialData` on its very first render
   // (useState lazy init) — since park_settings/lease_defaults arrives async,
@@ -311,10 +326,17 @@ function ApplyPageInner() {
   // flow uses) is what makes the eventual re-submit UPDATE this exact
   // row instead of creating a second, duplicate application.
   useEffect(() => {
-    if (inviteToken || !company?.id) return;
+    if (inviteToken || !company?.id) {
+      // Draft recovery doesn't apply to the invite-token flow (that one
+      // loads its own data via get-application-invite above) — nothing
+      // to wait for here.
+      if (inviteToken) setDraftRecoveryDone(true);
+      return;
+    }
     const savedId = draftApplicationIdFromUrl || localStorage.getItem(`melyos_draft_application_${company.id}`);
     if (!savedId) {
       setInvitationLoaded(true);
+      setDraftRecoveryDone(true);
       return;
     }
 
@@ -322,24 +344,22 @@ function ApplyPageInner() {
       .then((r) => r.json())
       .then(
         ({ application: data, error }) => {
-          // TEMP DEBUG (Aug 25, per Mely — "vuelves para atras... la info
-          // de la aplicacion desaparece"): investigating whether the
-          // draft fetch itself is succeeding and what it returns.
-          console.log("[DEBUG draft recovery]", { savedId, error, hasData: !!data, hasDraftJson: !!data?.form_draft_json });
           if (error || !data) {
             // Already paid/approved, or genuinely gone — nothing to
             // recover, so clear the stale pointer and start fresh.
             localStorage.removeItem(`melyos_draft_application_${company.id}`);
             setInvitationLoaded(true);
+            setDraftRecoveryDone(true);
             return;
           }
           setInvitationId(data.id);
           setInitialData((prev) => ({ ...prev, ...(data.form_draft_json || {}) }));
           setInvitationLoaded(true);
+          setDraftRecoveryDone(true);
         },
-        (err) => {
-          console.log("[DEBUG draft recovery] FETCH FAILED", err);
+        () => {
           setInvitationLoaded(true);
+          setDraftRecoveryDone(true);
         }
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -645,7 +665,7 @@ function ApplyPageInner() {
     return <p style={{ padding: 20, color: "#c00" }}>{invitationError}</p>;
   }
 
-  if (!company || !invitationLoaded || !settingsLoaded) {
+  if (!company || !invitationLoaded || !settingsLoaded || !draftRecoveryDone) {
     return <p style={{ padding: 20, color: "#777" }}>Loading...</p>;
   }
 
