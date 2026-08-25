@@ -322,6 +322,10 @@ function ApplyPageInner() {
       .then((r) => r.json())
       .then(
         ({ application: data, error }) => {
+          // TEMP DEBUG (Aug 25, per Mely — "vuelves para atras... la info
+          // de la aplicacion desaparece"): investigating whether the
+          // draft fetch itself is succeeding and what it returns.
+          console.log("[DEBUG draft recovery]", { savedId, error, hasData: !!data, hasDraftJson: !!data?.form_draft_json });
           if (error || !data) {
             // Already paid/approved, or genuinely gone — nothing to
             // recover, so clear the stale pointer and start fresh.
@@ -333,7 +337,10 @@ function ApplyPageInner() {
           setInitialData((prev) => ({ ...prev, ...(data.form_draft_json || {}) }));
           setInvitationLoaded(true);
         },
-        () => setInvitationLoaded(true)
+        (err) => {
+          console.log("[DEBUG draft recovery] FETCH FAILED", err);
+          setInvitationLoaded(true);
+        }
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inviteToken, company?.id, draftApplicationIdFromUrl]);
