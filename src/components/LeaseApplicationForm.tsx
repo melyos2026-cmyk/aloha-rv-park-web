@@ -1899,6 +1899,20 @@ export default function LeaseApplicationForm({
                             set("occupants", updated);
                           }}
                         />
+                        {/* Aug 25 (per Mely — found live: an adult occupant
+                            missing their own email silently blocked
+                            submission with only the generic bottom-page
+                            error, no indication which field was the
+                            problem — the license #/photo note below
+                            existed for years but this same-purpose note
+                            for email was never added). */}
+                        {mode === "applicant" &&
+                          attemptedSubmit &&
+                          !occ.email?.trim() && (
+                            <div style={{ fontSize: 12, color: "#c00", marginTop: 4 }}>
+                              Email is required for adult occupants.
+                            </div>
+                          )}
                       </div>
                     )}
                     <div style={styles.field}>
