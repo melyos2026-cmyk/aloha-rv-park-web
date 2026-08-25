@@ -902,6 +902,16 @@ async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
     return;
   }
 
+  // Aug 25 (per Mely — reviewing the Rent-to-Own flow end to end): found
+  // live — this .select() asked for "rent_to_own_deposit_amount", a
+  // column that doesn't exist anywhere in the schema (the real column,
+  // used everywhere else in the codebase, is "rent_to_own_deposit").
+  // PostgREST rejects the entire update+select request when the select
+  // list references an unknown column, so this silently NEVER marked a
+  // card-paid Rent-to-Own deposit as paid — the resident's card was
+  // really charged and Stripe really confirmed it, but
+  // rent_to_own_deposit_paid stayed false forever and the admin was
+  // never notified. Fixed to select real columns only.
   const { data: application, error } = await supabase
     .from("resident_applications")
     .update({
@@ -909,7 +919,7 @@ async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
       rent_to_own_deposit_method: "Stripe",
     })
     .eq("id", applicationId)
-    .select("full_name, company_id, rent_to_own_deposit_amount")
+    .select("full_name, company_id, rent_to_own_deposit")
     .single();
 
   if (error) {
