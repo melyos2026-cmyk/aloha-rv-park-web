@@ -3578,9 +3578,11 @@ export default function LeaseApplicationForm({
                   <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
                     Paying by card instead of in person? The card processing fee gets added on
                     the next screen (Stripe's own checkout) — it isn't included in the amount
-                    above. Prefer to pay in person (cash or card at the office)? Let the office
-                    staff know now — they can collect your payment directly and continue your
-                    application without you paying on the next screen.
+                    above. Prefer to pay in person? The amount above is correct for cash — if
+                    paying by card on the office's own terminal instead, that terminal may add
+                    its own separate processing fee (the office can confirm the exact amount).
+                    Let the office staff know now — they can collect your payment directly and
+                    continue your application without you paying on the next screen.
                   </p>
                 )}
               </div>
