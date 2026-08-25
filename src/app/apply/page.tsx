@@ -47,6 +47,23 @@ function ApplyPageInner() {
   // saved successfully — shows a simple confirmation instead of ever
   // redirecting to Stripe.
   const [submittedForInPersonPayment, setSubmittedForInPersonPayment] = useState(false);
+  // Aug 25 (per Mely — "que pasa si la persona quiere pagar con stripe
+  // despues de escoger pago en persona"): the confirmation screen was a
+  // real dead end — the application was already saved, but there was no
+  // way back to Stripe if someone changed their mind. Saves exactly the
+  // params the real Stripe checkout-session call needs, captured at the
+  // moment "Pay in Person" was chosen, so that path can still be
+  // started later without re-deriving anything from the (by then
+  // unmounted) form.
+  const [pendingStripeCheckoutParams, setPendingStripeCheckoutParams] = useState<{
+    applicationId: string;
+    stayAmount?: number;
+    depositAmount?: number;
+    stayStartDate?: string;
+    stayEndDate?: string;
+    requiresBackgroundCheck: boolean;
+  } | null>(null);
+  const [startingStripeCheckout, setStartingStripeCheckout] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lots, setLots] = useState<LotOption[]>([]);
   const [lotsLoaded, setLotsLoaded] = useState(false);
@@ -616,6 +633,14 @@ function ApplyPageInner() {
       }
 
       if (payInPerson) {
+        setPendingStripeCheckoutParams({
+          applicationId: invitationId || applicationId,
+          stayAmount: stayAmountForCheckout || undefined,
+          depositAmount: depositAmountForCheckout || undefined,
+          stayStartDate: data.lease_start_date || undefined,
+          stayEndDate: data.lease_end_date || undefined,
+          requiresBackgroundCheck: backgroundCheckRequired,
+        });
         setSubmittedForInPersonPayment(true);
         setSubmitting(false);
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -670,6 +695,26 @@ function ApplyPageInner() {
   }
 
   if (submittedForInPersonPayment) {
+    async function handleStartStripeCheckoutInstead() {
+      if (!pendingStripeCheckoutParams) return;
+      setStartingStripeCheckout(true);
+      try {
+        const res = await fetch("/api/create-application-fee-checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pendingStripeCheckoutParams),
+        });
+        const json = await res.json();
+        if (!res.ok || !json.url) {
+          throw new Error(json.error ?? "Could not start payment. Please try again.");
+        }
+        window.location.href = json.url;
+      } catch (err: any) {
+        setErrorMsg(err.message ?? "Something went wrong starting payment. Please try again.");
+        setStartingStripeCheckout(false);
+      }
+    }
+
     return (
       <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
         <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
@@ -678,6 +723,29 @@ function ApplyPageInner() {
           The application has been saved. The office staff will now collect payment in person
           and continue processing it from their own screen — no payment is needed here.
         </p>
+        {errorMsg && (
+          <p style={{ color: "#991b1b", fontSize: 13, marginTop: 16 }}>❌ {errorMsg}</p>
+        )}
+        {pendingStripeCheckoutParams && (
+          <button
+            onClick={handleStartStripeCheckoutInstead}
+            disabled={startingStripeCheckout}
+            style={{
+              marginTop: 20,
+              padding: "10px 20px",
+              borderRadius: 8,
+              border: "1px solid #ccc",
+              background: "#fff",
+              color: "#333",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: startingStripeCheckout ? "default" : "pointer",
+              opacity: startingStripeCheckout ? 0.6 : 1,
+            }}
+          >
+            {startingStripeCheckout ? "Starting..." : "Actually, I'd like to pay by card now"}
+          </button>
+        )}
       </div>
     );
   }
