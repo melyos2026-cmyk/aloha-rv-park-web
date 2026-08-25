@@ -41,6 +41,12 @@ function ApplyPageInner() {
   const { company, loading: companyLoading, error: companyError } = useCompany();
 
   const [submitting, setSubmitting] = useState(false);
+  // Aug 25 (per Mely — real UX gap: the customer briefly saw the Stripe
+  // screen before staff closed it and used Mark Fee Collected
+  // separately): true once a walk-in's "Submit & Pay in Person" has
+  // saved successfully — shows a simple confirmation instead of ever
+  // redirecting to Stripe.
+  const [submittedForInPersonPayment, setSubmittedForInPersonPayment] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lots, setLots] = useState<LotOption[]>([]);
   const [lotsLoaded, setLotsLoaded] = useState(false);
@@ -346,7 +352,7 @@ function ApplyPageInner() {
     return path;
   }
 
-  async function handleSubmit(data: LeaseApplicationData) {
+  async function handleSubmit(data: LeaseApplicationData, payInPerson?: boolean) {
     if (!company) return;
     setSubmitting(true);
     setErrorMsg(null);
@@ -582,6 +588,13 @@ function ApplyPageInner() {
         localStorage.setItem(`melyos_draft_application_${company.id}`, invitationId || applicationId);
       }
 
+      if (payInPerson) {
+        setSubmittedForInPersonPayment(true);
+        setSubmitting(false);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
       const res = await fetch(
         "/api/create-application-fee-checkout-session",
         {
@@ -627,6 +640,19 @@ function ApplyPageInner() {
 
   if (!company || !invitationLoaded || !settingsLoaded) {
     return <p style={{ padding: 20, color: "#777" }}>Loading...</p>;
+  }
+
+  if (submittedForInPersonPayment) {
+    return (
+      <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 20px", textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>✅</div>
+        <h2 style={{ fontSize: 20, marginBottom: 8 }}>Application Submitted</h2>
+        <p style={{ color: "#555", lineHeight: 1.5 }}>
+          The application has been saved. The office staff will now collect payment in person
+          and continue processing it from their own screen — no payment is needed here.
+        </p>
+      </div>
+    );
   }
 
   return (

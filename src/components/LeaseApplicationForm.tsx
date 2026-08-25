@@ -503,7 +503,14 @@ interface Props {
   // apply/page.tsx's checkout-amount calculation.
   isFamilyFriend?: boolean;
   backgroundCheckOverride?: "" | "required" | "skip";
-  onSubmit: (data: LeaseApplicationData) => Promise<void> | void;
+  // Aug 25 (per Mely — "esta ok si no vio ninguna parte que diga walk-in
+  // donde el staff puede decidir cobrar en persona" / real UX gap she
+  // raised: the customer briefly saw the Stripe screen before staff
+  // closed it and used Mark Fee Collected separately): payInPerson=true
+  // skips the Stripe redirect entirely — the application still gets
+  // saved exactly the same way, staff just uses Mark Fee Collected
+  // right after instead of ever touching Stripe.
+  onSubmit: (data: LeaseApplicationData, payInPerson?: boolean) => Promise<void> | void;
   onUploadFile?: (file: File, slotId: string) => Promise<string>; // uploads to Supabase Storage, returns the storage path
   submitting?: boolean;
 }
@@ -3569,49 +3576,112 @@ export default function LeaseApplicationForm({
               </div>
             </div>
 
-            <div style={{ padding: "0 28px 24px", display: "flex", gap: 10 }}>
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                style={{
-                  flex: 1,
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  border: "1px solid #ccc",
-                  background: "#fff",
-                  color: "#333",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Go Back &amp; Check
-              </button>
-              <button
-                onClick={() => {
-                  setShowConfirmModal(false);
-                  onSubmit({
-                    ...data,
-                    rent_due_day:
-                      data.rent_due_day || String(computedRentDueDay ?? ""),
-                    application_fee_additional_count: String(
-                      additionalAdultsCount
-                    ),
-                  });
-                }}
-                style={{
-                  flex: 1,
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "#000",
-                  color: "#fff",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                OK, Submit
-              </button>
+            <div style={{ padding: "0 28px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    border: "1px solid #ccc",
+                    background: "#fff",
+                    color: "#333",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Go Back &amp; Check
+                </button>
+                {!isWalkIn && (
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      onSubmit({
+                        ...data,
+                        rent_due_day:
+                          data.rent_due_day || String(computedRentDueDay ?? ""),
+                        application_fee_additional_count: String(
+                          additionalAdultsCount
+                        ),
+                      });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "12px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#000",
+                      color: "#fff",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    OK, Submit
+                  </button>
+                )}
+              </div>
+              {isWalkIn && (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      onSubmit({
+                        ...data,
+                        rent_due_day:
+                          data.rent_due_day || String(computedRentDueDay ?? ""),
+                        application_fee_additional_count: String(
+                          additionalAdultsCount
+                        ),
+                      });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "12px 16px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#000",
+                      color: "#fff",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    OK, Submit (pay by card)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      onSubmit(
+                        {
+                          ...data,
+                          rent_due_day:
+                            data.rent_due_day || String(computedRentDueDay ?? ""),
+                          application_fee_additional_count: String(
+                            additionalAdultsCount
+                          ),
+                        },
+                        true
+                      );
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: "12px 16px",
+                      borderRadius: 8,
+                      border: "1px solid #000",
+                      background: "#fff",
+                      color: "#000",
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Submit &amp; Pay in Person
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
