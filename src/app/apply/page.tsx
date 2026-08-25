@@ -62,6 +62,7 @@ function ApplyPageInner() {
     stayStartDate?: string;
     stayEndDate?: string;
     requiresBackgroundCheck: boolean;
+    isWalkIn: boolean;
   } | null>(null);
   const [startingStripeCheckout, setStartingStripeCheckout] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -640,6 +641,7 @@ function ApplyPageInner() {
           stayStartDate: data.lease_start_date || undefined,
           stayEndDate: data.lease_end_date || undefined,
           requiresBackgroundCheck: backgroundCheckRequired,
+          isWalkIn,
         });
         setSubmittedForInPersonPayment(true);
         setSubmitting(false);
