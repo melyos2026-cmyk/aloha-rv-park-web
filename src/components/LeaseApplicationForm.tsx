@@ -933,6 +933,14 @@ export default function LeaseApplicationForm({
     : 0;
   const totalChargeForModal =
     applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal + cardProcessingFeeForModal;
+  // Aug 25 (per Mely — found live: "si la persona paga en persona es
+  // solo 75 + 2.50 si paga con card entonces seria 75 + 2.50 +
+  // procesing fee... son diferentes"): the card processing fee only
+  // ever applies to an actual card transaction — paying in person
+  // (cash, or the office's own separate terminal) never goes through
+  // this Stripe checkout at all, so it should never include this fee.
+  const totalChargeInPersonForModal =
+    applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal;
 
   // Aug 17 (per Mely — John stuck on "This lot is already booked..." even
   // with his Move-In date already locked in): the date FIELD being locked
@@ -3562,14 +3570,15 @@ export default function LeaseApplicationForm({
                       fontSize: 15,
                     }}
                   >
-                    <strong>Total Due Today</strong>
+                    <strong>{isWalkIn ? "Total Due Today (if paying by card)" : "Total Due Today"}</strong>
                     <strong>${totalChargeForModal.toFixed(2)}</strong>
                   </div>
                 )}
                 {isWalkIn && (
                   <p style={{ fontSize: 12, color: "#666", marginTop: 10, paddingTop: 10, borderTop: "1px dashed #ccc" }}>
                     Prefer to pay in person (cash or card at the office) instead of by card on
-                    the next screen? Let the office staff know now — they can collect your
+                    the next screen? That's ${totalChargeInPersonForModal.toFixed(2)} — no card
+                    processing fee applies. Let the office staff know now — they can collect your
                     payment directly and continue your application without you paying there.
                   </p>
                 )}
