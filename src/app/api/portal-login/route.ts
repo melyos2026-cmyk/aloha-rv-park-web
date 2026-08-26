@@ -70,6 +70,67 @@ export async function POST(req: Request) {
     );
   }
 
+  // Aug 26 (per Mely — Rent-to-Own journey review, but applies to every
+  // approval): the move-in "due now" invoice (rent + deposit, sent as
+  // its own email right at approval — see
+  // send-application-approved-invoice-email) is meant to be paid via
+  // that email's no-login /pay-invoice link BEFORE the resident ever
+  // gets portal access — Mely doesn't want someone able to poke around
+  // the portal (and see next month's invoice) while still owing that
+  // first charge.
+  //
+  // IMPORTANT SCOPE: this only ever applies to a resident who has NEVER
+  // paid anything yet (their very first invoice, still unpaid) — an
+  // established resident who later falls behind on rent must still be
+  // able to log in and pay from their own portal as always; blocking
+  // login on ANY overdue invoice would lock out every resident who's
+  // ever late, which is a different (and much more disruptive) thing
+  // than what was asked for here.
+  const { count: everPaidCount } = await supabaseAdmin
+    .from("resident_invoices")
+    .select("id", { count: "exact", head: true })
+    .eq("resident_id", resident.id)
+    .eq("status", "Paid");
+
+  if (!everPaidCount) {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const { data: dueNowInvoice } = await supabaseAdmin
+      .from("resident_invoices")
+      .select("id, invoice_month, total_amount, guest_payment_token")
+      .eq("resident_id", resident.id)
+      .eq("status", "Pending")
+      .lte("due_date", todayStr)
+      .order("due_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (dueNowInvoice) {
+      let payToken = dueNowInvoice.guest_payment_token;
+      if (!payToken) {
+        const { data: updated } = await supabaseAdmin
+          .from("resident_invoices")
+          .update({ guest_payment_token: crypto.randomUUID() })
+          .eq("id", dueNowInvoice.id)
+          .select("guest_payment_token")
+          .single();
+        payToken = updated?.guest_payment_token || null;
+      }
+      await supabaseAdmin.from("resident_login_attempts").insert({
+        resident_id: resident.id,
+        attempted_email: email,
+        ip,
+        success: false,
+      });
+      return NextResponse.json(
+        {
+          error: `Please pay your ${dueNowInvoice.invoice_month} invoice ($${Number(dueNowInvoice.total_amount || 0).toFixed(2)}) before accessing your resident portal.`,
+          payUrl: payToken ? `/pay-invoice/${payToken}` : null,
+        },
+        { status: 402 }
+      );
+    }
+  }
+
   const matches = await bcrypt.compare(password, resident.portal_password);
 
   await supabaseAdmin.from("resident_login_attempts").insert({

@@ -8,12 +8,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [payUrl, setPayUrl] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState("");
   const router = useRouter();
 
   const handleLogin = async () => {
     setLoading(true);
     setError("");
+    setPayUrl(null);
 
     const res = await fetch("/api/portal-login", {
       method: "POST",
@@ -24,6 +26,14 @@ export default function LoginPage() {
 
     if (!res.ok) {
       setError(data.error || "Invalid email or password. Please try again.");
+      // Aug 26 (per Mely): login blocked because the move-in "due now"
+      // invoice isn't paid yet — the portal-login route sends back a
+      // no-login-required /pay-invoice link (same mechanism as the
+      // approval email's own Pay Now button) so the resident isn't
+      // stuck with no way forward.
+      if (res.status === 402 && data.payUrl) {
+        setPayUrl(data.payUrl);
+      }
       setLoading(false);
       return;
     }
@@ -69,6 +79,25 @@ export default function LoginPage() {
                 {error && (
                   <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: 12, marginBottom: 20, fontSize: 13, color: "var(--red)" }}>
                     ⚠️ {error}
+                    {payUrl && (
+                      <div style={{ marginTop: 10 }}>
+                        <a
+                          href={payUrl}
+                          style={{
+                            display: "inline-block",
+                            background: "var(--red)",
+                            color: "#fff",
+                            padding: "8px 16px",
+                            borderRadius: 6,
+                            fontWeight: 700,
+                            textDecoration: "none",
+                            fontSize: 13,
+                          }}
+                        >
+                          Pay Invoice Now
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
 
