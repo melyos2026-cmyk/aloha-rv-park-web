@@ -3577,6 +3577,34 @@ export default function LeaseApplicationForm({
                     <strong>${applicationProcessingFee.toFixed(2)}</strong>
                   </div>
                 )}
+                {/* Aug 26 (per Mely — found live: "Total Due Today no
+                    cuadra / no se ve claro de dónde sale cada monto" on
+                    a Rent-to-Own application where Background Check +
+                    Application Fee added up to $77.50 but Total Due
+                    Today showed $80.60 with no line explaining the
+                    $3.10 gap). That gap is the card processing fee,
+                    which the Aug 18 note above deliberately left off
+                    this screen to avoid "showing it twice" (it also
+                    appears on Stripe's own next page) — but hiding a
+                    real part of today's total reads as the total not
+                    adding up, the same class of silent-math problem
+                    fixed elsewhere yesterday. Now itemized here too,
+                    for the card-payment path only (isWalkIn never has
+                    this fee — see totalChargeInPersonForModal above). */}
+                {backgroundCheckRequired && !isWalkIn && cardProcessingFeeForModal > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#111",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span>Card Processing Fee</span>
+                    <strong>${cardProcessingFeeForModal.toFixed(2)}</strong>
+                  </div>
+                )}
                 {stayAmountForModal === 0 && (
                   <div
                     style={{
