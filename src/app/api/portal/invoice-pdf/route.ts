@@ -30,17 +30,41 @@ export async function GET(req: NextRequest) {
     .eq("id", residentId)
     .maybeSingle();
 
-  const { data: company } = await supabase
-    .from("companies")
-    .select("company_name, address, logo_url")
-    .eq("id", invoice.company_id)
-    .maybeSingle();
-
   const { data: items } = await supabase
     .from("resident_invoice_items")
     .select("description, amount")
     .eq("invoice_id", invoiceId)
     .order("created_at", { ascending: true });
+
+  // Aug 27 (per Mely — found live: the first/move-in invoice's DATE
+  // showed invoice.created_at, which is when the DB ROW was created —
+  // stale/meaningless once an invoice gets reused across a Cancel
+  // Approval + re-approve cycle (created_at stays from the very first
+  // time, days earlier). For the first invoice specifically (identified
+  // by having a "Prorated rent" line item — only the very first invoice
+  // ever has one; recurring monthly invoices say "Rent — 1 month"),
+  // DATE should read as the resident's actual lease start date instead,
+  // which is what the invoice is really "as of".
+  const isFirstInvoice = (items || []).some((i) => (i.description || "").startsWith("Prorated rent"));
+  let issuedDate = invoice.created_at;
+  if (isFirstInvoice) {
+    const { data: lease } = await supabase
+      .from("resident_leases")
+      .select("lease_start")
+      .eq("resident_id", residentId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lease?.lease_start) {
+      issuedDate = lease.lease_start;
+    }
+  }
+
+  const { data: company } = await supabase
+    .from("companies")
+    .select("company_name, address, logo_url")
+    .eq("id", invoice.company_id)
+    .maybeSingle();
 
   const pdfBuffer = await generateInvoicePdf({
     companyName: company?.company_name || "Park",
@@ -49,7 +73,7 @@ export async function GET(req: NextRequest) {
     residentName: resident?.full_name || "Resident",
     residentLot: (resident as any)?.rv_lots?.lot_name || null,
     invoiceMonth: invoice.invoice_month || "Invoice",
-    issuedDate: invoice.created_at,
+    issuedDate,
     dueDate: invoice.due_date,
     status: invoice.status,
     lineItems: (items || []).map((i) => ({
