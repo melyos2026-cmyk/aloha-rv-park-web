@@ -261,4 +261,23 @@ export async function checkAndCompleteRentToOwnPlan(
   });
 
   await supabase.from("rent_to_own_plans").update({ status: "completed" }).eq("id", plan.id);
+
+  // Aug 27 (per Mely — full RTO cycle verification): found live on
+  // "test 22" — the plan's own recurring_charges row was NEVER linked
+  // (recurring_charge_id stayed null from creation) and total_installments
+  // was never set either, so the generate-invoices cron's own
+  // auto-deactivation logic (which only fires when total_installments is
+  // set) never applied to Rent-to-Own charges at all. Meaning: once a
+  // resident fully paid off their home and got their Bill of Sale, the
+  // $${plan.monthly_principal}/mo charge would have kept billing them
+  // FOREVER with no automatic stop anywhere. Matching by resident_id +
+  // charge_type (not recurring_charge_id, which may be null on
+  // already-existing plans) so this fix protects existing plans too, not
+  // just ones created after this fix.
+  await supabase
+    .from("recurring_charges")
+    .update({ active: false })
+    .eq("resident_id", residentId)
+    .eq("charge_type", "Rent-to-Own Principal")
+    .eq("active", true);
 }
