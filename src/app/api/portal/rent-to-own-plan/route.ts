@@ -26,10 +26,10 @@ export async function GET(req: NextRequest) {
 
   const { data: plan, error } = await supabaseAdmin
     .from("rent_to_own_plans")
-    .select("id, lot_id, total_price, monthly_principal, starting_paid_amount, status, started_at")
+    .select("id, lot_id, total_price, monthly_principal, starting_paid_amount, status, started_at, resident_signed_at, admin_signed_at")
     .eq("resident_id", residentId)
     .is("deleted_at", null)
-    .in("status", ["active", "completed"])
+    .in("status", ["active", "pending_signatures", "completed"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

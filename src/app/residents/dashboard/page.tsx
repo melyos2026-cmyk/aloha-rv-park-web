@@ -60,6 +60,9 @@ export default function ResidentDashboard() {
   const [invoiceItemsByInvoice, setInvoiceItemsByInvoice] = useState<Record<string, any[]>>({});
   const [electricUsage, setElectricUsage] = useState<any[]>([]);
   const [rentToOwnPlan, setRentToOwnPlan] = useState<any>(null);
+  const [billOfSaleSignatureInput, setBillOfSaleSignatureInput] = useState("");
+  const [signingBillOfSale, setSigningBillOfSale] = useState(false);
+  const [billOfSaleMessage, setBillOfSaleMessage] = useState("");
   const [nextPaymentDate, setNextPaymentDate] = useState<string | null>(null);
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
@@ -945,7 +948,73 @@ export default function ResidentDashboard() {
             </div>
           </div>
 
-          {rentToOwnPlan && (
+          {rentToOwnPlan && rentToOwnPlan.status === "pending_signatures" && (
+            <div style={{ ...card, marginTop: 16, background: "#fffbeb", border: "2px solid #f59e0b" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>
+                🎉 Your Rent-to-Own home is fully paid off!
+              </h2>
+              <p style={{ ...label, marginBottom: 12 }}>
+                To finalize your Bill of Sale, both you and the park need to digitally sign. Type your full
+                legal name below to sign your side.
+              </p>
+              {rentToOwnPlan.resident_signed_at ? (
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#16a34a" }}>
+                  ✓ You signed on {new Date(rentToOwnPlan.resident_signed_at).toLocaleDateString("en-US")}.{" "}
+                  {rentToOwnPlan.admin_signed_at
+                    ? "Waiting on the final document to generate — refresh in a moment."
+                    : "Waiting on the park's signature to finalize your Bill of Sale."}
+                </p>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={billOfSaleSignatureInput}
+                    onChange={(e) => setBillOfSaleSignatureInput(e.target.value)}
+                    placeholder="Type your full legal name to sign"
+                    style={{ width: "100%", maxWidth: 360, padding: "10px 12px", borderRadius: 6, border: "1px solid #d1d5db", marginBottom: 10 }}
+                  />
+                  <br />
+                  <button
+                    disabled={signingBillOfSale || !billOfSaleSignatureInput.trim()}
+                    onClick={async () => {
+                      setSigningBillOfSale(true);
+                      setBillOfSaleMessage("");
+                      const res = await fetch("/api/portal/sign-bill-of-sale", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          residentId,
+                          companyId: resident.company_id,
+                          signatureName: billOfSaleSignatureInput,
+                        }),
+                      });
+                      const result = await res.json();
+                      setSigningBillOfSale(false);
+                      if (!res.ok) {
+                        setBillOfSaleMessage(result.error || "Something went wrong. Please try again.");
+                        return;
+                      }
+                      setBillOfSaleMessage(
+                        result.completed
+                          ? "Signed! Your Bill of Sale is finalized — find it under Documents."
+                          : "Signed! Waiting on the park's signature to finalize your Bill of Sale."
+                      );
+                      fetch(`/api/portal/rent-to-own-plan?residentId=${residentId}`)
+                        .then((r) => r.json())
+                        .then((d) => d.plan && setRentToOwnPlan(d.plan))
+                        .catch(() => {});
+                    }}
+                    style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    {signingBillOfSale ? "Signing..." : "Sign Bill of Sale"}
+                  </button>
+                </>
+              )}
+              {billOfSaleMessage && <p style={{ ...label, marginTop: 10 }}>{billOfSaleMessage}</p>}
+            </div>
+          )}
+
+          {rentToOwnPlan && rentToOwnPlan.status !== "pending_signatures" && (
             <div style={{ ...card, marginTop: 16 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>
                 🏡 Rent-to-Own Plan {rentToOwnPlan.lot_name ? `— Lot ${rentToOwnPlan.lot_name}` : ""}
