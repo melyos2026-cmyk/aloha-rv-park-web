@@ -1,5 +1,15 @@
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 
+const DEFAULT_BILL_OF_SALE_CLAUSES = `GOVERNING LAW: This Bill of Sale shall be governed by and construed in accordance with the laws of the State of Florida.
+
+CONDITION OF SALE: The property described above is sold "as-is" and "where-is," with no warranties, express or implied, as to its condition, fitness for a particular purpose, or merchantability, except as expressly stated herein.
+
+TITLE TRANSFER: Buyer is solely responsible for completing any required title transfer, registration, or related filings with the Florida Department of Highway Safety and Motor Vehicles (or applicable authority). This document does not itself constitute a certificate of title.
+
+ENTIRE AGREEMENT: This Bill of Sale, together with the underlying Rent-to-Own Agreement, constitutes the entire agreement between the parties regarding the sale of the property described above, and supersedes any prior oral or written agreements relating to that sale.
+
+DISPUTE RESOLUTION: Any dispute arising from this Bill of Sale shall first be addressed through good-faith negotiation between the parties before pursuing formal legal action.`;
+
 async function generateBillOfSalePDFBlob(params: {
   companyName: string;
   companyAddress: string;
@@ -13,6 +23,12 @@ async function generateBillOfSalePDFBlob(params: {
   lotMaxWidthFt: number | null;
   ampService: string | null;
   totalPrice: number;
+  clauses: string;
+  paymentHistory: { date: string; description: string; amount: number }[];
+  residentSignatureName: string;
+  residentSignedAt: string;
+  adminSignatureName: string;
+  adminSignedAt: string;
 }): Promise<Blob> {
   const { jsPDF } = require("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -124,13 +140,43 @@ async function generateBillOfSalePDFBlob(params: {
   paragraph(
     "Seller warrants that it has good and marketable title to the above-described property and full authority to sell the same, and that the property is being sold in its present \"as-is\" condition."
   );
-  y += 20;
+  y += 6;
+  line();
+
+  paragraph("PAYMENT HISTORY", { bold: true, size: 10 });
+  if (params.paymentHistory.length > 0) {
+    params.paymentHistory.forEach((p) => {
+      paragraph(`${p.date}  —  ${p.description}  —  $${Number(p.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, { size: 9 });
+    });
+  } else {
+    paragraph("No payment history on file.", { size: 9 });
+  }
+  y += 6;
+  line();
+
+  paragraph("TERMS AND CONDITIONS", { bold: true, size: 10 });
+  paragraph(params.clauses, { size: 9 });
+  y += 14;
+
+  if (y > 620) {
+    doc.addPage();
+    y = 50;
+  }
 
   paragraph("_____________________________________", {});
-  paragraph(`${params.companyName} — Authorized Signature`, {});
-  y += 24;
+  paragraph(`${params.companyName} — Authorized Signature (${params.adminSignatureName})`, {});
+  paragraph(`Signed: ${params.adminSignedAt ? new Date(params.adminSignedAt).toLocaleString("en-US") : "—"}`, { size: 8.5 });
+  y += 10;
   paragraph("_____________________________________", {});
-  paragraph(`${params.residentName} — Buyer Signature`, {});
+  paragraph("Witness (optional)", { size: 8.5 });
+  y += 24;
+
+  paragraph("_____________________________________", {});
+  paragraph(`${params.residentName} — Buyer Signature (${params.residentSignatureName})`, {});
+  paragraph(`Signed: ${params.residentSignedAt ? new Date(params.residentSignedAt).toLocaleString("en-US") : "—"}`, { size: 8.5 });
+  y += 10;
+  paragraph("_____________________________________", {});
+  paragraph("Witness (optional)", { size: 8.5 });
 
   return doc.output("blob");
 }
@@ -168,12 +214,15 @@ function numberToWords(num: number): string {
 /**
  * Call this any time a resident's invoice gets marked Paid. If it pushes an
  * active Rent-to-Own plan's paid_so_far to or past total_price, this
- * generates a Bill of Sale PDF, adds it to the resident's Documents section,
- * and marks the plan completed. Safe to call unconditionally.
+ * deactivates the recurring $/mo charge immediately (the money stops no
+ * matter what happens with signatures) and moves the plan to
+ * "pending_signatures" — the actual Bill of Sale only generates once BOTH
+ * the resident and the park have digitally signed (see
+ * signBillOfSaleAsResident below). Safe to call unconditionally.
  *
- * Duplicated (not shared) from melyos-builder/services/rentToOwn.ts's
- * checkAndCompleteRentToOwnPlan — these are separate codebases with no
- * shared package. Keep both in sync if this logic changes.
+ * Duplicated (not shared) from melyos-builder/app/api/admin/rent-to-own-plans's
+ * handleCompleteCheck — these are separate codebases with no shared package.
+ * Keep both in sync if this logic changes.
  */
 export async function checkAndCompleteRentToOwnPlan(
   residentId: string,
@@ -181,14 +230,14 @@ export async function checkAndCompleteRentToOwnPlan(
 ): Promise<void> {
   const { data: plan } = await supabase
     .from("rent_to_own_plans")
-    .select("id, total_price, lot_id, starting_paid_amount")
+    .select("id, total_price, lot_id, starting_paid_amount, status")
     .eq("resident_id", residentId)
     .eq("company_id", companyId)
-    .eq("status", "active")
+    .in("status", ["active", "pending_signatures"])
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (!plan) return;
+  if (!plan || plan.status === "pending_signatures") return;
 
   const { data: paidInvoices } = await supabase
     .from("resident_invoices")
@@ -209,21 +258,99 @@ export async function checkAndCompleteRentToOwnPlan(
 
   if (paidSoFar < Number(plan.total_price)) return; // not paid off yet
 
-  const [{ data: resident }, { data: company }, { data: lot }] = await Promise.all([
+  await supabase
+    .from("recurring_charges")
+    .update({ active: false })
+    .eq("resident_id", residentId)
+    .eq("charge_type", "Rent-to-Own Principal")
+    .eq("active", true);
+
+  await supabase.from("rent_to_own_plans").update({ status: "pending_signatures" }).eq("id", plan.id);
+
+  const { data: resident } = await supabase.from("resident_accounts").select("full_name").eq("id", residentId).maybeSingle();
+
+  await supabase.from("resident_update_notifications").insert({
+    company_id: companyId,
+    resident_id: residentId,
+    resident_name: resident?.full_name || null,
+    update_type: "rent_to_own_paid_off",
+    message: `${resident?.full_name || "A resident"} has fully paid off their Rent-to-Own plan — the monthly charge has been stopped. Both parties still need to digitally sign the Bill of Sale before it's finalized.`,
+  });
+}
+
+/**
+ * Resident's own signature on the Bill of Sale (called from the resident
+ * portal once their plan shows "pending_signatures"). If the park/admin
+ * has already signed too, generates and finalizes the actual PDF.
+ */
+export async function signBillOfSaleAsResident(
+  residentId: string,
+  companyId: string,
+  signatureName: string
+): Promise<{ completed: boolean; error?: string }> {
+  if (!signatureName?.trim()) return { completed: false, error: "A signature name is required." };
+
+  const { data: plan } = await supabase
+    .from("rent_to_own_plans")
+    .select("id, total_price, lot_id, starting_paid_amount, admin_signed_at")
+    .eq("resident_id", residentId)
+    .eq("company_id", companyId)
+    .eq("status", "pending_signatures")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!plan) return { completed: false, error: "No plan awaiting your signature was found." };
+
+  const now = new Date().toISOString();
+  const { data: updatedPlan, error: signError } = await supabase
+    .from("rent_to_own_plans")
+    .update({ resident_signed_at: now, resident_signature_name: signatureName.trim() })
+    .eq("id", plan.id)
+    .select("resident_signed_at, resident_signature_name, admin_signed_at, admin_signature_name")
+    .single();
+
+  if (signError) return { completed: false, error: signError.message };
+
+  const bothSigned = !!updatedPlan.resident_signed_at && !!updatedPlan.admin_signed_at;
+  if (!bothSigned) return { completed: false };
+
+  const [{ data: resident }, { data: company }, { data: lot }, { data: parkSettings }] = await Promise.all([
     supabase.from("resident_accounts").select("full_name, email, phone").eq("id", residentId).single(),
-    supabase
-      .from("companies")
-      .select("company_name, address, contact_phone, logo_url")
-      .eq("id", companyId)
-      .single(),
+    supabase.from("companies").select("company_name, address, contact_phone, logo_url").eq("id", companyId).single(),
     plan.lot_id
-      ? supabase
-          .from("rv_lots")
-          .select("lot_name, max_length_ft, max_width_ft, amp_service")
-          .eq("id", plan.lot_id)
-          .single()
-      : Promise.resolve({ data: null }),
+      ? supabase.from("rv_lots").select("lot_name, max_length_ft, max_width_ft, amp_service").eq("id", plan.lot_id).single()
+      : Promise.resolve({ data: null as any }),
+    supabase.from("park_settings").select("bill_of_sale_clauses").eq("company_id", companyId).maybeSingle(),
   ]);
+
+  const paymentHistory: { date: string; description: string; amount: number }[] = [];
+  if (Number(plan.starting_paid_amount) > 0) {
+    paymentHistory.push({ date: "—", description: "Deposit (applied toward purchase price)", amount: Number(plan.starting_paid_amount) });
+  }
+  const { data: paidInvoices } = await supabase
+    .from("resident_invoices")
+    .select("id, created_at")
+    .eq("resident_id", residentId)
+    .eq("status", "Paid")
+    .order("created_at", { ascending: true });
+  const invoiceDateMap: Record<string, string> = {};
+  (paidInvoices || []).forEach((inv) => (invoiceDateMap[inv.id] = inv.created_at));
+  const invoiceIds = (paidInvoices || []).map((inv) => inv.id);
+  if (invoiceIds.length > 0) {
+    const { data: items } = await supabase
+      .from("resident_invoice_items")
+      .select("invoice_id, amount, description")
+      .in("invoice_id", invoiceIds)
+      .eq("charge_type", "Rent-to-Own Principal")
+      .order("created_at", { ascending: true });
+    (items || []).forEach((item: any) => {
+      paymentHistory.push({
+        date: new Date(invoiceDateMap[item.invoice_id]).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }),
+        description: item.description || "Principal payment",
+        amount: Number(item.amount || 0),
+      });
+    });
+  }
 
   const pdfBlob = await generateBillOfSalePDFBlob({
     companyName: company?.company_name || "",
@@ -233,11 +360,17 @@ export async function checkAndCompleteRentToOwnPlan(
     residentName: resident?.full_name || "",
     residentEmail: resident?.email || null,
     residentPhone: resident?.phone || null,
-    lotName: lot?.lot_name || null,
-    lotMaxLengthFt: lot?.max_length_ft || null,
-    lotMaxWidthFt: lot?.max_width_ft || null,
-    ampService: lot?.amp_service || null,
+    lotName: (lot as any)?.lot_name || null,
+    lotMaxLengthFt: (lot as any)?.max_length_ft || null,
+    lotMaxWidthFt: (lot as any)?.max_width_ft || null,
+    ampService: (lot as any)?.amp_service || null,
     totalPrice: Number(plan.total_price),
+    clauses: parkSettings?.bill_of_sale_clauses || DEFAULT_BILL_OF_SALE_CLAUSES,
+    paymentHistory,
+    residentSignatureName: updatedPlan.resident_signature_name || "",
+    residentSignedAt: updatedPlan.resident_signed_at || "",
+    adminSignatureName: updatedPlan.admin_signature_name || "",
+    adminSignedAt: updatedPlan.admin_signed_at || "",
   });
 
   const fileName = `bill-of-sale-${plan.id}-${Date.now()}.pdf`;
@@ -247,7 +380,7 @@ export async function checkAndCompleteRentToOwnPlan(
 
   if (uploadError) {
     console.error("Bill of Sale PDF upload failed:", uploadError.message);
-    return;
+    return { completed: false, error: uploadError.message };
   }
 
   const { data: publicUrlData } = supabase.storage.from("lease-documents").getPublicUrl(fileName);
@@ -262,22 +395,5 @@ export async function checkAndCompleteRentToOwnPlan(
 
   await supabase.from("rent_to_own_plans").update({ status: "completed" }).eq("id", plan.id);
 
-  // Aug 27 (per Mely — full RTO cycle verification): found live on
-  // "test 22" — the plan's own recurring_charges row was NEVER linked
-  // (recurring_charge_id stayed null from creation) and total_installments
-  // was never set either, so the generate-invoices cron's own
-  // auto-deactivation logic (which only fires when total_installments is
-  // set) never applied to Rent-to-Own charges at all. Meaning: once a
-  // resident fully paid off their home and got their Bill of Sale, the
-  // $${plan.monthly_principal}/mo charge would have kept billing them
-  // FOREVER with no automatic stop anywhere. Matching by resident_id +
-  // charge_type (not recurring_charge_id, which may be null on
-  // already-existing plans) so this fix protects existing plans too, not
-  // just ones created after this fix.
-  await supabase
-    .from("recurring_charges")
-    .update({ active: false })
-    .eq("resident_id", residentId)
-    .eq("charge_type", "Rent-to-Own Principal")
-    .eq("active", true);
+  return { completed: true };
 }
