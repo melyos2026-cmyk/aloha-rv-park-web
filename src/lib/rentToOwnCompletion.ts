@@ -100,7 +100,7 @@ async function generateBillOfSalePDFBlob(params: {
   doc.text("BILL OF SALE", pageWidth / 2, y, { align: "center" });
   y += 22;
 
-  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "America/New_York" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.text(`Date: ${today}`, pageWidth / 2, y, { align: "center" });
@@ -187,7 +187,7 @@ async function generateBillOfSalePDFBlob(params: {
     doc.setFontSize(9);
     doc.text(label, marginX, y);
     y += 14;
-    doc.text(`Signed: ${signedAt ? new Date(signedAt).toLocaleString("en-US") : "—"}`, marginX, y);
+    doc.text(`Signed: ${signedAt ? new Date(signedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) : "—"}`, marginX, y);
     y += 14;
     doc.line(marginX, y, marginX + 220, y);
     y += 12;

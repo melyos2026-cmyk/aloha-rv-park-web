@@ -959,7 +959,7 @@ export default function ResidentDashboard() {
               </p>
               {rentToOwnPlan.resident_signed_at ? (
                 <p style={{ fontSize: 14, fontWeight: 700, color: "#16a34a" }}>
-                  ✓ You signed on {new Date(rentToOwnPlan.resident_signed_at).toLocaleDateString("en-US")}.{" "}
+                  ✓ You signed on {new Date(rentToOwnPlan.resident_signed_at).toLocaleDateString("en-US", { timeZone: "America/New_York" })}.{" "}
                   {rentToOwnPlan.admin_signed_at
                     ? "Waiting on the final document to generate — refresh in a moment."
                     : "Waiting on the park's signature to finalize your Bill of Sale."}
