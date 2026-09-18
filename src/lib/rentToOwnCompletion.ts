@@ -19,8 +19,11 @@ async function generateBillOfSalePDFBlob(params: {
   residentEmail: string | null;
   residentPhone: string | null;
   lotName: string | null;
-  lotMaxLengthFt: number | null;
-  lotMaxWidthFt: number | null;
+  rvYear: string | null;
+  rvMake: string | null;
+  rvModel: string | null;
+  rvVinOrTag: string | null;
+  rvLengthFt: number | null;
   ampService: string | null;
   totalPrice: number;
   clauses: string;
@@ -118,16 +121,22 @@ async function generateBillOfSalePDFBlob(params: {
   line();
 
   paragraph("PROPERTY DESCRIPTION", { bold: true, size: 10 });
-  paragraph(`Unit / Lot: ${params.lotName || "N/A"}`);
-  if (params.lotMaxLengthFt || params.lotMaxWidthFt) {
-    paragraph(
-      `Dimensions: ${params.lotMaxLengthFt ? `${params.lotMaxLengthFt} ft (L)` : ""}${
-        params.lotMaxLengthFt && params.lotMaxWidthFt ? " x " : ""
-      }${params.lotMaxWidthFt ? `${params.lotMaxWidthFt} ft (W)` : ""}`
-    );
-  }
+  // Sep 18 (per Mely — same fix as melyos-builder's copy): shows the
+  // unit's own Year/Make/Model/VIN instead of the lot's dimensions, plus
+  // an explicit clause that the land itself isn't included in the sale.
+  const descriptionParts = [
+    params.rvYear || params.rvMake || params.rvModel ? `${params.rvYear || ""} ${params.rvMake || ""} ${params.rvModel || ""}`.trim() : null,
+  ].filter(Boolean);
+  paragraph(`Unit: ${descriptionParts.join(" ") || "N/A"}`);
+  if (params.rvVinOrTag) paragraph(`VIN / Tag #: ${params.rvVinOrTag}`);
+  if (params.rvLengthFt) paragraph(`Length: ${params.rvLengthFt} ft`);
   if (params.ampService) paragraph(`Electrical Service: ${params.ampService}`);
-  paragraph(`Location: ${params.companyAddress}`);
+  paragraph(`Situated at: Lot ${params.lotName || "N/A"}, ${params.companyAddress}`);
+  y += 4;
+  paragraph(
+    `This Bill of Sale conveys ownership of the unit described above ONLY. It does NOT include, transfer, or convey any ownership, leasehold, or other interest in the underlying lot or land on which the unit is situated. That land remains the property of ${params.companyName} and continues to be leased separately by Buyer under Buyer's own Lot Lease Agreement.`,
+    { bold: true, size: 9 }
+  );
   y += 6;
   line();
 
@@ -327,7 +336,7 @@ export async function signBillOfSaleAsResident(
   if (!bothSigned) return { completed: false };
 
   const [{ data: resident }, { data: company }, { data: lot }, { data: parkSettings }] = await Promise.all([
-    supabase.from("resident_accounts").select("full_name, email, phone").eq("id", residentId).single(),
+    supabase.from("resident_accounts").select("full_name, email, phone, rv_make, rv_model, rv_year, rv_length_ft, rv_vin_or_tag").eq("id", residentId).single(),
     supabase.from("companies").select("company_name, address, contact_phone, logo_url").eq("id", companyId).single(),
     plan.lot_id
       ? supabase.from("rv_lots").select("lot_name, max_length_ft, max_width_ft, amp_service").eq("id", plan.lot_id).single()
@@ -373,8 +382,11 @@ export async function signBillOfSaleAsResident(
     residentEmail: resident?.email || null,
     residentPhone: resident?.phone || null,
     lotName: (lot as any)?.lot_name || null,
-    lotMaxLengthFt: (lot as any)?.max_length_ft || null,
-    lotMaxWidthFt: (lot as any)?.max_width_ft || null,
+    rvYear: resident?.rv_year || null,
+    rvMake: resident?.rv_make || null,
+    rvModel: resident?.rv_model || null,
+    rvVinOrTag: resident?.rv_vin_or_tag || null,
+    rvLengthFt: resident?.rv_length_ft || null,
     ampService: (lot as any)?.amp_service || null,
     totalPrice: Number(plan.total_price),
     clauses: parkSettings?.bill_of_sale_clauses || DEFAULT_BILL_OF_SALE_CLAUSES,
