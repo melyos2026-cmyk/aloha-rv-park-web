@@ -163,20 +163,32 @@ async function generateBillOfSalePDFBlob(params: {
     y = 50;
   }
 
-  paragraph("_____________________________________", {});
-  paragraph(`${params.companyName} — Authorized Signature (${params.adminSignatureName})`, {});
-  paragraph(`Signed: ${params.adminSignedAt ? new Date(params.adminSignedAt).toLocaleString("en-US") : "—"}`, { size: 8.5 });
-  y += 10;
-  paragraph("_____________________________________", {});
-  paragraph("Witness (optional)", { size: 8.5 });
-  y += 24;
+  // Sep 16 (per Mely — same fix as melyos-builder's copy): cursive name
+  // drawn ON the line, matching the lease agreement's own signature
+  // style, instead of plain text printed below a blank line.
+  const signatureLine = (name: string, label: string, signedAt: string) => {
+    doc.setFont("times", "italic");
+    doc.setFontSize(20);
+    doc.text(name || "", marginX, y);
+    y += 4;
+    doc.setDrawColor(0);
+    doc.line(marginX, y, marginX + 220, y);
+    y += 14;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(label, marginX, y);
+    y += 14;
+    doc.text(`Signed: ${signedAt ? new Date(signedAt).toLocaleString("en-US") : "—"}`, marginX, y);
+    y += 14;
+    doc.line(marginX, y, marginX + 220, y);
+    y += 12;
+    doc.setFontSize(8.5);
+    doc.text("Witness (optional)", marginX, y);
+  };
 
-  paragraph("_____________________________________", {});
-  paragraph(`${params.residentName} — Buyer Signature (${params.residentSignatureName})`, {});
-  paragraph(`Signed: ${params.residentSignedAt ? new Date(params.residentSignedAt).toLocaleString("en-US") : "—"}`, { size: 8.5 });
-  y += 10;
-  paragraph("_____________________________________", {});
-  paragraph("Witness (optional)", { size: 8.5 });
+  signatureLine(params.adminSignatureName, `${params.companyName} — Authorized Signature`, params.adminSignedAt);
+  y += 30;
+  signatureLine(params.residentSignatureName, `${params.residentName} — Buyer Signature`, params.residentSignedAt);
 
   return doc.output("blob");
 }
