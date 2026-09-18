@@ -188,11 +188,6 @@ async function generateBillOfSalePDFBlob(params: {
     doc.text(label, marginX, y);
     y += 14;
     doc.text(`Signed: ${signedAt ? new Date(signedAt).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) : "—"}`, marginX, y);
-    y += 14;
-    doc.line(marginX, y, marginX + 220, y);
-    y += 12;
-    doc.setFontSize(8.5);
-    doc.text("Witness (optional)", marginX, y);
   };
 
   signatureLine(params.adminSignatureName, `${params.companyName} — Authorized Signature`, params.adminSignedAt);
@@ -408,6 +403,14 @@ export async function signBillOfSaleAsResident(
   }
 
   const { data: publicUrlData } = supabase.storage.from("lease-documents").getPublicUrl(fileName);
+
+  // Sep 18 (per Mely — same fix as melyos-builder's copy): only one Bill
+  // of Sale should ever exist per resident — replace, not accumulate.
+  await supabase
+    .from("resident_documents")
+    .delete()
+    .eq("resident_id", residentId)
+    .eq("document_type", "bill_of_sale");
 
   await supabase.from("resident_documents").insert({
     company_id: companyId,
