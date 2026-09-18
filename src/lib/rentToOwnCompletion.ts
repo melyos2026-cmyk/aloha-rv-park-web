@@ -405,7 +405,7 @@ export async function signBillOfSaleAsResident(
     document_type: "bill_of_sale",
     // Sep 18 (per Mely — same fix as melyos-builder's copy): explicit
     // created_at instead of relying on a possibly-absent DB default.
-    created_at: new Date().toISOString(),
+    uploaded_at: new Date().toISOString(),
   });
 
   await supabase.from("rent_to_own_plans").update({ status: "completed" }).eq("id", plan.id);
