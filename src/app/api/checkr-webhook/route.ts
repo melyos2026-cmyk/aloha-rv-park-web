@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { sendResidentNotificationEmail } from "@/lib/sendResidentNotificationEmail";
 import {
   verifyCheckrSignature,
   resolveCandidate,
@@ -97,6 +98,12 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
           // about their own household.
           resident_facing: true,
         });
+        await sendResidentNotificationEmail(
+          updatedOccupant.resident_id,
+          resident.company_id,
+          `Background check for ${updatedOccupant.full_name} (household occupant): ${resultLabel}.`,
+          "Household background check update"
+        );
       }
     }
 
