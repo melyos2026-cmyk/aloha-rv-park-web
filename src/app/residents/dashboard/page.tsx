@@ -63,6 +63,28 @@ export default function ResidentDashboard() {
   const [billOfSaleSignatureInput, setBillOfSaleSignatureInput] = useState("");
   const [signingBillOfSale, setSigningBillOfSale] = useState(false);
   const [billOfSaleMessage, setBillOfSaleMessage] = useState("");
+  // Sep 18 (per Mely): resident-facing notification bell — every
+  // automatic system event (invoice, electric reading, maintenance
+  // update, announcement, household background-check result) or manual
+  // admin message that concerns this resident.
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  async function loadNotifications() {
+    if (!residentId) return;
+    const res = await fetch(`/api/portal/notifications?residentId=${residentId}`);
+    const result = await res.json();
+    if (res.ok) setNotifications(result.notifications || []);
+  }
+
+  async function handleMarkAllNotificationsRead() {
+    await fetch("/api/portal/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ residentId, markAllRead: true }),
+    });
+    loadNotifications();
+  }
   const [nextPaymentDate, setNextPaymentDate] = useState<string | null>(null);
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
@@ -207,6 +229,8 @@ export default function ResidentDashboard() {
       .then((res) => res.json())
       .then((result) => setRentToOwnPlan(result.plan || null))
       .catch(() => setRentToOwnPlan(null));
+
+    loadNotifications();
 
     fetch(`/api/portal/billing-info?residentId=${residentId}`)
       .then((res) => res.json())
@@ -754,9 +778,72 @@ export default function ResidentDashboard() {
             <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, marginBottom: 4 }}>Welcome, {resident.full_name}</h1>
             <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : (resident.companies?.company_name || "")}</p>
           </div>
-          <button onClick={logout} style={{ background: "transparent", border: "1.5px solid #000000", color: "#000000", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
-            Sign Out
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
+            <button
+              onClick={() => setShowNotifications((v) => !v)}
+              style={{ background: "transparent", border: "1.5px solid #000000", color: "#000000", borderRadius: 6, padding: "10px 14px", fontWeight: 600, cursor: "pointer", position: "relative" }}
+            >
+              🔔
+              {notifications.filter((n) => !n.resident_read_at).length > 0 && (
+                <span
+                  style={{
+                    position: "absolute", top: -6, right: -6, background: "#dc2626", color: "#fff",
+                    borderRadius: "50%", width: 20, height: 20, fontSize: 11, fontWeight: 700,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  {notifications.filter((n) => !n.resident_read_at).length}
+                </span>
+              )}
+            </button>
+            {showNotifications && (
+              <div
+                style={{
+                  position: "absolute", top: "110%", right: 0, background: "#fff", color: "#000",
+                  borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", width: 340, maxHeight: 420,
+                  overflowY: "auto", zIndex: 50, border: "1px solid #e5e7eb",
+                }}
+              >
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <strong style={{ fontSize: 13 }}>Notifications</strong>
+                  <button onClick={handleMarkAllNotificationsRead} style={{ background: "none", border: "none", color: "#0891b2", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
+                    Mark all read
+                  </button>
+                </div>
+                {notifications.length === 0 ? (
+                  <p style={{ padding: 16, fontSize: 13, color: "#6b7280" }}>Nothing yet.</p>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      onClick={async () => {
+                        if (!n.resident_read_at) {
+                          await fetch("/api/portal/notifications", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ residentId, id: n.id }),
+                          });
+                          loadNotifications();
+                        }
+                      }}
+                      style={{
+                        padding: "10px 14px", borderBottom: "1px solid #f3f4f6", fontSize: 13, cursor: "pointer",
+                        background: n.resident_read_at ? "#fff" : "#eff6ff",
+                      }}
+                    >
+                      <div>{n.message}</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                        {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/New_York" })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+            <button onClick={logout} style={{ background: "transparent", border: "1.5px solid #000000", color: "#000000", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
+              Sign Out
+            </button>
+          </div>
         </div>
       </section>
 

@@ -92,6 +92,10 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
           resident_name: resident.full_name,
           update_type: "occupant_background_check_result",
           message: `Background check for ${updatedOccupant.full_name} (household occupant of ${resident.full_name}): ${resultLabel}.`,
+          // Sep 18 (per Mely): this already notified the admin — now
+          // also shows in the resident's own portal bell, since it's
+          // about their own household.
+          resident_facing: true,
         });
       }
     }
