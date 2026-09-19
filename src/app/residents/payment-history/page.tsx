@@ -292,7 +292,13 @@ export default function PaymentHistoryPage() {
                       <span style={{ display: "block", fontSize: 12, color: "#6b7280" }}>{payment.notes}</span>
                     )}
                   </span>
-                  <span style={{ color: "#6b7280" }}>{payment.payment_method || "—"}</span>
+                  <span style={{ color: "#6b7280" }}>
+                    {/* Sep 18 (per Mely): never show the underlying payment
+                        processor's name to the resident — "Stripe" is an
+                        implementation detail, "Card" is what they actually
+                        paid with. */}
+                    {payment.payment_method === "Stripe" ? "Card" : payment.payment_method || "—"}
+                  </span>
                   <span style={{ textAlign: "right", fontWeight: 700, color: "#000" }}>
                     {formatMoney(Number(payment.total_due || payment.amount || 0))}
                   </span>
