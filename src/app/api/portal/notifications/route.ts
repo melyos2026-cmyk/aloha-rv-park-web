@@ -63,3 +63,26 @@ export async function PATCH(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
+
+// DELETE /api/portal/notifications?residentId=...&id=...
+// Sep 18 (per Mely): lets the resident dismiss/remove a single
+// notification from their own bell — soft-deletes (deleted_at), same
+// convention as everywhere else in this codebase, so nothing is
+// actually erased from the admin's own side of this same table.
+export async function DELETE(req: NextRequest) {
+  const residentId = req.nextUrl.searchParams.get("residentId");
+  const id = req.nextUrl.searchParams.get("id");
+  if (!residentId || !id) {
+    return NextResponse.json({ error: "residentId and id are required." }, { status: 400 });
+  }
+  const authError = requireMatchingSession(req, residentId);
+  if (authError) return authError;
+
+  const { error } = await supabase
+    .from("resident_update_notifications")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("resident_id", residentId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}

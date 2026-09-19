@@ -816,25 +816,43 @@ export default function ResidentDashboard() {
                   notifications.map((n) => (
                     <div
                       key={n.id}
-                      onClick={async () => {
-                        if (!n.resident_read_at) {
-                          await fetch("/api/portal/notifications", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ residentId, id: n.id }),
-                          });
-                          loadNotifications();
-                        }
-                      }}
                       style={{
-                        padding: "10px 14px", borderBottom: "1px solid #f3f4f6", fontSize: 13, cursor: "pointer",
+                        padding: "10px 14px", borderBottom: "1px solid #f3f4f6", fontSize: 13,
                         background: n.resident_read_at ? "#fff" : "#eff6ff",
+                        display: "flex", alignItems: "flex-start", gap: 8,
                       }}
                     >
-                      <div>{n.message}</div>
-                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                        {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/New_York" })}
+                      <div
+                        onClick={async () => {
+                          if (!n.resident_read_at) {
+                            await fetch("/api/portal/notifications", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ residentId, id: n.id }),
+                            });
+                            loadNotifications();
+                          }
+                        }}
+                        style={{ flex: 1, cursor: "pointer" }}
+                      >
+                        <div>{n.message}</div>
+                        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                          {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/New_York" })}
+                        </div>
                       </div>
+                      {/* Sep 18 (per Mely): lets the resident dismiss a
+                          single notification. */}
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          await fetch(`/api/portal/notifications?residentId=${residentId}&id=${n.id}`, { method: "DELETE" });
+                          loadNotifications();
+                        }}
+                        style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 14, padding: "0 4px", lineHeight: 1 }}
+                        title="Dismiss"
+                      >
+                        ✕
+                      </button>
                     </div>
                   ))
                 )}
