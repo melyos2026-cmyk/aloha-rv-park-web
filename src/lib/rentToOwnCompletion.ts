@@ -327,7 +327,22 @@ export async function signBillOfSaleAsResident(
 
   if (signError) return { completed: false, error: signError.message };
 
+  // Sep 18 (per Mely — found live: the admin never got any notification
+  // when the resident signed): let the admin know a signature came in,
+  // either way — "your turn" if only the resident has signed, or that
+  // it's finalized if this signature was the second/last one needed.
   const bothSigned = !!updatedPlan.resident_signed_at && !!updatedPlan.admin_signed_at;
+  const { data: signingResident } = await supabase.from("resident_accounts").select("full_name").eq("id", residentId).maybeSingle();
+  await supabase.from("resident_update_notifications").insert({
+    company_id: companyId,
+    resident_id: residentId,
+    resident_name: signingResident?.full_name || null,
+    update_type: "rent_to_own_signature",
+    message: bothSigned
+      ? `${signingResident?.full_name || "The resident"} signed the Bill of Sale — both signatures are in, the document is now finalized in Documents.`
+      : `${signingResident?.full_name || "The resident"} signed their Bill of Sale — it's your turn to sign (Rent-to-Own Plans → Sign (Park)) before it's finalized.`,
+  });
+
   if (!bothSigned) return { completed: false };
 
   const [{ data: resident }, { data: company }, { data: lot }, { data: parkSettings }] = await Promise.all([
