@@ -781,7 +781,16 @@ export default function ResidentDashboard() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
             <button
-              onClick={() => setShowNotifications((v) => !v)}
+              onClick={() => {
+                // Sep 19 (per Mely): opening the bell itself marks
+                // everything read automatically — no manual confirm
+                // step, so the admin can tell it was actually seen just
+                // from the read timestamp, without the resident having
+                // to do anything extra.
+                const opening = !showNotifications;
+                setShowNotifications((v) => !v);
+                if (opening) handleMarkAllNotificationsRead();
+              }}
               style={{ background: "transparent", border: "1.5px solid #000000", color: "#000000", borderRadius: 6, padding: "10px 14px", fontWeight: 600, cursor: "pointer", position: "relative" }}
             >
               🔔
@@ -805,11 +814,8 @@ export default function ResidentDashboard() {
                   overflowY: "auto", zIndex: 50, border: "1px solid #e5e7eb",
                 }}
               >
-                <div style={{ padding: "10px 14px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid #e5e7eb" }}>
                   <strong style={{ fontSize: 13 }}>Notifications</strong>
-                  <button onClick={handleMarkAllNotificationsRead} style={{ background: "none", border: "none", color: "#0891b2", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>
-                    Mark all read
-                  </button>
                 </div>
                 {notifications.length === 0 ? (
                   <p style={{ padding: 16, fontSize: 13, color: "#6b7280" }}>Nothing yet.</p>
