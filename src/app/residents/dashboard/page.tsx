@@ -70,9 +70,10 @@ export default function ResidentDashboard() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  async function loadNotifications() {
-    if (!residentId) return;
-    const res = await fetch(`/api/portal/notifications?residentId=${residentId}`);
+  async function loadNotifications(overrideResidentId?: string) {
+    const id = overrideResidentId || residentId;
+    if (!id) return;
+    const res = await fetch(`/api/portal/notifications?residentId=${id}`);
     const result = await res.json();
     if (res.ok) setNotifications(result.notifications || []);
   }
@@ -230,7 +231,7 @@ export default function ResidentDashboard() {
       .then((result) => setRentToOwnPlan(result.plan || null))
       .catch(() => setRentToOwnPlan(null));
 
-    loadNotifications();
+    loadNotifications(residentId);
 
     fetch(`/api/portal/billing-info?residentId=${residentId}`)
       .then((res) => res.json())
