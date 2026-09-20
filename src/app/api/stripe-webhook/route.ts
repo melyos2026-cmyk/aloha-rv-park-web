@@ -6,6 +6,7 @@ import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } fro
 import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
+import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -228,6 +229,64 @@ export async function POST(req: Request) {
       } catch (emailErr) {
         console.error("Failed to send receipt email:", emailErr);
       }
+    }
+  }
+
+  // Sep 20 (per Mely — "un sistema que mida, corrija los errores...
+  // detecte cualquier problema si hubo problema de pago"): the webhook
+  // above only ever handled a SUCCESSFUL checkout — nothing logged when
+  // a payment failed or a customer abandoned checkout entirely. These
+  // two event types must also be enabled for this webhook endpoint in
+  // the Stripe Dashboard (Developers → Webhooks → this endpoint → Select
+  // events), same manual step as the Resend webhook's dashboard setup.
+  //
+  // Most checkout sessions in this codebase never set metadata.company_id
+  // directly (only resident_id, application_id, or park) — resolves it
+  // from whichever of those IS present instead of assuming one field.
+  async function resolveCompanyIdFromMetadata(metadata: Stripe.Metadata | null | undefined): Promise<string | null> {
+    if (!metadata) return null;
+    if (metadata.company_id) return metadata.company_id;
+    if (metadata.resident_id) {
+      const { data } = await supabase.from("resident_accounts").select("company_id").eq("id", metadata.resident_id).maybeSingle();
+      if (data?.company_id) return data.company_id;
+    }
+    if (metadata.application_id) {
+      const { data } = await supabase.from("resident_applications").select("company_id").eq("id", metadata.application_id).maybeSingle();
+      if (data?.company_id) return data.company_id;
+    }
+    if (metadata.park) {
+      const { data } = await supabase.from("companies").select("id").eq("park_id", metadata.park).maybeSingle();
+      if (data?.id) return data.id;
+    }
+    return null;
+  }
+
+  if (event.type === "checkout.session.expired") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const email = session.customer_details?.email || session.customer_email || "unknown";
+    const amount = ((session.amount_total || 0) / 100).toFixed(2);
+    const companyId = await resolveCompanyIdFromMetadata(session.metadata);
+    if (companyId) {
+      await logSystemHealthIssue({
+        companyId,
+        issueType: "payment_failed",
+        message: `Checkout session expired without completing — ${email}, $${amount} (${session.metadata?.type || "unknown charge type"}).`,
+        source: "stripe_webhook",
+      });
+    }
+  }
+
+  if (event.type === "payment_intent.payment_failed") {
+    const intent = event.data.object as Stripe.PaymentIntent;
+    const amount = ((intent.amount || 0) / 100).toFixed(2);
+    const companyId = await resolveCompanyIdFromMetadata(intent.metadata);
+    if (companyId) {
+      await logSystemHealthIssue({
+        companyId,
+        issueType: "payment_failed",
+        message: `Payment failed — $${amount}. ${intent.last_payment_error?.message || "No further detail from Stripe."}`,
+        source: "stripe_webhook",
+      });
     }
   }
 
