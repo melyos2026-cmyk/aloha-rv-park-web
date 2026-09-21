@@ -19,7 +19,7 @@ export default function Footer() {
           {/* Brand */}
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-              <img src="/aloha-logo-footer.png" alt={`${companyName} Compass`} style={{ height: 90, width: "auto" }} />
+              <img src={company?.logo_url || "/aloha-logo-footer.png"} alt={`${companyName} Compass`} style={{ height: 90, width: "auto" }} />
               <div>
                 <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 900, fontSize: 16 }}>{companyName.toUpperCase()}</div>
               </div>
