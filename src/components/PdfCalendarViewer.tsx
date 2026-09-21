@@ -29,7 +29,7 @@ export default function PdfCalendarViewer({ pdfUrl }: { pdfUrl: string }) {
           const page = await pdf.getPage(pageNum);
           const containerWidth = containerRef.current.clientWidth || 800;
           const unscaledViewport = page.getViewport({ scale: 1 });
-          const scale = Math.min(2.5, (containerWidth / unscaledViewport.width) * 1.5);
+          const scale = Math.min(3, (containerWidth / unscaledViewport.width) * 1.9);
           const viewport = page.getViewport({ scale });
 
           const canvas = document.createElement("canvas");
@@ -69,7 +69,7 @@ export default function PdfCalendarViewer({ pdfUrl }: { pdfUrl: string }) {
     <div>
       {loading && <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 12 }}>Loading calendar…</p>}
       {error && <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
-      <div ref={containerRef} style={{ maxWidth: 1150, margin: "0 auto" }} />
+      <div ref={containerRef} style={{ maxWidth: 1500, margin: "0 auto" }} />
     </div>
   );
 }
