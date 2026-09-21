@@ -78,13 +78,13 @@ export default function Home() {
         }} />
         <div style={{ position: "relative", maxWidth: 800, margin: "0 auto" }}>
           <div style={{ fontSize: 13, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--white)", fontWeight: 600, marginBottom: 16 }}>
-            ★ {company.hero_location_label || "Kissimmee, Florida"} ★
+            ★ {company?.hero_location_label || "Kissimmee, Florida"} ★
           </div>
           <h1 style={{ fontSize: "clamp(40px, 7vw, 80px)", fontWeight: 900, lineHeight: 1.05, marginBottom: 24 }}>
-            {company.hero_headline ? company.hero_headline : (<>Your Home<br />Away From Home</>)}
+            {company?.hero_headline ? company?.hero_headline : (<>Your Home<br />Away From Home</>)}
           </h1>
           <p style={{ fontSize: 18, color: "#9ca3af", lineHeight: 1.7, marginBottom: 40, maxWidth: 560, margin: "0 auto 40px" }}>
-            {company.hero_subtext || "Located minutes from Disney World, Universal Studios & SeaWorld. Daily, weekly & monthly rates available."}
+            {company?.hero_subtext || "Located minutes from Disney World, Universal Studios & SeaWorld. Daily, weekly & monthly rates available."}
           </p>
           <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
             <a href="#map" style={{
@@ -178,7 +178,7 @@ export default function Home() {
             </div>
             <div style={{ marginTop: 32 }}>
               <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(company.address || `${company.company_name} Kissimmee FL`)}`}
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(company?.address || `${company?.company_name} Kissimmee FL`)}`}
                 target="_blank" rel="noreferrer"
                 style={{ background: "var(--mint)", color: "var(--red-dark)", border: "2px solid var(--red-dark)", padding: "12px 26px", borderRadius: 4, fontWeight: 700, fontSize: 14, display: "inline-block" }}>
                 📍 Get Directions
@@ -187,9 +187,9 @@ export default function Home() {
           </div>
           <div style={{ background: "var(--black)", borderRadius: 8, overflow: "hidden", aspectRatio: "4/3" }}>
             <iframe
-              src={`https://www.google.com/maps?q=${encodeURIComponent(company.address || `${company.company_name} Kissimmee FL`)}&output=embed`}
+              src={`https://www.google.com/maps?q=${encodeURIComponent(company?.address || `${company?.company_name} Kissimmee FL`)}&output=embed`}
               width="100%" height="100%" style={{ border: 0 }} loading="lazy"
-              title={`${company.company_name} Location`}
+              title={`${company?.company_name} Location`}
             />
           </div>
         </div>

@@ -14,6 +14,9 @@ export interface Company {
   ai_assistant_info: string | null;
   park_id: string | null;
   hero_image_url: string | null;
+  hero_location_label: string | null;
+  hero_headline: string | null;
+  hero_subtext: string | null;
   rate_daily: string | null;
   rate_weekly: string | null;
   rate_monthly_offpeak: string | null;
@@ -57,7 +60,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     supabase
       .from("public_company_profile")
-      .select("id, company_name, address, logo_url, domain, contact_email, contact_phone, ai_assistant_info, park_id, hero_image_url, rate_daily, rate_weekly, rate_monthly_offpeak, rate_monthly_peak, events_calendar_pdf_url")
+      .select("id, company_name, address, logo_url, domain, contact_email, contact_phone, ai_assistant_info, park_id, hero_image_url, hero_location_label, hero_headline, hero_subtext, rate_daily, rate_weekly, rate_monthly_offpeak, rate_monthly_peak, events_calendar_pdf_url")
       .eq("domain", hostname)
       .maybeSingle()
       .then(({ data, error: err }) => {
