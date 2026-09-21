@@ -43,7 +43,7 @@ export default function Footer() {
           <div>
             <h4 style={{ fontSize: 12, letterSpacing: "0.15em", textTransform: "uppercase", color: "#4b5563", marginBottom: 16 }}>Quick Links</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[["Home","/"],["Residents","/residents"],["Apply","/apply"],["Real Estate","/real-estate"],["Events","/events"]].map(([l,h]) => (
+              {[["Home","/"],["Residents","/login"],["Apply","/apply"],["Real Estate","/real-estate"],["Events","/events"]].map(([l,h]) => (
                 <Link key={h} href={h} style={{ fontSize: 13, color: "#374151", transition: "color 0.2s" }}
                   onMouseEnter={e => (e.currentTarget.style.color = "var(--red-dark)")}
                   onMouseLeave={e => (e.currentTarget.style.color = "#374151")}>
