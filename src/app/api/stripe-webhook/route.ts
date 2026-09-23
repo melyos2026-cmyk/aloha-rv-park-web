@@ -11,6 +11,16 @@ import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
+// Sep 23 (per Mely — testing System Health in Stripe's Sandbox, found
+// live: "No events deliveries found" because this webhook endpoint was
+// only ever configured on the Live side of the Stripe dashboard, never
+// in Sandbox — so no test-mode event, then or now, ever had anywhere to
+// deliver to). Stripe's newer Sandboxes are fully separate environments
+// with their own signing secret per webhook destination, even when both
+// point at this exact same URL. Tries the Sandbox secret first (if a
+// second destination gets added there), falling back to the Live one —
+// so real production payments are never at risk from this change.
+const sandboxWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET_SANDBOX as string | undefined;
 
 export async function POST(req: Request) {
   const body = await req.text();
@@ -20,9 +30,18 @@ export async function POST(req: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err: any) {
-    console.log("Webhook signature verification failed:", err.message);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  } catch (liveErr: any) {
+    if (sandboxWebhookSecret) {
+      try {
+        event = stripe.webhooks.constructEvent(body, signature, sandboxWebhookSecret);
+      } catch (sandboxErr: any) {
+        console.log("Webhook signature verification failed (both secrets):", liveErr.message, sandboxErr.message);
+        return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+      }
+    } else {
+      console.log("Webhook signature verification failed:", liveErr.message);
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+    }
   }
 
   if (event.type === "checkout.session.completed") {
