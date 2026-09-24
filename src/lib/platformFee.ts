@@ -8,8 +8,14 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 // almost all of a flat 4% on small charges — a $18 propane order nets
 // MelyOS roughly -$0.39 on a bare 4%, not a profit. The minimum guarantees
 // a small real margin even on the smallest charges (propane starts at $18).
-export const PROCESSING_FEE_PERCENT = 0.04;
-export const PROCESSING_FEE_MINIMUM = 1.5;
+//
+// Sep 24 (per Mely): lowered from 4%/$1.50 to 3.5%/$2.25 — less sticker
+// shock for residents paying by card, betting on more residents actually
+// using the system over time outweighing the lower per-transaction margin
+// on large charges (verified: still profitable at every amount, but a
+// ~$850 rent charge nets roughly $4 less per month than at 4%).
+export const PROCESSING_FEE_PERCENT = 0.035;
+export const PROCESSING_FEE_MINIMUM = 2.25;
 
 export function calculateProcessingFee(amount: number): number {
   const percentFee = amount * PROCESSING_FEE_PERCENT;
