@@ -91,6 +91,14 @@ export async function POST(req: Request) {
       <a href="${loginLink}" style="color: ${brandColor};">${domain}/login</a> and click
       <strong>"Forgot Password"</strong> — that's the same way to set up your password the first time.
     </p>
+    <div style="background: #f0f9ff; border-radius: 8px; padding: 16px; margin: 20px 0;">
+      <p style="color: #333; margin: 0 0 8px 0;"><strong>📱 Tip: install the portal on your phone</strong></p>
+      <p style="color: #555; font-size: 13px; margin: 0;">
+        Once you're logged in, you can add it to your home screen like an app:<br/>
+        <strong>iPhone (Safari):</strong> tap the Share button, then "Add to Home Screen."<br/>
+        <strong>Android (Chrome):</strong> tap the ⋮ menu, then "Add to Home Screen" or "Install app."
+      </p>
+    </div>
     <p style="color: #999; font-size: 13px;">Welcome home,<br/>${companyName}</p>
     <p style="text-align:center; color:#ccc; font-size:10px; margin-top:16px;">Powered by MelyOS.io</p>
   `);
