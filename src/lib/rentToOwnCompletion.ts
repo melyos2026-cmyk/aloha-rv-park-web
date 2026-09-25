@@ -440,5 +440,16 @@ export async function signBillOfSaleAsResident(
 
   await supabase.from("rent_to_own_plans").update({ status: "completed" }).eq("id", plan.id);
 
+  // Sep 25 (per Mely — same fix as melyos-builder's copy): once fully
+  // paid off and signed, the resident legally owns their unit — flip
+  // Unit Ownership from "park" to "resident" so a later move-out is
+  // correctly treated as still owning the unit (rent continues until
+  // sold/removed) instead of ending like a regular renter leaving.
+  await supabase
+    .from("resident_accounts")
+    .update({ unit_ownership: "resident" })
+    .eq("id", residentId)
+    .neq("unit_ownership", "resident");
+
   return { completed: true };
 }
