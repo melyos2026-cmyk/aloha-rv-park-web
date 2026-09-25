@@ -161,27 +161,31 @@ function DocumentsContent() {
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-zA-Z0-9._-]/g, "_");
-      const filePath = `residents/${residentId}/${Date.now()}-${cleanFileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from("company-assets")
-        .upload(filePath, file);
-
-      if (uploadError) {
-        setUploadMessage("Could not upload file: " + uploadError.message);
-        setUploading(false);
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from("company-assets").getPublicUrl(filePath);
+      // Sep 25 (per Mely — full security audit, "no quiero huecos"): the
+      // file used to be uploaded directly from the browser to a PUBLIC
+      // bucket, meaning its URL worked forever for anyone who ever got
+      // hold of it (browser history, a screenshot, etc.) — no login
+      // required, no expiry. Now sends the raw file to the server,
+      // which uploads it to a PRIVATE bucket after verifying this is
+      // really this resident's own session; viewing it later goes
+      // through a signed, short-lived URL instead (see loadDocuments /
+      // viewDocument below).
+      const fileDataBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = () => reject(new Error("Could not read file."));
+        reader.readAsDataURL(file);
+      });
 
       const res = await fetch("/api/portal/upload-document", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           residentId,
-          fileName: file.name,
-          fileUrl: urlData.publicUrl,
+          fileName: cleanFileName,
+          fileDataBase64,
+          contentType: file.type || "application/octet-stream",
           documentType: uploadType,
           relatedOccupantId: uploadForOccupantId || null,
         }),
@@ -201,6 +205,48 @@ function DocumentsContent() {
       setUploadMessage("Could not upload document (unexpected error): " + (err?.message || err));
     }
     setUploading(false);
+  }
+
+  async function viewDocument(documentId: string) {
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) {
+      setMessage("Please log in again.");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/portal/document-url?residentId=${residentId}&documentId=${documentId}`
+      );
+      const result = await res.json();
+      if (!res.ok || !result.url) {
+        setMessage(result?.error || "Could not open this document.");
+        return;
+      }
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      setMessage("Could not open this document: " + (err?.message || err));
+    }
+  }
+
+  async function viewLeaseDocument(leaseId: string) {
+    const residentId = localStorage.getItem("resident_id");
+    if (!residentId) {
+      setMessage("Please log in again.");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/portal/lease-document-url?residentId=${residentId}&leaseId=${leaseId}`
+      );
+      const result = await res.json();
+      if (!res.ok || !result.url) {
+        setMessage(result?.error || "Could not open this document.");
+        return;
+      }
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      setMessage("Could not open this document: " + (err?.message || err));
+    }
   }
 
   async function deleteDocument(documentId: string) {
@@ -341,10 +387,8 @@ function DocumentsContent() {
                   </div>
 
                   {lease.lease_document_url ? (
-                    <a
-                      href={lease.lease_document_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => viewLeaseDocument(lease.id)}
                       style={{
                         background: "#000",
                         color: "#fff",
@@ -352,11 +396,12 @@ function DocumentsContent() {
                         borderRadius: 8,
                         fontSize: 14,
                         fontWeight: 700,
-                        textDecoration: "none",
+                        border: "none",
+                        cursor: "pointer",
                       }}
                     >
                       📄 View / Print PDF
-                    </a>
+                    </button>
                   ) : (
                     <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>PDF not available</span>
                   )}
@@ -443,10 +488,8 @@ function DocumentsContent() {
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <a
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => viewDocument(doc.id)}
                       style={{
                         background: "#000",
                         color: "#fff",
@@ -454,11 +497,12 @@ function DocumentsContent() {
                         borderRadius: 8,
                         fontSize: 13,
                         fontWeight: 700,
-                        textDecoration: "none",
+                        border: "none",
+                        cursor: "pointer",
                       }}
                     >
                       📄 View
-                    </a>
+                    </button>
                     <button
                       onClick={() => deleteDocument(doc.id)}
                       style={{

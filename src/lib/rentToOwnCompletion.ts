@@ -408,8 +408,14 @@ export async function signBillOfSaleAsResident(
   });
 
   const fileName = `bill-of-sale-${plan.id}-${Date.now()}.pdf`;
+  // Sep 25 (per Mely — full security audit, "no quiero huecos"): switched
+  // from the "lease-documents" PUBLIC bucket (a Bill of Sale PDF's URL
+  // worked forever for anyone who got hold of it, no login required) to
+  // the same private resident-documents bucket used everywhere else in
+  // this pass — file_url now stores a path, resolved to a short-lived
+  // signed URL only when actually viewed (document-url/route.ts).
   const { error: uploadError } = await supabase.storage
-    .from("lease-documents")
+    .from("resident-documents")
     .upload(fileName, pdfBlob, { contentType: "application/pdf" });
 
   if (uploadError) {
@@ -417,10 +423,19 @@ export async function signBillOfSaleAsResident(
     return { completed: false, error: uploadError.message };
   }
 
-  const { data: publicUrlData } = supabase.storage.from("lease-documents").getPublicUrl(fileName);
-
   // Sep 18 (per Mely — same fix as melyos-builder's copy): only one Bill
   // of Sale should ever exist per resident — replace, not accumulate.
+  // Sep 25: also removes the OLD file from storage, not just its row —
+  // previously left every prior version orphaned in storage forever.
+  const { data: oldBillsOfSale } = await supabase
+    .from("resident_documents")
+    .select("file_url")
+    .eq("resident_id", residentId)
+    .eq("document_type", "bill_of_sale");
+  const oldPaths = (oldBillsOfSale || []).map((d) => d.file_url).filter(Boolean);
+  if (oldPaths.length > 0) {
+    await supabase.storage.from("resident-documents").remove(oldPaths);
+  }
   await supabase
     .from("resident_documents")
     .delete()
@@ -431,7 +446,7 @@ export async function signBillOfSaleAsResident(
     company_id: companyId,
     resident_id: residentId,
     file_name: "Bill of Sale",
-    file_url: publicUrlData.publicUrl,
+    file_url: fileName,
     document_type: "bill_of_sale",
     // Sep 18 (per Mely — same fix as melyos-builder's copy): explicit
     // created_at instead of relying on a possibly-absent DB default.

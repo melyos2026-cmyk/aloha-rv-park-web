@@ -35,6 +35,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
   }
 
+  // Sep 25 (per Mely — full security audit): this only ever deleted the
+  // database row, never the actual file in storage — every "removed"
+  // document was actually left behind forever. Now also removes the
+  // real object from the private bucket.
+  const { data: fullDoc } = await supabase
+    .from("resident_documents")
+    .select("file_url")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (fullDoc?.file_url) {
+    await supabase.storage.from("resident-documents").remove([fullDoc.file_url]);
+  }
+
   const { error } = await supabase.from("resident_documents").delete().eq("id", documentId);
 
   if (error) {
