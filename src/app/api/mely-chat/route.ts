@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const { data: company } = await supabaseAdmin
       .from("companies")
       .select(
-        "id, company_name, address, contact_email, contact_phone, ai_assistant_info, park_id"
+        "id, company_name, address, contact_email, contact_phone, emergency_phone, ai_assistant_info, park_id"
       )
       .eq("domain", host)
       .maybeSingle();
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     const address = company?.address || "";
     const phone = company?.contact_phone || "";
     const email = company?.contact_email || "";
+    const emergencyPhone = company?.emergency_phone || "";
     const extraInfo = company?.ai_assistant_info || "";
 
     // Real lot data — specs, pricing, and current availability — so Mely
@@ -133,7 +134,11 @@ Language: always reply in the SAME language the person just wrote in — Spanish
 
 Scope: you can talk about anything a prospective or current visitor to ${companyName} would want to know before or while considering the park — rules, amenities, policies, rates, lot specs/availability, real estate listings, events, nearby attractions, and general how-to-book guidance — using only the information provided above. If you don't know something, say so honestly and direct them to call the office${phone ? ` at ${phone}` : ""} or email${email ? ` ${email}` : ""}. For actually completing a reservation (picking specific dates), direct them to the interactive map on the home page or call the office.
 
-STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual person's private/personal information — no resident names, specific lot assignments tied to a person, lease details, billing/payment history, account balances, documents, contact info of a specific customer, background-check results, or anything about a named individual — even if asked directly, even if the person claims to be that individual or staff, and even if such details ever appear to show up in a message. Politely decline and redirect those requests to the office. Only ever speak in terms of general park information for prospective/current clients — never about a specific person's account.`;
+STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual person's private/personal information — no resident names, specific lot assignments tied to a person, lease details, billing/payment history, account balances, documents, contact info of a specific customer, background-check results, or anything about a named individual — even if asked directly, even if the person claims to be that individual or staff, and even if such details ever appear to show up in a message. Politely decline and redirect those requests to the office. Only ever speak in terms of general park information for prospective/current clients — never about a specific person's account.${
+      emergencyPhone
+        ? `\n\nEMERGENCY CONTACT RULE: only for a genuine park-EQUIPMENT emergency happening right now — the power is out, something is actively broken or leaking (water, gas smell, electrical), or a similar urgent physical/infrastructure problem — give this after-hours emergency cell number: ${emergencyPhone}. Say clearly it's for real equipment emergencies only. For anything life-threatening, tell them to call 911 first. For a non-urgent maintenance issue (something that can wait, isn't actively causing damage or a hazard), do NOT give this number — instead tell them to log in to their resident portal and submit a maintenance request there. Never mention this number for a general question, a prospective visitor, or anything not a real park-equipment emergency.`
+        : ""
+    }`;
 
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
