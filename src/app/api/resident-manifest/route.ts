@@ -25,7 +25,15 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   const companyName = company?.company_name || "Resident Portal";
-  const icon = company?.logo_url || "/aloha-logo.png";
+  // Sep 25 (per Mely — sent a custom-designed icon specifically for
+  // Aloha's Resident Portal app, not just its plain header/footer logo):
+  // used only when this exact company matches, so every other company
+  // (Sunset Ridge, and anyone added later) still gets their own logo_url
+  // automatically with no code change needed.
+  const icon =
+    hostname === "aloharvparkfl.com"
+      ? "/residents-app-icon-aloha.png"
+      : company?.logo_url || "/aloha-logo.png";
   const themeColor = company?.primary_color || "#0b1f3a";
 
   const manifest = {
