@@ -144,7 +144,7 @@ export default function Mely() {
               <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
                 <div style={{
                   maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
-                  fontSize: 13, lineHeight: 1.6,
+                  fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap",
                   background: m.role === "user" ? "var(--sea)" : "var(--gray-light)",
                   color: "var(--black)",
                   borderBottomRightRadius: m.role === "user" ? 2 : 12,
