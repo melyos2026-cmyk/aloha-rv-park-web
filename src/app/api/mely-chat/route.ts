@@ -164,8 +164,15 @@ STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual pe
       return NextResponse.json({ error: "Chat service error" }, { status: 502 });
     }
 
-    const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
-    if (!data.content?.[0]?.text) {
+    // Sep 25 (per Mely — found live: "Sorry, I couldn't get a response"
+    // even though the model's answer was actually perfect): claude-
+    // sonnet-5 returns a "thinking" block before the "text" block, so
+    // content[0] is no longer reliably the reply — same fix already
+    // used in admin/ask-mely/route.ts, just missing here.
+    const reply =
+      (data.content || []).find((block: any) => block.type === "text")?.text ||
+      "Sorry, I couldn't get a response.";
+    if (!reply || reply === "Sorry, I couldn't get a response.") {
       console.error("mely-chat: unexpected response shape:", JSON.stringify(data));
     }
     return NextResponse.json({ reply });
