@@ -127,9 +127,60 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Sep 25 (per Mely — "quiero que Mely se actualice cada vez que el
+    // application default se actualice"): the park's own official rules
+    // and policies, set once in Lease Defaults (Applications screen) and
+    // shared by every application — pulled fresh from the database on
+    // every single message, so this always reflects whatever's currently
+    // saved with zero code changes needed when an admin edits it.
+    let rulesContext = "";
+    if (company?.id) {
+      const { data: parkSettings } = await supabaseAdmin
+        .from("park_settings")
+        .select("lease_defaults")
+        .eq("company_id", company.id)
+        .maybeSingle();
+
+      const defaults = parkSettings?.lease_defaults as Record<string, any> | undefined;
+      if (defaults) {
+        const parts: string[] = [];
+        if (Array.isArray(defaults.park_rules) && defaults.park_rules.length > 0) {
+          parts.push(
+            "Park Rules & Community Guidelines:\n" +
+              defaults.park_rules.map((r: any) => `- ${r.title}: ${r.text}`).join("\n")
+          );
+        }
+        if (defaults.pets_allowed !== undefined) {
+          parts.push(
+            `Pet policy: ${defaults.pets_allowed ? "pets allowed" : "no pets allowed"}${
+              defaults.pet_restrictions ? ` — ${defaults.pet_restrictions}` : ""
+            }`
+          );
+        }
+        if (defaults.smoking_policy) {
+          parts.push(
+            `Smoking policy: ${defaults.smoking_policy}${defaults.smoking_areas ? ` — ${defaults.smoking_areas}` : ""}`
+          );
+        }
+        if (defaults.parking_provided !== undefined) {
+          parts.push(
+            `Parking: ${defaults.parking_provided ? `provided${defaults.parking_spaces ? ` (${defaults.parking_spaces} spaces)` : ""}` : "not provided"}${
+              defaults.parking_free !== undefined ? (defaults.parking_free ? ", free" : `, $${defaults.parking_cost || "—"}`) : ""
+            }`
+          );
+        }
+        if (defaults.additional_provisions) {
+          parts.push(`Additional terms: ${defaults.additional_provisions}`);
+        }
+        if (parts.length > 0) {
+          rulesContext = `\n\nOfficial park rules and policies (set by the park in Lease Defaults — always current):\n${parts.join("\n\n")}`;
+        }
+      }
+    }
+
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}
 
-${extraInfo}${lotsContext}${pagesContext}${listingsContext}
+${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}
 
 Language: always reply in the SAME language the person just wrote in — Spanish, English, or any other language — match their current message, not any previous one in the conversation. Always keep a warm, professional tone regardless of language.
 
