@@ -990,11 +990,19 @@ async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
   // really charged and Stripe really confirmed it, but
   // rent_to_own_deposit_paid stayed false forever and the admin was
   // never notified. Fixed to select real columns only.
+  //
+  // Sep 26 (per Mely — "esta todo conectado?"): this payment was
+  // completely invisible in All Transactions/Payments & Taxes — there
+  // was no timestamp column at all recording WHEN it was paid, so
+  // nothing could ever include it in a report. Added
+  // rent_to_own_deposit_paid_at and set it here, same as every other
+  // real payment date in this system.
   const { data: application, error } = await supabase
     .from("resident_applications")
     .update({
       rent_to_own_deposit_paid: true,
       rent_to_own_deposit_method: "Stripe",
+      rent_to_own_deposit_paid_at: new Date().toISOString(),
     })
     .eq("id", applicationId)
     .select("full_name, company_id, rent_to_own_deposit")
