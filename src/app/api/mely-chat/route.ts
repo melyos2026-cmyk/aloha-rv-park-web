@@ -165,6 +165,9 @@ STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual pe
     }
 
     const reply = data.content?.[0]?.text || "Sorry, I couldn't get a response.";
+    if (!data.content?.[0]?.text) {
+      console.error("mely-chat: unexpected response shape:", JSON.stringify(data));
+    }
     return NextResponse.json({ reply });
   } catch (err: any) {
     console.error("mely-chat error:", err);
