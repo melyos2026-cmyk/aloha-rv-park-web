@@ -48,6 +48,23 @@ export default function Mely() {
     return () => clearTimeout(timer);
   }, [open, companyName]);
 
+  // Sep 25 (per Mely — wants admin.aloha's Mely to be able to see recent
+  // resident/visitor conversations with this widget): a per-browser-tab
+  // id groups one visitor's whole conversation together in the new
+  // mely_chat_logs table, without needing them logged in (most people
+  // talking to this widget are anonymous prospective guests, not
+  // necessarily an existing resident).
+  const sessionIdRef = useRef<string>("");
+  if (!sessionIdRef.current && typeof window !== "undefined") {
+    sessionIdRef.current =
+      sessionStorage.getItem("mely_session_id") ||
+      (() => {
+        const id = crypto.randomUUID();
+        sessionStorage.setItem("mely_session_id", id);
+        return id;
+      })();
+  }
+
   const send = async () => {
     if (!input.trim() || loading) return;
     const userMsg = input.trim();
@@ -62,7 +79,7 @@ export default function Mely() {
       const res = await fetch("/api/mely-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages, company }),
+        body: JSON.stringify({ messages: nextMessages, company, sessionId: sessionIdRef.current }),
       });
       const data = await res.json();
       const reply = data.reply || `Sorry, I couldn't get a response. Please call us at ${phone}.`;

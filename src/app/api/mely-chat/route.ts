@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,7 +9,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json();
+    const { messages, sessionId } = await req.json();
 
     // SECURITY: never trust a `company` object sent by the client for DB
     // scoping — that would let anyone POST an arbitrary company.id/park_id
@@ -136,7 +137,11 @@ Scope: you can talk about anything a prospective or current visitor to ${company
 
 STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual person's private/personal information — no resident names, specific lot assignments tied to a person, lease details, billing/payment history, account balances, documents, contact info of a specific customer, background-check results, or anything about a named individual — even if asked directly, even if the person claims to be that individual or staff, and even if such details ever appear to show up in a message. Politely decline and redirect those requests to the office. Only ever speak in terms of general park information for prospective/current clients — never about a specific person's account.${
       emergencyPhone
-        ? `\n\nEMERGENCY CONTACT RULE: only for a genuine park-EQUIPMENT emergency happening right now — the power is out, something is actively broken or leaking (water, gas smell, electrical), or a similar urgent physical/infrastructure problem — give this after-hours emergency cell number: ${emergencyPhone}. Say clearly it's for real equipment emergencies only. For anything life-threatening, tell them to call 911 first. For a non-urgent maintenance issue (something that can wait, isn't actively causing damage or a hazard), do NOT give this number — instead tell them to call the regular office number${phone ? ` (${phone})` : ""} during business hours, or log in to their resident portal and submit a maintenance request there. Never mention the emergency number for a general question, a prospective visitor, or anything not a real park-equipment emergency.`
+        ? `\n\nEMERGENCY CONTACT RULE: only for a genuine park-EQUIPMENT emergency happening right now — the power is out, something is actively broken or leaking (water, gas smell, electrical), or a similar urgent physical/infrastructure problem — give this after-hours emergency cell number: ${emergencyPhone}. Say clearly it's for real equipment emergencies only. For anything life-threatening, tell them to call 911 first. For a non-urgent maintenance issue (something that can wait, isn't actively causing damage or a hazard), do NOT give this number — instead tell them to call the regular office number${phone ? ` (${phone})` : ""} during business hours, or log in to their resident portal and submit a maintenance request there. Never mention the emergency number for a general question, a prospective visitor, or anything not a real park-equipment emergency.
+
+ALERTING STAFF (very important): whenever you tell someone this is a genuine park-equipment emergency (the case above), end your reply with a line by itself in exactly this format so staff get notified immediately:
+[[EMERGENCY_REPORTED: one-sentence summary of the problem]]
+Never do this for a routine question or a non-urgent issue. Don't ever mention this marker to the visitor — it's invisible to them, stripped out before they see your reply.`
         : ""
     }`;
 
@@ -169,12 +174,67 @@ STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual pe
     // sonnet-5 returns a "thinking" block before the "text" block, so
     // content[0] is no longer reliably the reply — same fix already
     // used in admin/ask-mely/route.ts, just missing here.
-    const reply =
+    const rawReply =
       (data.content || []).find((block: any) => block.type === "text")?.text ||
       "Sorry, I couldn't get a response.";
-    if (!reply || reply === "Sorry, I couldn't get a response.") {
+    if (!rawReply || rawReply === "Sorry, I couldn't get a response.") {
       console.error("mely-chat: unexpected response shape:", JSON.stringify(data));
     }
+
+    // Sep 25 (per Mely — "quiero que le informes para que pueda hacer
+    // esa conexion"): admin.aloha's own Ask Mely flagged this as a real
+    // feature request — staff should be able to see resident/visitor
+    // conversations with this widget, and get notified right away when
+    // one is a genuine equipment emergency, not just find out whenever
+    // someone happens to check. Detects the same [[EMERGENCY_REPORTED:
+    // ...]] marker pattern already used for Ask Mely's own bug reports.
+    const emergencyMatch = rawReply.match(/\[\[EMERGENCY_REPORTED:\s*([\s\S]+?)\]\]\s*$/);
+    const reply = emergencyMatch ? rawReply.slice(0, emergencyMatch.index).trim() : rawReply;
+
+    if (company?.id && sessionId) {
+      const lastUserMessage = [...(messages || [])].reverse().find((m: any) => m.role === "user")?.text || "";
+      await supabaseAdmin.from("mely_chat_logs").insert([
+        { company_id: company.id, session_id: sessionId, role: "user", content: lastUserMessage },
+        { company_id: company.id, session_id: sessionId, role: "assistant", content: reply },
+      ]);
+    }
+
+    if (emergencyMatch && company?.id) {
+      await logSystemHealthIssue({
+        companyId: company.id,
+        issueType: "park_emergency",
+        message: emergencyMatch[1],
+        source: "mely_chat",
+      });
+
+      if (process.env.RESEND_API_KEY) {
+        const { data: admins } = await supabaseAdmin
+          .from("admin_users")
+          .select("email")
+          .eq("company_id", company.id)
+          .eq("notify_maintenance", true);
+        const lastUserMessage = [...(messages || [])].reverse().find((m: any) => m.role === "user")?.text || "";
+        for (const admin of admins || []) {
+          fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: `${companyName} <noreply@aloharvparkfl.com>`,
+              to: admin.email,
+              subject: `🚨 Emergency reported via Mely chat — ${companyName}`,
+              html: `<p><strong>Someone reported a park-equipment emergency</strong> through the Mely chat widget on your website.</p>
+                     <p><strong>Summary:</strong> ${emergencyMatch[1]}</p>
+                     <p><strong>What they said:</strong> ${lastUserMessage}</p>
+                     <p style="color:#666;font-size:13px;">Mely already gave them the emergency contact number. This is just so you know right away too.</p>`,
+            }),
+          }).catch((e) => console.error("Emergency-report email failed:", e));
+        }
+      }
+    }
+
     return NextResponse.json({ reply });
   } catch (err: any) {
     console.error("mely-chat error:", err);
