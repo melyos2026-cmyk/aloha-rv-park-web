@@ -32,6 +32,22 @@ export async function POST(req: NextRequest) {
     const emergencyPhone = company?.emergency_phone || "";
     const extraInfo = company?.ai_assistant_info || "";
 
+    // Sep 25 (per Mely — "necesito que pueda tambien ver la hora"): same
+    // live current-date/time fix as admin's Ask Mely — computed fresh
+    // server-side on every request (America/New_York), since the model
+    // has no built-in sense of "now" otherwise.
+    const now = new Date();
+    const nowContext = `\n\nRight now it is ${now.toLocaleString("en-US", {
+      timeZone: "America/New_York",
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })} (Eastern Time).`;
+
     // Real lot data — specs, pricing, and current availability — so Mely
     // can actually answer reservation questions instead of only pointing
     // people to the map.
@@ -178,7 +194,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}
+    const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
 ${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}
 
