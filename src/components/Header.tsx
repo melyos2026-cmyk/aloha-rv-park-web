@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 
-const nav = [
+const BASE_NAV: { label: string; href: string; moduleName?: string }[] = [
   { label: "Home", href: "/" },
   // Aug 20 (per Mely): added so visitors looking for a short stay (a
   // few days/weeks) find the map/reservation flow directly from the
@@ -11,10 +11,10 @@ const nav = [
   // residency application, not a simple booking.
   { label: "Reservations", href: "/#map" },
   { label: "Apply", href: "/apply" },
-  { label: "Propane", href: "/propane" },
+  { label: "Propane", href: "/propane", moduleName: "propane_pricing" },
   { label: "Real Estate", href: "/real-estate" },
   { label: "Events", href: "/events" },
-  { label: "Marketplace", href: "/marketplace" },
+  { label: "Marketplace", href: "/marketplace", moduleName: "marketplace" },
   { label: "Residents Login", href: "/login" },
 ];
 
@@ -22,6 +22,28 @@ export default function Header() {
   const [open, setOpen] = useState(false);
   const { company } = useCompany();
   const [customPages, setCustomPages] = useState<{ page_name: string; title: string | null; slug: string }[]>([]);
+  // Sep 26 (per Mely — "si los mantengo apagados no se vera en la pagina
+  // oficial del cliente?"): Propane/Marketplace only ever had their
+  // admin Dashboard tile hidden when toggled off — the public nav link
+  // itself was still hardcoded to always show. Defaults every module to
+  // shown (true) until the real answer loads, rather than flashing them
+  // away and back for companies that DO have them enabled.
+  const [enabledModules, setEnabledModules] = useState<Record<string, boolean>>({});
+  const [modulesLoaded, setModulesLoaded] = useState(false);
+  const nav = BASE_NAV.filter(
+    (item) => !item.moduleName || !modulesLoaded || enabledModules[item.moduleName] !== false
+  );
+
+  useEffect(() => {
+    if (!company?.id) return;
+    fetch(`/api/get-enabled-modules?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((result) => {
+        setEnabledModules(result.enabled || {});
+        setModulesLoaded(true);
+      })
+      .catch(() => setModulesLoaded(true));
+  }, [company?.id]);
 
   useEffect(() => {
     if (!company?.id) return;
