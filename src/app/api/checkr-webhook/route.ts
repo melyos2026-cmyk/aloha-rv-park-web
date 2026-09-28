@@ -40,6 +40,29 @@ export async function POST(req: Request) {
   return NextResponse.json({ received: true });
 }
 
+// Sep 28 (per Mely's Checkr-readiness review): Checkr's docs warn webhook
+// delivery order isn't guaranteed. Without a rank check, a late/
+// out-of-order invitation.completed ("in_progress") could silently
+// overwrite a final report result (Passed/Needs Review) that already
+// arrived. A final result, once set, can only be replaced by another
+// final result (e.g. a later re-run), never downgraded back to a
+// transitional state.
+const STATUS_RANK: Record<string, number> = {
+  Pending: 0,
+  invitation_sent: 0,
+  in_progress: 1,
+  Passed: 2,
+  "Needs Review": 2,
+  Failed: 2,
+  invitation_expired: 2,
+  invitation_failed: 2,
+};
+function isRegression(currentStatus: string | undefined, newStatus: string): boolean {
+  const currentRank = STATUS_RANK[currentStatus || ""] ?? -1;
+  const newRank = STATUS_RANK[newStatus] ?? -1;
+  return currentRank > newRank;
+}
+
 async function updatePersonStatus(candidateId: string | undefined, status: string) {
   if (!candidateId) return;
 
@@ -58,6 +81,17 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
   // person logic is needed, just a direct status update.
   if (applicationId === "occupant") {
     const occupantId = personKey;
+
+    const { data: existingOccupant } = await supabase
+      .from("resident_occupants")
+      .select("background_check_status")
+      .eq("id", occupantId)
+      .maybeSingle();
+    if (isRegression(existingOccupant?.background_check_status, status)) {
+      console.log(`Checkr webhook: ignoring out-of-order "${status}" for occupant ${occupantId} (already "${existingOccupant?.background_check_status}")`);
+      return;
+    }
+
     const { data: updatedOccupant, error: occError } = await supabase
       .from("resident_occupants")
       .update({ background_check_status: status })
@@ -123,6 +157,11 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
   }
 
   const results: CheckrResultEntry[] = (application.checkr_results as CheckrResultEntry[]) || [];
+  const existing = results.find((r) => r.personKey === personKey);
+  if (isRegression(existing?.status, status)) {
+    console.log(`Checkr webhook: ignoring out-of-order "${status}" for ${applicationId}/${personKey} (already "${existing?.status}")`);
+    return;
+  }
   const updated = results.map((r) =>
     r.personKey === personKey ? { ...r, status, candidateId } : r
   );
