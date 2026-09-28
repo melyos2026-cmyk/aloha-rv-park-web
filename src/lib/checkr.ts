@@ -56,8 +56,15 @@ export async function createCheckrInvitation(params: {
   const { firstName, lastName } = splitName(params.fullName);
   const customId = `${params.applicationId}::${params.personKey}`;
 
+  // Sep 28 (per Mely's Checkr-readiness review, flagged by ChatGPT against
+  // Checkr's current API docs): Idempotency-Key on both POSTs, derived
+  // from the SAME stable identifier (applicationId::personKey) this
+  // integration already uses as the Checkr custom_id — so a retried
+  // invitation attempt for the same person can't create a duplicate
+  // Checkr Candidate/Invitation.
   const candidate = await checkrRequest("/candidates", {
     method: "POST",
+    headers: { "Idempotency-Key": `candidate:${customId}` },
     body: JSON.stringify({
       email: params.email,
       first_name: firstName,
@@ -69,6 +76,7 @@ export async function createCheckrInvitation(params: {
 
   const invitation = await checkrRequest("/invitations", {
     method: "POST",
+    headers: { "Idempotency-Key": `invitation:${customId}` },
     body: JSON.stringify({
       candidate_id: candidate.id,
       package: params.packageSlug,
