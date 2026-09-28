@@ -95,7 +95,7 @@ export async function sendCheckrInvitationsForApplication(applicationId: string)
       });
       results.push({ personKey: person.personKey, name: person.name, candidateId, status: "invitation_sent" });
     } catch (checkrErr: any) {
-      console.error(`Checkr invitation failed for ${person.name}:`, checkrErr.message);
+      console.error(`Checkr invitation failed for person ${person.personKey}:`, checkrErr.message);
       results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
     }
   }
