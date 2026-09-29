@@ -24,9 +24,16 @@ export async function POST(req: NextRequest) {
   }
 
   if (invitationId) {
+    // Sep 29 (per Mely — found live: an archived application got
+    // resumed via get-application-draft and carried a real Stripe
+    // payment + Checkr invitation through while still archived:true,
+    // invisible in the admin Applications tab). get-application-draft
+    // now refuses to hand back an archived row in the first place, but
+    // this is a second, independent safety net: whatever the client
+    // sends, a resumed/updated application is never left archived.
     const { error } = await supabaseAdmin
       .from("resident_applications")
-      .update(row)
+      .update({ ...row, archived: false })
       .eq("id", invitationId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
