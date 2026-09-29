@@ -781,9 +781,13 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     return;
   }
 
+   let primaryCandidateId: string | undefined;
+  let primaryInvitationId: string | undefined;
+  let primaryInvitationUrl: string | undefined;
+
   for (const person of people) {
     try {
-      const { candidateId } = await createCheckrInvitation({
+      const { candidateId, invitationId, invitationUrl } = await createCheckrInvitation({
         applicationId: application.id,
         personKey: person.personKey,
         email: person.email,
@@ -797,8 +801,13 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         candidateId,
         status: "invitation_sent",
       });
+      if (person.personKey === "primary") {
+        primaryCandidateId = candidateId;
+        primaryInvitationId = invitationId;
+        primaryInvitationUrl = invitationUrl;
+      }
     } catch (checkrErr: any) {
-      console.error(`Checkr invitation failed for ${person.name}:`, checkrErr.message);
+      console.error(`Checkr invitation failed for person ${person.personKey}:`, checkrErr.message);
       results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
     }
   }
@@ -814,8 +823,12 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
         ? {
             checkr_package_slug: checkrPackageSlug,
             checkr_invitation_sent_at: new Date().toISOString(),
+            checkr_environment: process.env.CHECKR_ENVIRONMENT || "staging",
           }
         : {}),
+      ...(primaryCandidateId ? { checkr_candidate_id: primaryCandidateId } : {}),
+      ...(primaryInvitationId ? { checkr_invitation_id: primaryInvitationId } : {}),
+      ...(primaryInvitationUrl ? { checkr_invitation_url: primaryInvitationUrl } : {}),
     })
     .eq("id", application.id);
 
