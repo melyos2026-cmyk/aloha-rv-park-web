@@ -332,7 +332,9 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   // tracks money still owed by other means) needs to exclude these so
   // Aloha is never billed twice for the same background check.
   const checkrFeeChargedViaConnect = session.metadata?.checkr_fee_charged_via_connect === "true";
-  const checkrFeeDeductedAmount = Number(session.metadata?.checkr_fee_deducted_amount) || 0;
+    const checkrFeeDeductedAmount = Number(session.metadata?.checkr_fee_deducted_amount) || 0;
+
+  const amountPaid = (session.amount_total || 0) / 100;
 
   const paymentIntentId =
     typeof session.payment_intent === "string"
@@ -419,7 +421,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
       company_id: application.company_id,
       resident_name: application.full_name,
       update_type: "application_fee_paid",
-      message: `${application.full_name} paid their application fee${backgroundCheckLabel}: $${Number(application.application_fee_total || 0).toFixed(2)}.`,
+           message: `${application.full_name} paid their application fee${backgroundCheckLabel}: $${amountPaid.toFixed(2)}.`,
     });
   }
 
@@ -466,7 +468,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
           company_id: retryApplication.company_id,
           resident_name: retryApplication.full_name,
           update_type: "application_lot_conflict",
-          message: `${retryApplication.full_name} paid their application fee ($${retryApplication.application_fee_total}), but their selected lot was just taken by another applicant. Please contact them to choose a different lot (payment already collected).`,
+                  message: `${retryApplication.full_name} paid their application fee ($${amountPaid.toFixed(2)}), but their selected lot was just taken by another applicant. Please contact them to choose a different lot (payment already collected).`,
         });
       }
 
@@ -493,7 +495,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   }
 
   console.log(
-    `Application fee paid for ${application?.full_name} ($${application?.application_fee_total}).` +
+      `Application fee paid for ${application?.full_name} ($${amountPaid.toFixed(2)}).` +
       (requiresBackgroundCheck
         ? " Background check status: payment_confirmed."
         : ` No background check required for this stay (short stay${stayAmount > 0 ? `, $${stayAmount.toFixed(2)} stay charge included` : ""}).`)
@@ -537,8 +539,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
   // instructions.
   if (application?.email && process.env.RESEND_API_KEY) {
     try {
-      const amountPaid = (session.amount_total || 0) / 100;
-      const paymentDate = new Date(session.created * 1000);
+          const paymentDate = new Date(session.created * 1000);
 
       // Build the itemized breakdown from what was actually stored on the
       // application at submission time — not re-derived from the total,
@@ -769,7 +770,7 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
             from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
             to: adminNotifyEmail,
             subject: `Application fee paid — background check NOT sent (Checkr Work Location State missing) for ${application?.full_name || "applicant"}`,
-            html: `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee, but NO background check invitation was sent because "Checkr Work Location State" isn't set in Lease Defaults for this company.</p>
+                      html: `<p>${application?.full_name || "An applicant"} just paid their $${amountPaid.toFixed(2)} application fee, but NO background check invitation was sent because "Checkr Work Location State" isn't set in Lease Defaults for this company.</p>
                    <p>Set it in Lease Defaults → Background Check, then invite this applicant's background check manually from the Applications tab.</p>`,
           }),
         });
@@ -835,9 +836,9 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
             ? `Background check application sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
             : `Application fee paid — background check FAILED to send for ${application?.full_name || "applicant"}, check manually`,
           html: checkrInvited
-            ? `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee.</p>
+            ? `<p>${application?.full_name || "An applicant"} just paid their $${amountPaid.toFixed(2)} application fee.</p>
                <p>The background check application has been sent for ${results.length} ${results.length === 1 ? "person" : "people"} on this application. You'll be notified again once results are in.</p>`
-            : `<p>${application?.full_name || "An applicant"} just paid their $${application?.application_fee_total} application fee, but the background check failed to send.</p>
+            : `<p>${application?.full_name || "An applicant"} just paid their $${amountPaid.toFixed(2)} application fee, but the background check failed to send.</p>
                <p>Check the Applications tab for details on who still needs to be invited manually.</p>`,
         }),
       });
