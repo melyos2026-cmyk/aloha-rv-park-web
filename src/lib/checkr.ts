@@ -84,7 +84,15 @@ export async function createCheckrInvitation(params: {
     }),
   });
 
-  return { candidateId: candidate.id, invitationId: invitation.id };
+  // Sep 29 (per Mely — found live: the webhook-triggered invitation flow
+  // never persisted checkr_candidate_id/checkr_invitation_id/
+  // checkr_invitation_url on resident_applications, unlike the separate
+  // admin-manual "Resend" flow — so admin had no fallback link to give a
+  // candidate whose auto-email from Checkr never arrived, and
+  // melyos-builder's own inbound webhook (which looks up by
+  // checkr_candidate_id) could never match these applications. Now
+  // returned here so callers can persist it.
+  return { candidateId: candidate.id, invitationId: invitation.id, invitationUrl: invitation.invitation_url as string | undefined };
 }
 
 export async function resolveCandidate(
