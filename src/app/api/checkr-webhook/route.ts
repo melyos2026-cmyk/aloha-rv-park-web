@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendResidentNotificationEmail } from "@/lib/sendResidentNotificationEmail";
@@ -13,8 +14,26 @@ export async function POST(req: Request) {
   const signature = req.headers.get("x-checkr-signature");
 
   if (!verifyCheckrSignature(rawBody, signature)) {
-    console.log("Checkr webhook signature verification failed");
+    // Sep 29 (per Mely — found live: Checkr's report.completed webhook
+    // was retrying every ~20-30s and getting 400'd every time, blocking
+    // Homer Simpson's test from ever reaching "Passed"). TEMPORARY debug
+    // logging to see exactly how the received signature differs from
+    // what we compute — remove once the real mismatch is found. Safe to
+    // log: these are HMAC digests/lengths, not the API key itself.
+    const apiKey = process.env.CHECKR_API_KEY || "";
+    const computedHex = crypto.createHmac("sha256", apiKey).update(rawBody).digest("hex");
+    console.log("Checkr webhook signature verification failed", {
+      receivedHeader: signature,
+      receivedLength: signature?.length,
+      computedHex,
+      computedLength: computedHex.length,
+      apiKeyLength: apiKey.length,
+      apiKeyPrefix: apiKey.slice(0, 6),
+      rawBodyLength: rawBody.length,
+      rawBodyPrefix: rawBody.slice(0, 80),
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  }
   }
 
   const event = JSON.parse(rawBody);
