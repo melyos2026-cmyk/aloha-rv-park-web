@@ -32,8 +32,7 @@ export async function POST(req: Request) {
       rawBodyLength: rawBody.length,
       rawBodyPrefix: rawBody.slice(0, 80),
     });
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-  }
+       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
   const event = JSON.parse(rawBody);
