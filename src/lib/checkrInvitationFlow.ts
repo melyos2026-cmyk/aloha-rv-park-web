@@ -83,9 +83,16 @@ export async function sendCheckrInvitationsForApplication(applicationId: string)
   }
 
   const results: CheckrResultEntry[] = [];
+  // Sep 29 (per Mely — same gap found in the Stripe-webhook path): capture
+  // the PRIMARY applicant's Checkr candidate/invitation id + invitation_url
+  // so it can be persisted to the top-level checkr_* columns below.
+  let primaryCandidateId: string | undefined;
+  let primaryInvitationId: string | undefined;
+  let primaryInvitationUrl: string | undefined;
+
   for (const person of people) {
     try {
-      const { candidateId } = await createCheckrInvitation({
+      const { candidateId, invitationId, invitationUrl } = await createCheckrInvitation({
         applicationId: application.id,
         personKey: person.personKey,
         email: person.email,
@@ -94,6 +101,11 @@ export async function sendCheckrInvitationsForApplication(applicationId: string)
         packageSlug: checkrPackageSlug,
       });
       results.push({ personKey: person.personKey, name: person.name, candidateId, status: "invitation_sent" });
+      if (person.personKey === "primary") {
+        primaryCandidateId = candidateId;
+        primaryInvitationId = invitationId;
+        primaryInvitationUrl = invitationUrl;
+      }
     } catch (checkrErr: any) {
       console.error(`Checkr invitation failed for person ${person.personKey}:`, checkrErr.message);
       results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
@@ -109,7 +121,15 @@ export async function sendCheckrInvitationsForApplication(applicationId: string)
       checkr_results: results,
       background_check_status: aggregateStatus,
       checkr_package_slug: checkrPackageSlug,
-      ...(anyInvitationSent ? { checkr_invitation_sent_at: new Date().toISOString() } : {}),
+      ...(anyInvitationSent
+        ? {
+            checkr_invitation_sent_at: new Date().toISOString(),
+            checkr_environment: process.env.CHECKR_ENVIRONMENT || "staging",
+          }
+        : {}),
+      ...(primaryCandidateId ? { checkr_candidate_id: primaryCandidateId } : {}),
+      ...(primaryInvitationId ? { checkr_invitation_id: primaryInvitationId } : {}),
+      ...(primaryInvitationUrl ? { checkr_invitation_url: primaryInvitationUrl } : {}),
     })
     .eq("id", applicationId);
 
