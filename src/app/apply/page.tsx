@@ -358,7 +358,9 @@ function ApplyPageInner() {
       return;
     }
 
-    fetch(`/api/get-application-draft?id=${encodeURIComponent(savedId)}`)
+        fetch(
+      `/api/get-application-draft?id=${encodeURIComponent(savedId)}&company_id=${encodeURIComponent(company.id)}`
+    )
       .then((r) => r.json())
       .then(
         ({ application: data, error }) => {
