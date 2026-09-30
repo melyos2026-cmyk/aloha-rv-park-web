@@ -31,10 +31,13 @@ export async function POST(req: Request) {
     if (type === "invitation.expired") {
       await updatePersonStatus(data.candidate_id, "invitation_expired");
     }
-    if (type === "report.completed") {
+       if (type === "report.completed") {
       const result = data.result as string | null;
       const status = result === "clear" ? "Passed" : "Needs Review";
-      await updatePersonStatus(data.candidate_id, status);
+      // Sep 30 (per Mely — wants the full report viewable from the
+      // admin): the Report object's own id, captured here so the admin
+      // can deep-link straight to it on Checkr's dashboard.
+      await updatePersonStatus(data.candidate_id, status, data.id);
     }
   } catch (err: any) {
     console.error("Checkr webhook handling error:", err.message);
@@ -66,7 +69,7 @@ function isRegression(currentStatus: string | undefined, newStatus: string): boo
   return currentRank > newRank;
 }
 
-async function updatePersonStatus(candidateId: string | undefined, status: string) {
+async function updatePersonStatus(candidateId: string | undefined, status: string, reportId?: string) {
   if (!candidateId) return;
 
   const resolved = await resolveCandidate(candidateId);
@@ -165,11 +168,13 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
     console.log(`Checkr webhook: ignoring out-of-order "${status}" for ${applicationId}/${personKey} (already "${existing?.status}")`);
     return;
   }
-  const updated = results.map((r) =>
-    r.personKey === personKey ? { ...r, status, candidateId } : r
+    const updated = results.map((r) =>
+    r.personKey === personKey
+      ? { ...r, status, candidateId, ...(reportId ? { reportId } : {}) }
+      : r
   );
   if (!updated.some((r) => r.personKey === personKey)) {
-    updated.push({ personKey, name: personKey, candidateId, status });
+    updated.push({ personKey, name: personKey, candidateId, status, ...(reportId ? { reportId } : {}) });
   }
 
   const aggregateStatus = computeAggregateStatus(updated);
