@@ -110,7 +110,14 @@ export interface CheckrResultEntry {
   name: string;
   candidateId?: string;
   status: string;
-}
+  // Sep 30 (per Mely — wants to see the full Checkr report from inside
+  // the admin, not just the Clear/Consider summary): the report.completed
+  // webhook's report id, used to deep-link straight to that report on
+  // Checkr's own dashboard (https://dashboard.checkr.com/reports/{id}) —
+  // Checkr's dashboard is where the full record detail actually lives;
+  // MelyOS never stores or displays the record contents itself.
+  reportId?: string;
+} 
 
 export function computeAggregateStatus(results: CheckrResultEntry[]): string {
   if (results.length === 0) return "payment_confirmed";
