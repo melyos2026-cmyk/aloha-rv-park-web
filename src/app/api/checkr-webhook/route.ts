@@ -148,9 +148,9 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
     return;
   }
 
-  const { data: application, error } = await supabase
+    const { data: application, error } = await supabase
     .from("resident_applications")
-    .select("checkr_results")
+    .select("checkr_results, company_id, full_name")
     .eq("id", applicationId)
     .single();
 
@@ -174,10 +174,33 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
 
   const aggregateStatus = computeAggregateStatus(updated);
 
-  await supabase
+   await supabase
     .from("resident_applications")
     .update({ checkr_results: updated, background_check_status: aggregateStatus })
     .eq("id", applicationId);
+
+  // Sep 30 (per Mely — found live: Checkr changing a lease application's
+  // result to Clear/Consider never notified admin at all, unlike the
+  // Household Occupant background check below (which already did this)
+  // — an admin had to keep manually reopening the application to see if
+  // anything changed). Same resident_update_notifications table/pattern
+  // used everywhere else the admin bell watches in real time. Only for a
+  // FINAL, actionable result — not the transitional "in_progress" state —
+  // and keyed off the per-person status just written, not the aggregate,
+  // so each applicant's own result gets its own notification.
+  const isFinalResult = status === "Passed" || status === "Needs Review" || status === "invitation_expired";
+  if (isFinalResult && application.company_id) {
+    const resultLabel =
+      status === "Passed" ? "Clear" : status === "Needs Review" ? "Consider — needs manual review" : "invitation expired";
+    const personLabel =
+      personKey === "primary" ? application.full_name : results.find((r) => r.personKey === personKey)?.name || personKey;
+    await supabase.from("resident_update_notifications").insert({
+      company_id: application.company_id,
+      resident_name: application.full_name,
+      update_type: "application_background_check_result",
+      message: `Background check for ${personLabel} (${application.full_name}'s application): ${resultLabel}.`,
+    });
+  }
 
   console.log(
     `Application ${applicationId} — ${personKey} -> ${status} (aggregate: ${aggregateStatus})`
