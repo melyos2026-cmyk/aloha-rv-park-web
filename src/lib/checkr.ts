@@ -77,10 +77,16 @@ export async function createCheckrInvitation(params: {
   const invitation = await checkrRequest("/invitations", {
     method: "POST",
     headers: { "Idempotency-Key": `invitation:${customId}` },
-    body: JSON.stringify({
+        body: JSON.stringify({
       candidate_id: candidate.id,
       package: params.packageSlug,
       work_locations: [{ country: "US", state: params.state }],
+      // Oct 1 (per Checkr's own API Authorization reviewer, via Mely):
+      // even with zero Nodes defined today, Checkr recommends always
+      // sending "node" (null when there are none) so that adding even
+      // ONE Node to the account later doesn't silently break every
+      // /invitations call that's missing this field.
+      node: null,
     }),
   });
 
