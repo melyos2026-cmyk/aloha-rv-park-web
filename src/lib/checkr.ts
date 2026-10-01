@@ -122,12 +122,27 @@ export interface CheckrResultEntry {
   // Checkr's own dashboard (https://dashboard.checkr.com/reports/{id}) —
   // Checkr's dashboard is where the full record detail actually lives;
   // MelyOS never stores or displays the record contents itself.
-  reportId?: string;
+    reportId?: string;
+  // Oct 1 (per Checkr's own Report Lifecycle certification requirement,
+  // via Mely): report.completed's "includes_canceled" field — true when
+  // the report finished with at least one of its individual screenings
+  // canceled (e.g. a county search Checkr couldn't run). The overall
+  // result can still be Passed/Needs Review; this just flags that it's
+  // not a fully clean 100%-screenings-ran result, so the admin UI can
+  // show that caveat instead of hiding it.
+  includesCanceled?: boolean;
 } 
 
 export function computeAggregateStatus(results: CheckrResultEntry[]): string {
   if (results.length === 0) return "payment_confirmed";
   if (results.some((r) => r.status === "Needs Review")) return "Needs Review";
+  // Oct 1 (per Checkr's Report Lifecycle certification requirement):
+  // a report.canceled webhook (ALL screenings on that report canceled,
+  // distinct from includesCanceled's "some screenings canceled") is its
+  // own final, actionable state — admin needs to know this check never
+  // produced a usable result at all, same urgency as invitation_failed/
+  // invitation_expired below.
+  if (results.some((r) => r.status === "Canceled")) return "Canceled";
   // Aug 21 (per Mely — found live testing "test 6": checkr_results showed
   // the real per-person failure ("invitation_failed"), but this always
   // returned "invitation_sent" instead — the exact opposite of what
