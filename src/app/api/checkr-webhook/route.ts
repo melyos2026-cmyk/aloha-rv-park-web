@@ -31,13 +31,26 @@ export async function POST(req: Request) {
     if (type === "invitation.expired") {
       await updatePersonStatus(data.candidate_id, "invitation_expired");
     }
-       if (type === "report.completed") {
+    if (type === "report.completed") {
       const result = data.result as string | null;
       const status = result === "clear" ? "Passed" : "Needs Review";
       // Sep 30 (per Mely — wants the full report viewable from the
       // admin): the Report object's own id, captured here so the admin
       // can deep-link straight to it on Checkr's dashboard.
-      await updatePersonStatus(data.candidate_id, status, data.id);
+      // Oct 1 (per Checkr's Report Lifecycle certification requirement):
+      // includes_canceled — true when SOME (not all) of this report's
+      // screenings were canceled even though the report still completed
+      // with a real result. Passed through so the admin UI can show that
+      // caveat instead of presenting it as a fully clean result.
+      await updatePersonStatus(data.candidate_id, status, data.id, !!data.includes_canceled);
+    }
+    // Oct 1 (per Checkr's Report Lifecycle certification requirement):
+    // fires when ALL screenings on a report are canceled — distinct from
+    // includes_canceled above (some screenings), this report never
+    // produced any usable result at all. Must be surfaced as its own
+    // final status, same urgency as invitation_failed/invitation_expired.
+    if (type === "report.canceled") {
+      await updatePersonStatus(data.candidate_id, "Canceled", data.id);
     }
   } catch (err: any) {
     console.error("Checkr webhook handling error:", err.message);
@@ -62,6 +75,12 @@ const STATUS_RANK: Record<string, number> = {
   Failed: 2,
   invitation_expired: 2,
   invitation_failed: 2,
+  // Oct 1 (per Checkr's Report Lifecycle certification requirement): a
+  // canceled report is just as final/actionable as a failed or expired
+  // invitation — same rank, so it can't be downgraded by a late
+  // out-of-order transitional event, and can't itself downgrade another
+  // final result that already arrived.
+  Canceled: 2,
 };
 function isRegression(currentStatus: string | undefined, newStatus: string): boolean {
   const currentRank = STATUS_RANK[currentStatus || ""] ?? -1;
@@ -69,7 +88,12 @@ function isRegression(currentStatus: string | undefined, newStatus: string): boo
   return currentRank > newRank;
 }
 
-async function updatePersonStatus(candidateId: string | undefined, status: string, reportId?: string) {
+async function updatePersonStatus(
+  candidateId: string | undefined,
+  status: string,
+  reportId?: string,
+  includesCanceled?: boolean
+) {
   if (!candidateId) return;
 
   const resolved = await resolveCandidate(candidateId);
@@ -116,7 +140,8 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
     // invitation) — same resident_update_notifications table/pattern the
     // bell already watches in real time, so this shows up instantly
     // without admin having to check anything manually.
-    const isFinalResult = status === "Passed" || status === "Needs Review" || status === "invitation_expired";
+    const isFinalResult =
+      status === "Passed" || status === "Needs Review" || status === "invitation_expired" || status === "Canceled";
     if (isFinalResult && updatedOccupant?.resident_id) {
       const { data: resident } = await supabase
         .from("resident_accounts")
@@ -126,7 +151,13 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
 
       if (resident) {
         const resultLabel =
-          status === "Passed" ? "passed" : status === "Needs Review" ? "needs review" : "invitation expired";
+          status === "Passed"
+            ? "passed"
+            : status === "Needs Review"
+            ? "needs review"
+            : status === "Canceled"
+            ? "canceled by Checkr (no result — contact Checkr support)"
+            : "invitation expired";
         await supabase.from("resident_update_notifications").insert({
           company_id: resident.company_id,
           resident_id: updatedOccupant.resident_id,
@@ -151,7 +182,7 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
     return;
   }
 
-    const { data: application, error } = await supabase
+  const { data: application, error } = await supabase
     .from("resident_applications")
     .select("checkr_results, company_id, full_name")
     .eq("id", applicationId)
@@ -168,18 +199,31 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
     console.log(`Checkr webhook: ignoring out-of-order "${status}" for ${applicationId}/${personKey} (already "${existing?.status}")`);
     return;
   }
-    const updated = results.map((r) =>
+  const updated = results.map((r) =>
     r.personKey === personKey
-      ? { ...r, status, candidateId, ...(reportId ? { reportId } : {}) }
+      ? {
+          ...r,
+          status,
+          candidateId,
+          ...(reportId ? { reportId } : {}),
+          ...(includesCanceled ? { includesCanceled: true } : {}),
+        }
       : r
   );
   if (!updated.some((r) => r.personKey === personKey)) {
-    updated.push({ personKey, name: personKey, candidateId, status, ...(reportId ? { reportId } : {}) });
+    updated.push({
+      personKey,
+      name: personKey,
+      candidateId,
+      status,
+      ...(reportId ? { reportId } : {}),
+      ...(includesCanceled ? { includesCanceled: true } : {}),
+    });
   }
 
   const aggregateStatus = computeAggregateStatus(updated);
 
-   await supabase
+  await supabase
     .from("resident_applications")
     .update({ checkr_results: updated, background_check_status: aggregateStatus })
     .eq("id", applicationId);
@@ -193,10 +237,17 @@ async function updatePersonStatus(candidateId: string | undefined, status: strin
   // FINAL, actionable result — not the transitional "in_progress" state —
   // and keyed off the per-person status just written, not the aggregate,
   // so each applicant's own result gets its own notification.
-  const isFinalResult = status === "Passed" || status === "Needs Review" || status === "invitation_expired";
+  const isFinalResult =
+    status === "Passed" || status === "Needs Review" || status === "invitation_expired" || status === "Canceled";
   if (isFinalResult && application.company_id) {
     const resultLabel =
-      status === "Passed" ? "Clear" : status === "Needs Review" ? "Consider — needs manual review" : "invitation expired";
+      status === "Passed"
+        ? `Clear${includesCanceled ? " (some screenings were canceled — review before approving)" : ""}`
+        : status === "Needs Review"
+        ? "Consider — needs manual review"
+        : status === "Canceled"
+        ? "Canceled by Checkr — no result, contact Checkr support"
+        : "invitation expired";
     const personLabel =
       personKey === "primary" ? application.full_name : results.find((r) => r.personKey === personKey)?.name || personKey;
     await supabase.from("resident_update_notifications").insert({
