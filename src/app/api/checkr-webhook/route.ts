@@ -270,8 +270,17 @@ async function updatePersonStatus(
   // FINAL, actionable result — not the transitional "in_progress" state —
   // and keyed off the per-person status just written, not the aggregate,
   // so each applicant's own result gets its own notification.
+    // Oct 2 (per Mely — found live: Checkr emailed the candidate directly
+  // asking for more info, with no heads-up to admin at all): included
+  // here too so admin finds out the moment it happens, not a final
+  // result itself but just as actionable — admin needs to follow up
+  // with the applicant before Checkr's own deadline.
   const isFinalResult =
-    status === "Passed" || status === "Needs Review" || status === "invitation_expired" || status === "Canceled";
+    status === "Passed" ||
+    status === "Needs Review" ||
+    status === "invitation_expired" ||
+    status === "Canceled" ||
+    status === "Needs More Info";
   if (isFinalResult && application.company_id) {
     const resultLabel =
       status === "Passed"
@@ -279,7 +288,9 @@ async function updatePersonStatus(
         : status === "Needs Review"
         ? "Consider — needs manual review"
         : status === "Canceled"
-        ? "Canceled by Checkr — no result, contact Checkr support"
+                ? "Canceled by Checkr — no result, contact Checkr support"
+        : status === "Needs More Info"
+        ? "Paused — Checkr needs more information from the applicant (ask them to check their email and complete the next step in their Checkr candidate portal)"
         : "invitation expired";
     const personLabel =
       personKey === "primary" ? application.full_name : results.find((r) => r.personKey === personKey)?.name || personKey;
