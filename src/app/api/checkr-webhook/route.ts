@@ -49,8 +49,24 @@ export async function POST(req: Request) {
     // includes_canceled above (some screenings), this report never
     // produced any usable result at all. Must be surfaced as its own
     // final status, same urgency as invitation_failed/invitation_expired.
-    if (type === "report.canceled") {
+        if (type === "report.canceled") {
       await updatePersonStatus(data.candidate_id, "Canceled", data.id);
+    }
+    // Oct 2 (per Mely — found live: Checkr emailed a candidate directly
+    // ("Background check paused: more information needed") with no
+    // notice to the admin at all — admin had no way to know the
+    // candidate needed to go verify something in their Checkr candidate
+    // portal, or to follow up with them before Checkr's own deadline).
+    // report.suspended is Checkr's event for exactly this: the report is
+    // paused pending candidate action. report.resumed fires once they've
+    // done it — the report then continues on to its normal
+    // report.completed outcome, so this just clears the "needs info"
+    // state back to in_progress rather than being a final result itself.
+    if (type === "report.suspended") {
+      await updatePersonStatus(data.candidate_id, "Needs More Info", data.id);
+    }
+    if (type === "report.resumed") {
+      await updatePersonStatus(data.candidate_id, "in_progress");
     }
   } catch (err: any) {
     console.error("Checkr webhook handling error:", err.message);
