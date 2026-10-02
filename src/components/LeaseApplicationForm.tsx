@@ -3305,7 +3305,16 @@ export default function LeaseApplicationForm({
                 set("tenant_signature_agreed", e.target.checked)
               }
             />
-            I have reviewed this application and agree it is accurate.
+            By typing my name above, I certify that the information
+provided in this application is true, complete, and accurate
+to the best of my knowledge, and I understand that any false
+or misleading information may result in denial of this
+application or termination of any resulting lease. I also
+agree that this constitutes my electronic signature, which I
+understand is legally binding and as valid as a handwritten
+signature, and that all communications, agreements, notices,
+documents, and disclosures relating to this application may
+be sent to me electronically.
           </label>
           {attemptedSubmit && !data.tenant_signature_agreed && (
             <div style={styles.requiredNote}>Field required</div>
