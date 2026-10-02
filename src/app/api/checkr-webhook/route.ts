@@ -65,8 +65,11 @@ export async function POST(req: Request) {
     if (type === "report.suspended") {
       await updatePersonStatus(data.candidate_id, "Needs More Info", data.id);
     }
-    if (type === "report.resumed") {
+        if (type === "report.resumed") {
       await updatePersonStatus(data.candidate_id, "in_progress");
+    }
+    if (type === "report.engaged") {
+      await updatePersonStatus(data.candidate_id, "Under Review", data.id);
     }
   } catch (err: any) {
     console.error("Checkr webhook handling error:", err.message);
