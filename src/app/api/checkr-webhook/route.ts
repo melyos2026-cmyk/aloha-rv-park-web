@@ -96,7 +96,13 @@ const STATUS_RANK: Record<string, number> = {
   // invitation — same rank, so it can't be downgraded by a late
   // out-of-order transitional event, and can't itself downgrade another
   // final result that already arrived.
-  Canceled: 2,
+    Canceled: 2,
+  // Oct 2 (per Mely): "needs more info" is actionable but not a final
+  // result — Checkr's report.resumed event (candidate completes what
+  // was asked for) needs to be able to move it back to in_progress
+  // without that counting as a regression, and a later real result
+  // still needs to be able to overwrite it. Same rank as in_progress.
+  "Needs More Info": 1,
 };
 function isRegression(currentStatus: string | undefined, newStatus: string): boolean {
   const currentRank = STATUS_RANK[currentStatus || ""] ?? -1;
@@ -156,8 +162,17 @@ async function updatePersonStatus(
     // invitation) — same resident_update_notifications table/pattern the
     // bell already watches in real time, so this shows up instantly
     // without admin having to check anything manually.
+       // Oct 2 (per Mely): "Needs More Info" included here too — Checkr
+    // already emailed the candidate directly, so the admin (and the
+    // resident, for a household occupant) needs the same heads-up to
+    // follow up before Checkr's own deadline, even though it isn't a
+    // final/terminal result.
     const isFinalResult =
-      status === "Passed" || status === "Needs Review" || status === "invitation_expired" || status === "Canceled";
+      status === "Passed" ||
+      status === "Needs Review" ||
+      status === "invitation_expired" ||
+      status === "Canceled" ||
+      status === "Needs More Info";
     if (isFinalResult && updatedOccupant?.resident_id) {
       const { data: resident } = await supabase
         .from("resident_accounts")
@@ -172,7 +187,9 @@ async function updatePersonStatus(
             : status === "Needs Review"
             ? "needs review"
             : status === "Canceled"
-            ? "canceled by Checkr (no result — contact Checkr support)"
+                        ? "canceled by Checkr (no result — contact Checkr support)"
+            : status === "Needs More Info"
+            ? "paused — Checkr needs more information from the applicant to continue (check that they received Checkr's email and completed the next step in their candidate portal)"
             : "invitation expired";
         await supabase.from("resident_update_notifications").insert({
           company_id: resident.company_id,
