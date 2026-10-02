@@ -105,7 +105,8 @@ const STATUS_RANK: Record<string, number> = {
   // was asked for) needs to be able to move it back to in_progress
   // without that counting as a regression, and a later real result
   // still needs to be able to overwrite it. Same rank as in_progress.
-  "Needs More Info": 1,
+   "Needs More Info": 1,
+  "Under Review": 1,
 };
 function isRegression(currentStatus: string | undefined, newStatus: string): boolean {
   const currentRank = STATUS_RANK[currentStatus || ""] ?? -1;
