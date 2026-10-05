@@ -30,7 +30,12 @@ export async function POST(req: NextRequest) {
     const phone = company?.contact_phone || "";
     const email = company?.contact_email || "";
     const emergencyPhone = company?.emergency_phone || "";
-    const extraInfo = company?.ai_assistant_info || "";
+    // Oct 5 (per Mely): free-text notes the park writes in Settings ->
+    // "Notes for Mely". Labeled so they read as current office notes; they
+    // take priority for temporary changes or announcements.
+    const extraInfo = company?.ai_assistant_info
+      ? `\n\nNotes from the park's office (written by the park, always current — use them, and if they conflict with older general information above, follow these):\n${company.ai_assistant_info}`
+      : "";
 
     // Sep 25 (per Mely — "necesito que pueda tambien ver la hora"): same
     // live current-date/time fix as admin's Ask Mely — computed fresh
