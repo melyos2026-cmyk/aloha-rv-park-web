@@ -405,13 +405,18 @@ export async function POST(req: NextRequest) {
     // Oct 5 (per Mely): office hours, the same ones shown in the website
     // footer (src/components/Footer.tsx — if the footer hours change, change
     // them here too; a "Notes for Mely" entry also overrides this).
-    const officeHoursContext = `\n\nOffice hours (Eastern Time): Monday to Friday 10:00 AM to 5:00 PM, Saturday 10:00 AM to 3:00 PM, Sunday closed. Anything that needs the office (propane refills, storage, questions) happens during these hours. If someone asks when they can come, call, or get something done, give these hours and use the current date and time above to say whether the office is open right now.`;
+    // This route serves every company, so these Aloha-specific facts are only
+    // included for Aloha (other parks use their own Notes for Mely).
+    const isAloha = company?.park_id === "aloha";
+    const officeHoursContext = !isAloha ? "" : `\n\nOffice hours (Eastern Time): Monday to Friday 10:00 AM to 5:00 PM, Saturday 10:00 AM to 3:00 PM, Sunday closed. Anything that needs the office (propane refills, storage, questions) happens during these hours. If someone asks when they can come, call, or get something done, give these hours and use the current date and time above to say whether the office is open right now.`;
 
-    const propaneRulesContext = `\n\nPropane: the park only REFILLS propane tanks that people bring themselves. It does not sell tanks and it does not have a self-serve propane station. Refills are done during office hours. When someone asks about propane, give the refill price for their tank size from the data above, say they bring their own tank to be refilled, and give the office hours. Never say the park sells tanks or that they can pick one up.`;
+    const propaneRulesContext = !isAloha ? "" : `\n\nPropane: the park only REFILLS propane tanks that people bring themselves. It does not sell tanks and it does not have a self-serve propane station. Refills are done during office hours. When someone asks about propane, give the refill price for their tank size from the data above, say they bring their own tank to be refilled, and give the office hours. Never say the park sells tanks or that they can pick one up.`;
+
+    const laundryContext = !isAloha ? "" : `\n\nLaundry: a wash costs $2.00 and a dry costs $1.50. The machines accept quarters only (no bills, cards or other coins). Anyone who needs change for quarters can get it at the office during office hours.`;
 
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
+${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${laundryContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
 
 Style: be warm, kind and natural, and never cold or curt. Answer fully and helpfully: give the useful details the person needs (what it is, how it works, what to expect, and the next step), even for simple questions, in a few clear sentences or short paragraphs rather than a one-line reply. Do not pad: no small talk, no filler, no repeating what you already said, and ask at most one question at a time. When someone wants to become a resident, explain every step in order (see "How stays work"), because they need to know what to expect. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link.
 
