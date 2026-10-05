@@ -192,10 +192,15 @@ export async function POST(req: NextRequest) {
     // "background_check_threshold_days" (default 15 — same default the map's
     // BookingModal uses), so it is read here instead of hardcoded.
     let stayThresholdDays = 15;
+    // Oct 5 (per Mely — "que mely esté conectada para que dé la info correcta
+    // según lo que Aloha ponga en sus settings"): move-in costs — security
+    // deposit, pet fee, how a partial first month is billed, and which day
+    // rent is due — all read live from the park's own settings.
+    let moveInCostContext = "";
     if (company?.id) {
       const { data: parkSettings } = await supabaseAdmin
         .from("park_settings")
-        .select("lease_defaults")
+        .select("lease_defaults, rent_due_day_policy, rent_due_day_fixed")
         .eq("company_id", company.id)
         .maybeSingle();
 
@@ -203,6 +208,33 @@ export async function POST(req: NextRequest) {
       if (defaults) {
         const thresholdFromSettings = Number(defaults.background_check_threshold_days);
         if (thresholdFromSettings > 0) stayThresholdDays = thresholdFromSettings;
+        const moveInLines: string[] = [];
+        if (defaults.security_deposit_enabled && Number(defaults.security_deposit_amount) > 0) {
+          moveInLines.push(
+            `Security deposit: $${defaults.security_deposit_amount}, one time, paid at move-in together with the first rent${
+              Number(defaults.security_deposit_return_days) > 0
+                ? `; refunded within ${defaults.security_deposit_return_days} days after move-out, less any deductions for damages or unpaid charges`
+                : ""
+            }.`
+          );
+        } else {
+          moveInLines.push("Security deposit: this park does not currently require one.");
+        }
+        if (Number(defaults.pet_deposit) > 0 && defaults.pets_allowed) {
+          moveInLines.push(`Pet fee/deposit: $${defaults.pet_deposit} if the resident has a pet.`);
+        }
+        moveInLines.push(
+          defaults.first_month_proration_method === "daily_rate"
+            ? "Partial first month (moving in mid-month): the park charges the lot's nightly rate for each remaining day of that month (for example, moving in on the 31st means 1 night at the lot's nightly rate)."
+            : "Partial first month (moving in mid-month): the monthly rent is prorated, which is monthly rent divided by the number of days in that month, times the days remaining including the move-in day (for example, moving in on October 31 means 1 day of October's 31 days)."
+        );
+        const duePolicy = parkSettings?.rent_due_day_policy;
+        moveInLines.push(
+          duePolicy === "move_in_anniversary"
+            ? "Rent due day: each resident's rent is due on the same day of the month as their move-in day."
+            : `Rent due day: rent is due on day ${parkSettings?.rent_due_day_fixed || 1} of every month, so after a partial first month the next full month's rent is due on the next due day.`
+        );
+        moveInCostContext = `\n\nMove-in costs (from the park's own settings, always current):\n- ${moveInLines.join("\n- ")}`;
         const parts: string[] = [];
         if (Array.isArray(defaults.park_rules) && defaults.park_rules.length > 0) {
           parts.push(
@@ -261,7 +293,8 @@ export async function POST(req: NextRequest) {
 - When someone asks about availability, rates, or booking, first find out what kind of stay they want: a few nights, a week or a few weeks, or moving in to live here. Ask how many nights they plan to stay (and their arrival date if they have not said). Ask one short question at a time, then answer based on their reply.
 - A stay of ${stayThresholdDays} nights or fewer is a short-term reservation: the person picks the exact lot and exact dates on the interactive map and pays online. Always show this link in your reply: https://${host}/#map The price is built from calendar months first, then whole weeks (only if that lot has a weekly rate), then the remaining nights at the nightly rate.
 - A stay longer than ${stayThresholdDays} nights, a month-to-month stay, or a yearly stay is NOT a reservation: the person becomes a resident, so they must complete the lease application (https://${host}/apply, always show this link), which includes a background check, and then pays monthly rent. Never send these stays to the map to book. Quote only the monthly rate for them.
-- When someone wants to live here (or is staying longer than ${stayThresholdDays} nights), always explain the whole process in order, as a short numbered list, with the Apply link: 1. Complete the lease application online and pay the application fee at the end. 2. Each adult on the application gets an email to complete a background check (check spam or junk if it does not arrive). 3. The background check can take a few days to come back. 4. After the background check is done, the park's office reviews the application and approves it, and the person is notified. 5. Once approved, they complete the move-in steps and pay the monthly rent (state the current monthly rate). Make clear that approval depends on passing the background check and the office's approval, and that Mely cannot approve, deny, or predict the outcome. Keep each step to one short sentence.
+- Costs when moving in: use the "Move-in costs" section. If the person gives an arrival date, explain what they pay at the start: the application fee when applying, then once approved the partial first month (calculate it with the park's method using the lot's rates and say it is an estimate, with the exact amount shown in their application), the security deposit if the park requires one, and then the full monthly rent from the next rent due day. If you do not have the exact figures for their lot, say the application shows the exact total before they pay. Never invent a fee that is not listed.
+- When someone wants to live here (or is staying longer than ${stayThresholdDays} nights), always explain the whole process in order, as a short numbered list, with the Apply link: 1. Complete the lease application online and pay the application fee at the end. 2. Each adult on the application gets an email to complete a background check (check spam or junk if it does not arrive). 3. The background check can take a few days to come back. 4. After the background check is done, the park's office reviews the application and approves it, and the person is notified. 5. Once approved, they complete the move-in steps and pay the first charges (partial first month, plus the security deposit if the park requires one, see "Move-in costs"), and then the monthly rent (state the current monthly rate). Make clear that approval depends on passing the background check and the office's approval, and that Mely cannot approve, deny, or predict the outcome. Keep each step to one short sentence.
 - If someone is not sure how long they will stay, treat it as a long stay and point them to the Apply page.
 - You do NOT have a day-by-day booking calendar. Never promise that a lot is free on a specific date, and never say there is "a lot of availability" for a date. You can say which lots show as available right now, and that the map shows the real open dates once they pick their dates, or they can call the office.`;
 
@@ -269,7 +302,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${applicationContext}${stayRulesContext}${storageContext}
+${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
 
 Style: be warm, kind and natural, and never cold or curt. Answer fully and helpfully: give the useful details the person needs (what it is, how it works, what to expect, and the next step), even for simple questions, in a few clear sentences or short paragraphs rather than a one-line reply. Do not pad: no small talk, no filler, no repeating what you already said, and ask at most one question at a time. When someone wants to become a resident, explain every step in order (see "How stays work"), because they need to know what to expect. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link.
 
