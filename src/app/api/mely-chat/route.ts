@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
       if (amenityLines) sections.push(`Map icons (title and info the park typed, such as hours, rules and prices):\n${amenityLines}`);
       if (textLabels) sections.push(`Text labels placed on the map: ${textLabels}`);
       if (lotInfoLines) sections.push(`Details the park entered for individual lots on the map:\n${lotInfoLines}`);
-      if (propaneLines) sections.push(`Propane prices:\n${propaneLines}`);
+      if (propaneLines) sections.push(`Propane prices (these are REFILL prices):\n${propaneLines}`);
       if (sections.length > 0) {
         amenitiesContext = `\n\nEverything on the park's interactive map (entered by the park, always current):\n${sections.join("\n\n")}\n\nUse this to answer questions about the pool, office, laundry, propane and other amenities, including their hours, and about individual lots.`;
       }
@@ -402,9 +402,16 @@ export async function POST(req: NextRequest) {
 
     const storageContext = `\n\nRV storage: the S lots (S1 through S6, and any lot whose name starts with S) are RV storage spaces only, never a place to stay or camp. Never list them as lots to stay in and never quote, estimate, or hint at a storage price or availability: the price is agreed directly with the office case by case. Storage is arranged through the office${phone ? ` at ${phone}` : ""}: the office confirms there is a space free and that it fits the person's RV or trailer, and agrees the price with them. After that the office sets up the payment: for a current resident, the storage rent is added to their existing resident account and monthly invoice, and they pay it in the resident portal with their other charges; for someone who is not a resident, the office creates a portal account for them so they can pay their monthly storage rent through the portal. Do not tell people they can reserve or pay for these spaces on the website or map by themselves, and do not tell them they can create their own account.`;
 
+    // Oct 5 (per Mely): office hours, the same ones shown in the website
+    // footer (src/components/Footer.tsx — if the footer hours change, change
+    // them here too; a "Notes for Mely" entry also overrides this).
+    const officeHoursContext = `\n\nOffice hours (Eastern Time): Monday to Friday 10:00 AM to 5:00 PM, Saturday 10:00 AM to 3:00 PM, Sunday closed. Anything that needs the office (propane refills, storage, questions) happens during these hours. If someone asks when they can come, call, or get something done, give these hours and use the current date and time above to say whether the office is open right now.`;
+
+    const propaneRulesContext = `\n\nPropane: the park only REFILLS propane tanks that people bring themselves. It does not sell tanks and it does not have a self-serve propane station. Refills are done during office hours. When someone asks about propane, give the refill price for their tank size from the data above, say they bring their own tank to be refilled, and give the office hours. Never say the park sells tanks or that they can pick one up.`;
+
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
+${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
 
 Style: be warm, kind and natural, and never cold or curt. Answer fully and helpfully: give the useful details the person needs (what it is, how it works, what to expect, and the next step), even for simple questions, in a few clear sentences or short paragraphs rather than a one-line reply. Do not pad: no small talk, no filler, no repeating what you already said, and ask at most one question at a time. When someone wants to become a resident, explain every step in order (see "How stays work"), because they need to know what to expect. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link.
 
