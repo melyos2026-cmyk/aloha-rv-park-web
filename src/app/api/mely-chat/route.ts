@@ -82,6 +82,13 @@ export async function POST(req: NextRequest) {
         };
         const seasonStart = toMD(seasonRow?.high_season_start_month_day);
         const seasonEnd = toMD(seasonRow?.high_season_end_month_day);
+        const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+        const mdLabel = (v: any) => {
+          const m = /^(\d{1,2})-(\d{1,2})$/.exec(String(v || ""));
+          return m ? `${monthNames[Number(m[1]) - 1]} ${Number(m[2])}` : "";
+        };
+        const highFrom = mdLabel(seasonRow?.high_season_start_month_day);
+        const highTo = mdLabel(seasonRow?.high_season_end_month_day);
         const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
         const todayMD = (etNow.getMonth() + 1) * 100 + etNow.getDate();
         const inHighSeason =
@@ -106,7 +113,14 @@ export async function POST(req: NextRequest) {
               seasonEnd != null &&
               l.high_season_price != null &&
               l.low_season_price != null;
-            const monthly = `$${seasonal ? (inHighSeason ? l.high_season_price : l.low_season_price) : l.base_price}/month`;
+            const nowPrice = seasonal ? (inHighSeason ? l.high_season_price : l.low_season_price) : l.base_price;
+            // Oct 5 (per Mely): lets Mely answer "how much will rent be in
+            // April?" from the park's own Lots & Seasonal Pricing, by the
+            // move-in date, without ever using season wording.
+            const monthly =
+              seasonal && highFrom && highTo && l.high_season_price !== l.low_season_price
+                ? `$${nowPrice}/month today (monthly rent by move-in date: $${l.high_season_price} for move-ins from ${highFrom} through ${highTo}, and $${l.low_season_price} for all other dates)`
+                : `$${nowPrice}/month`;
             const parts = [
               `Lot ${l.lot_name}`,
               l.max_length_ft ? `fits up to ${l.max_length_ft}ft` : null,
@@ -124,7 +138,7 @@ export async function POST(req: NextRequest) {
           })
           .join("\n");
 
-        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. The monthly price shown is the one that applies today: quote it as simply "the monthly rent right now", and NEVER mention seasons (high season, low season, snowbird season, off-peak, peak) or guess when or whether rent will change. If asked about future rent, say the application shows the exact rent for their lot and move-in date, or the office can confirm. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
+        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. The monthly price shown is the one that applies today: quote it as simply "the monthly rent right now", and NEVER use the words season, high season, low season, snowbird, off-peak or peak. If someone asks about the rent on a future date, use the "monthly rent by move-in date" schedule shown for that lot: the rent depends on the move-in date, so quote the figure for their date and say the application shows the exact amount for their lot and move-in date. If a lot shows no schedule, the monthly rent is the same all year; never guess that it will change. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
       }
     }
 
