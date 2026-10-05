@@ -142,6 +142,38 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Oct 5 (per Mely — "los horarios de la piscina están en el mapa, en el
+    // emoji del nadador"): the info popups on the interactive map's icons
+    // (pool, office, laundry, etc.: title + info lines such as hours) are
+    // stored in map_elements (type "emojis"). Read live so Mely always
+    // matches what the admin typed on the map, with no code changes.
+    let amenitiesContext = "";
+    if (company?.park_id) {
+      const { data: emojiRows } = await supabaseAdmin
+        .from("map_elements")
+        .select("data")
+        .eq("park_id", company.park_id)
+        .eq("element_type", "emojis")
+        .order("id", { ascending: false })
+        .limit(1);
+      const items = Array.isArray(emojiRows?.[0]?.data) ? emojiRows![0].data : [];
+      const amenityLines = items
+        .filter((it: any) => (it?.label && String(it.label).trim()) || (it?.info && String(it.info).trim()))
+        .map((it: any) => {
+          const title = String(it.label || "").trim() || "Map icon";
+          const info = String(it.info || "")
+            .split("\n")
+            .map((x: string) => x.trim())
+            .filter(Boolean)
+            .join("; ");
+          return `- ${title}${info ? `: ${info}` : ""}`;
+        })
+        .join("\n");
+      if (amenityLines) {
+        amenitiesContext = `\n\nPark amenities and map icons (hours, rules and prices the park entered on its interactive map, always current):\n${amenityLines}\n\nUse this to answer questions about the pool, office, laundry and other amenities, including their hours.`;
+      }
+    }
+
     // Website content pages (About, Rules, Amenities, FAQ, Policies, etc.) —
     // whatever the admin has published on aloharvparkfl.com. Pulled live on
     // every message so Mely's knowledge always matches what's actually on
@@ -321,7 +353,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
+${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
 
 Style: be warm, kind and natural, and never cold or curt. Answer fully and helpfully: give the useful details the person needs (what it is, how it works, what to expect, and the next step), even for simple questions, in a few clear sentences or short paragraphs rather than a one-line reply. Do not pad: no small talk, no filler, no repeating what you already said, and ask at most one question at a time. When someone wants to become a resident, explain every step in order (see "How stays work"), because they need to know what to expect. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link.
 
