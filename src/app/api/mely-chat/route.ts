@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+=import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 
@@ -169,8 +169,59 @@ export async function POST(req: NextRequest) {
           return `- ${title}${info ? `: ${info}` : ""}`;
         })
         .join("\n");
-      if (amenityLines) {
-        amenitiesContext = `\n\nPark amenities and map icons (hours, rules and prices the park entered on its interactive map, always current):\n${amenityLines}\n\nUse this to answer questions about the pool, office, laundry and other amenities, including their hours.`;
+      // Text labels the park placed on the map (e.g. "Dog Park", "Entrance").
+      const { data: textRows } = await supabaseAdmin
+        .from("map_elements")
+        .select("data")
+        .eq("park_id", company.park_id)
+        .eq("element_type", "texts")
+        .order("id", { ascending: false })
+        .limit(1);
+      const textItems = Array.isArray(textRows?.[0]?.data) ? textRows![0].data : [];
+      const textLabels = Array.from(
+        new Set(textItems.map((t: any) => String(t?.text || "").trim()).filter(Boolean))
+      ).join(", ");
+
+      // Details the park entered per lot on the map (description, size,
+      // electricity). Storage lots (S...) are skipped on purpose: storage
+      // prices and availability are never quoted, see the storage rules.
+      const { data: lotInfoRows } = await supabaseAdmin
+        .from("lot_info")
+        .select("*")
+        .eq("park_id", company.park_id);
+      const lotInfoLines = (lotInfoRows || [])
+        .filter((r: any) => r?.lot_key && !/^s/i.test(String(r.lot_key)))
+        .map((r: any) => {
+          const bits = [
+            r.description ? String(r.description).trim() : null,
+            r.size ? `size ${r.size}` : null,
+            r.has_electricity ? `electricity${r.amperage ? ` ${r.amperage} amp` : ""}` : null,
+          ].filter(Boolean);
+          return bits.length ? `- Lot ${r.lot_key}: ${bits.join("; ")}` : "";
+        })
+        .filter(Boolean)
+        .join("\n");
+
+      // Propane prices shown on the site/map.
+      let propaneLines = "";
+      if (company?.id) {
+        const { data: propane } = await supabaseAdmin
+          .from("propane_pricing")
+          .select("label, price, unit")
+          .eq("company_id", company.id);
+        propaneLines = (propane || [])
+          .filter((r: any) => r?.label && r.price != null)
+          .map((r: any) => `- ${r.label}: $${r.price}${r.unit ? ` per ${r.unit}` : ""}`)
+          .join("\n");
+      }
+
+      const sections: string[] = [];
+      if (amenityLines) sections.push(`Map icons (title and info the park typed, such as hours, rules and prices):\n${amenityLines}`);
+      if (textLabels) sections.push(`Text labels placed on the map: ${textLabels}`);
+      if (lotInfoLines) sections.push(`Details the park entered for individual lots on the map:\n${lotInfoLines}`);
+      if (propaneLines) sections.push(`Propane prices:\n${propaneLines}`);
+      if (sections.length > 0) {
+        amenitiesContext = `\n\nEverything on the park's interactive map (entered by the park, always current):\n${sections.join("\n\n")}\n\nUse this to answer questions about the pool, office, laundry, propane and other amenities, including their hours, and about individual lots.`;
       }
     }
 
