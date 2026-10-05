@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
 - If an expected email still has not arrived after about 15 to 20 minutes and spam has been checked, direct the person to the office${phone ? ` at ${phone}` : ""}${email ? ` or ${email}` : ""}.`;
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}
+${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${applicationContext}
 
 Language: always reply in the SAME language the person just wrote in — Spanish, English, or any other language — match their current message, not any previous one in the conversation. Always keep a warm, professional tone regardless of language.
 
