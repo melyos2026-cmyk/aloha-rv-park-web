@@ -62,6 +62,30 @@ export async function POST(req: NextRequest) {
         .order("lot_name", { ascending: true });
 
       if (lots && lots.length > 0) {
+        // Oct 5 (per Mely): quote the monthly rate that applies TODAY, never
+        // a season range, and never talk about seasons. Same rule as the
+        // map's isDateInSeason: 'MM-DD' dates, wrapping the year-end when
+        // start > end.
+        const { data: seasonRow } = await supabaseAdmin
+          .from("park_settings")
+          .select("high_season_start_month_day, high_season_end_month_day")
+          .eq("company_id", company.id)
+          .maybeSingle();
+        const toMD = (v: any) => {
+          const m = /^(\d{1,2})-(\d{1,2})$/.exec(String(v || ""));
+          return m ? Number(m[1]) * 100 + Number(m[2]) : null;
+        };
+        const seasonStart = toMD(seasonRow?.high_season_start_month_day);
+        const seasonEnd = toMD(seasonRow?.high_season_end_month_day);
+        const etNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const todayMD = (etNow.getMonth() + 1) * 100 + etNow.getDate();
+        const inHighSeason =
+          seasonStart != null && seasonEnd != null
+            ? seasonStart <= seasonEnd
+              ? todayMD >= seasonStart && todayMD <= seasonEnd
+              : todayMD >= seasonStart || todayMD <= seasonEnd
+            : false;
+
         // Oct 5 (per Mely — found live: Mely quoted "section S" monthly
         // prices to a visitor asking about Oct 31): S-lots are RV STORAGE
         // only (the map treats any lot whose name starts with "S" as
@@ -71,15 +95,18 @@ export async function POST(req: NextRequest) {
         const available = stayLots.filter((l) => l.status === "available" || l.status === "reserved");
         const lotLines = available
           .map((l) => {
-            const seasonal = l.use_seasonal_pricing !== false && l.high_season_price != null && l.low_season_price != null;
-            const monthly = seasonal
-              ? `$${l.low_season_price}-$${l.high_season_price}/month depending on season`
-              : `$${l.base_price}/month`;
+            const seasonal =
+              l.use_seasonal_pricing !== false &&
+              seasonStart != null &&
+              seasonEnd != null &&
+              l.high_season_price != null &&
+              l.low_season_price != null;
+            const monthly = `$${seasonal ? (inHighSeason ? l.high_season_price : l.low_season_price) : l.base_price}/month`;
             const parts = [
               `Lot ${l.lot_name}`,
               l.max_length_ft ? `fits up to ${l.max_length_ft}ft` : null,
               l.amp_service ? `${l.amp_service} amp service` : null,
-              l.base_price ? monthly : null,
+              l.base_price || seasonal ? monthly : null,
               l.daily_rate ? `$${l.daily_rate}/night` : null,
               l.weekly_rate ? `$${l.weekly_rate}/week` : null,
               l.online_booking_disabled
@@ -92,7 +119,7 @@ export async function POST(req: NextRequest) {
           })
           .join("\n");
 
-        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
+        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. The monthly price shown is the one that applies today: quote it as simply "the monthly rent right now", and NEVER mention seasons (high season, low season, snowbird season, off-peak, peak) or guess when or whether rent will change. If asked about future rent, say the application shows the exact rent for their lot and move-in date, or the office can confirm. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
       }
     }
 
@@ -217,10 +244,10 @@ export async function POST(req: NextRequest) {
     // (those are set per park), and the STRICT PRIVACY RULE below still
     // forbids discussing anyone's actual result.
     const applicationContext = `\n\nHow applying and the background check work (general information for applicants):
-- Applications are completed online, through the park's Apply page or the link the office sends. The application fee is paid online at the end of the application.
+- Applications are completed online at https://${host}/apply (always give this exact link whenever you tell someone to apply or complete the application). The application fee is paid online at the end of the application.
 - Most stays require a background check for every adult on the application. Very short stays may not need one, and the office can confirm for a specific situation.
-- Most applicants have never heard of Checkr, so always talk about "the background check" first. Mention the name Checkr only as the sender of the email, so people can recognize it in their inbox.
-- Right after the fee is paid, each adult gets an email about the background check from a company called Checkr, which runs the check for the park. It contains a secure link to fill out their own form. That email can take several minutes to arrive, and it can land in spam or junk, so ask people to check there and wait a little before worrying.
+- Never say the name of the background check company (do not write "Checkr"). Just say "the background check". If the person themselves mentions an email from Checkr or asks whether it is legitimate, confirm that it is the park's real background check and safe to use.
+- Right after the fee is paid, each adult gets an email about the background check, sent on behalf of the park. It contains a secure link to fill out their own form. That email can take several minutes to arrive, and it can land in spam or junk, so ask people to check there and wait a little before worrying.
 - Each person completes their part on that secure page. The park never sees what they type there.
 - If they get a second email saying "Background check paused: more information needed", it means one more thing is needed from them to finish their background check. They should open the link in that email and complete the step before the deadline written in the email. If they are unsure what is being asked, the email and the page explain it, and the office can help them with next steps.
 - After the background check is complete, the park's office reviews the application and approves it. Mely cannot approve, deny, or predict the outcome of anyone's application, and never discusses any individual's results.
@@ -232,8 +259,8 @@ export async function POST(req: NextRequest) {
     // Mely follows the same rules instead of improvising them.
     const stayRulesContext = `\n\nHow stays work (follow this exactly — it mirrors how the park's booking system and lease application are built):
 - When someone asks about availability, rates, or booking, first find out what kind of stay they want: a few nights, a week or a few weeks, or moving in to live here. Ask how many nights they plan to stay (and their arrival date if they have not said). Ask one short question at a time, then answer based on their reply.
-- A stay of ${stayThresholdDays} nights or fewer is a short-term reservation: the person picks the exact lot and exact dates on the interactive map on the home page and pays online. The price is built from calendar months first, then whole weeks (only if that lot has a weekly rate), then the remaining nights at the nightly rate.
-- A stay longer than ${stayThresholdDays} nights, a month-to-month stay, or a yearly stay is NOT a reservation: the person becomes a resident, so they must complete the lease application (the Apply page), which includes a background check, and then pays monthly rent. Never send these stays to the map to book. Quote only the monthly rate for them.
+- A stay of ${stayThresholdDays} nights or fewer is a short-term reservation: the person picks the exact lot and exact dates on the interactive map and pays online. Always show this link in your reply: https://${host}/#map The price is built from calendar months first, then whole weeks (only if that lot has a weekly rate), then the remaining nights at the nightly rate.
+- A stay longer than ${stayThresholdDays} nights, a month-to-month stay, or a yearly stay is NOT a reservation: the person becomes a resident, so they must complete the lease application (https://${host}/apply, always show this link), which includes a background check, and then pays monthly rent. Never send these stays to the map to book. Quote only the monthly rate for them.
 - If someone is not sure how long they will stay, treat it as a long stay and point them to the Apply page.
 - You do NOT have a day-by-day booking calendar. Never promise that a lot is free on a specific date, and never say there is "a lot of availability" for a date. You can say which lots show as available right now, and that the map shows the real open dates once they pick their dates, or they can call the office.`;
 
@@ -242,6 +269,8 @@ export async function POST(req: NextRequest) {
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
 ${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${applicationContext}${stayRulesContext}${storageContext}
+
+Style: be warm but get straight to the point. Answer the question first in two to four short sentences, ask at most one question, and do not recap the whole process unless the person asks for it. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link. Never go around in circles or repeat what you already said.
 
 Language: always reply in the SAME language the person just wrote in — Spanish, English, or any other language — match their current message, not any previous one in the conversation. Always keep a warm, professional tone regardless of language.
 
