@@ -56,13 +56,19 @@ export async function POST(req: NextRequest) {
       const { data: lots } = await supabaseAdmin
         .from("rv_lots")
         .select(
-          "lot_name, status, max_length_ft, max_width_ft, amp_service, base_price, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing"
+          "lot_name, status, max_length_ft, max_width_ft, amp_service, base_price, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing, online_booking_disabled"
         )
         .eq("company_id", company.id)
         .order("lot_name", { ascending: true });
 
       if (lots && lots.length > 0) {
-        const available = lots.filter((l) => l.status === "available" || l.status === "reserved");
+        // Oct 5 (per Mely — found live: Mely quoted "section S" monthly
+        // prices to a visitor asking about Oct 31): S-lots are RV STORAGE
+        // only (the map treats any lot whose name starts with "S" as
+        // storage), never a place to stay, so they must not appear in the
+        // stay-lot list at all. Storage is explained separately below.
+        const stayLots = lots.filter((l) => !/^s/i.test(l.lot_name || ""));
+        const available = stayLots.filter((l) => l.status === "available" || l.status === "reserved");
         const lotLines = available
           .map((l) => {
             const seasonal = l.use_seasonal_pricing !== false && l.high_season_price != null && l.low_season_price != null;
@@ -76,13 +82,17 @@ export async function POST(req: NextRequest) {
               l.base_price ? monthly : null,
               l.daily_rate ? `$${l.daily_rate}/night` : null,
               l.weekly_rate ? `$${l.weekly_rate}/week` : null,
-              l.status === "reserved" ? "(currently reserved, opening up soon)" : "(available now)",
+              l.online_booking_disabled
+                ? "(shows available, but must be booked by calling the office)"
+                : l.status === "reserved"
+                ? "(currently reserved, opening up soon)"
+                : "(available now)",
             ].filter(Boolean);
             return "- " + parts.join(", ");
           })
           .join("\n");
 
-        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. If someone wants to actually book, direct them to the interactive map on the home page (where they can pick exact dates) or to call the office.`;
+        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
       }
     }
 
@@ -150,6 +160,11 @@ export async function POST(req: NextRequest) {
     // every single message, so this always reflects whatever's currently
     // saved with zero code changes needed when an admin edits it.
     let rulesContext = "";
+    // Oct 5 (per Mely): the stay-length line between a short-term
+    // reservation and a lease application is the park's own Lease Defaults
+    // "background_check_threshold_days" (default 15 — same default the map's
+    // BookingModal uses), so it is read here instead of hardcoded.
+    let stayThresholdDays = 15;
     if (company?.id) {
       const { data: parkSettings } = await supabaseAdmin
         .from("park_settings")
@@ -159,6 +174,8 @@ export async function POST(req: NextRequest) {
 
       const defaults = parkSettings?.lease_defaults as Record<string, any> | undefined;
       if (defaults) {
+        const thresholdFromSettings = Number(defaults.background_check_threshold_days);
+        if (thresholdFromSettings > 0) stayThresholdDays = thresholdFromSettings;
         const parts: string[] = [];
         if (Array.isArray(defaults.park_rules) && defaults.park_rules.length > 0) {
           parts.push(
@@ -208,9 +225,23 @@ export async function POST(req: NextRequest) {
 - If they get a second email saying "Background check paused: more information needed", it means one more thing is needed from them to finish their background check. They should open the link in that email and complete the step before the deadline written in the email. If they are unsure what is being asked, the email and the page explain it, and the office can help them with next steps.
 - After the background check is complete, the park's office reviews the application and approves it. Mely cannot approve, deny, or predict the outcome of anyone's application, and never discusses any individual's results.
 - If an expected email still has not arrived after about 15 to 20 minutes and spam has been checked, direct the person to the office${phone ? ` at ${phone}` : ""}${email ? ` or ${email}` : ""}.`;
+    // Oct 5 (per Mely — found live: asked about Oct 31, Mely said there was
+    // "muchísima disponibilidad", quoted storage-lot prices, and never asked
+    // how long the stay was): mirrors how the park's own booking system
+    // (aloha-rv-park BookingModal) and lease application are built, so
+    // Mely follows the same rules instead of improvising them.
+    const stayRulesContext = `\n\nHow stays work (follow this exactly — it mirrors how the park's booking system and lease application are built):
+- When someone asks about availability, rates, or booking, first find out what kind of stay they want: a few nights, a week or a few weeks, or moving in to live here. Ask how many nights they plan to stay (and their arrival date if they have not said). Ask one short question at a time, then answer based on their reply.
+- A stay of ${stayThresholdDays} nights or fewer is a short-term reservation: the person picks the exact lot and exact dates on the interactive map on the home page and pays online. The price is built from calendar months first, then whole weeks (only if that lot has a weekly rate), then the remaining nights at the nightly rate.
+- A stay longer than ${stayThresholdDays} nights, a month-to-month stay, or a yearly stay is NOT a reservation: the person becomes a resident, so they must complete the lease application (the Apply page), which includes a background check, and then pays monthly rent. Never send these stays to the map to book. Quote only the monthly rate for them.
+- If someone is not sure how long they will stay, treat it as a long stay and point them to the Apply page.
+- You do NOT have a day-by-day booking calendar. Never promise that a lot is free on a specific date, and never say there is "a lot of availability" for a date. You can say which lots show as available right now, and that the map shows the real open dates once they pick their dates, or they can call the office.`;
+
+    const storageContext = `\n\nRV storage: the S lots (S1 through S6, and any lot whose name starts with S) are RV storage spaces only, never a place to stay or camp. Never list them as lots to stay in and never quote, estimate, or hint at a storage price or availability: the price is agreed directly with the office case by case. Storage is arranged through the office${phone ? ` at ${phone}` : ""}: the office confirms there is a space free and that it fits the person's RV or trailer, and agrees the price with them. After that the office sets up the payment: for a current resident, the storage rent is added to their existing resident account and monthly invoice, and they pay it in the resident portal with their other charges; for someone who is not a resident, the office creates a portal account for them so they can pay their monthly storage rent through the portal. Do not tell people they can reserve or pay for these spaces on the website or map by themselves, and do not tell them they can create their own account.`;
+
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${applicationContext}
+${extraInfo}${lotsContext}${pagesContext}${listingsContext}${rulesContext}${applicationContext}${stayRulesContext}${storageContext}
 
 Language: always reply in the SAME language the person just wrote in — Spanish, English, or any other language — match their current message, not any previous one in the conversation. Always keep a warm, professional tone regardless of language.
 
