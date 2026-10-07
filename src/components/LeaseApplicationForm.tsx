@@ -170,8 +170,9 @@ function formatPhoneAsTyped(value: string): string {
 // chain into this CLIENT component's bundle, crashing the entire public
 // /apply page on load ("This page couldn't load" — found live, Aug 17).
 // Same exact formula, kept in sync by hand since it's this simple.
-const PROCESSING_FEE_PERCENT = 0.04;
-const PROCESSING_FEE_MINIMUM = 1.5;
+// Oct 7: updated to match src/lib/platformFee.ts (3.5% / $2.25 minimum, changed Sep 24).
+const PROCESSING_FEE_PERCENT = 0.035;
+const PROCESSING_FEE_MINIMUM = 2.25;
 function calculateProcessingFee(amount: number): number {
   return Math.max(amount * PROCESSING_FEE_PERCENT, PROCESSING_FEE_MINIMUM);
 }
