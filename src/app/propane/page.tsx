@@ -85,7 +85,8 @@ export default function PropanePage() {
       : !!selected.taxable);
   const taxIncludedInPrice = tax.enabled && selected?.tax_mode === "included";
   const salesTax = taxApplies ? subtotal * (tax.ratePercent / 100) : 0;
-  const processingFee = subtotal * 0.04;
+  // Oct 7: must match src/lib/platformFee.ts (3.5% or $2.25 minimum, whichever is greater) — the server charges that amount, this is only the preview shown before checkout.
+  const processingFee = subtotal > 0 ? Math.max(subtotal * 0.035, 2.25) : 0;
   const total = subtotal + salesTax + processingFee;
 
   async function handleCheckout() {
