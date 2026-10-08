@@ -12,6 +12,15 @@ const CHECKR_API_BASE =
     : "https://api.checkr-staging.com/v1";
 const CHECKR_API_KEY = process.env.CHECKR_API_KEY as string;
 
+// Oct 8 (per Mely — Checkr production approved): the park-facing name "RV Park Tenant
+// Screening" is the same screening as Checkr's "Basic Plus Criminal" and only existed as a
+// separate package in staging. Checkr's PRODUCTION account has only the standard packages,
+// so in production the request is sent under the real package slug. Staging is unchanged.
+const PRODUCTION_PACKAGE_ALIASES: Record<string, string> = { rv_park_tenant_screening: "basic_plus_criminal" };
+function checkrPackageSlug(slug: string): string {
+  return CHECKR_ENVIRONMENT === "production" ? PRODUCTION_PACKAGE_ALIASES[slug] ?? slug : slug;
+}
+
 function checkrAuthHeader() {
   const encoded = Buffer.from(`${CHECKR_API_KEY}:`).toString("base64");
   return `Basic ${encoded}`;
@@ -79,7 +88,7 @@ export async function createCheckrInvitation(params: {
     headers: { "Idempotency-Key": `invitation:${customId}` },
         body: JSON.stringify({
       candidate_id: candidate.id,
-      package: params.packageSlug,
+      package: checkrPackageSlug(params.packageSlug),
       work_locations: [{ country: "US", state: params.state }],
       // Oct 1 (per Checkr's own API Authorization reviewer, via Mely):
       // even with zero Nodes defined today, Checkr recommends always
