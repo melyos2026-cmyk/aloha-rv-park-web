@@ -319,6 +319,9 @@ export async function POST(req: Request) {
             voided_at: new Date().toISOString(), void_reason: "Refunded in Stripe", voided_by_name: "Stripe",
           }).eq("id", row.id);
         } else {
+          // Refunds issued from MelyOS Daily Close are already recorded in rv_refunds — nothing to review.
+          const { data: ours } = await supabase.from("rv_refunds").select("id").eq("payment_intent", pi).limit(1);
+          if (ours && ours.length) continue;
           await logSystemHealthIssue({
             companyId: row.company_id, issueType: "shift_ledger_review", source: "stripe_webhook",
             message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on an online payment of $${Number(row.amount).toFixed(2)} (${row.payer_name || "unknown payer"}). Daily Close still shows the full amount — review it.`,
