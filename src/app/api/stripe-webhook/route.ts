@@ -48,6 +48,45 @@ export async function POST(req: Request) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
+    // Oct 8 (per Mely — Shifts & Daily Close): every online payment is also written to the RV-park
+    // payment ledger so the admin sees the whole day in one place. It is shown separately from the
+    // drawer (never part of a cash count). Best-effort: a failure here never touches the payment
+    // itself, but is logged to System Health so it does not go unnoticed.
+    if (session.payment_status === "paid") {
+      const ledgerCompanyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+      try {
+        if (ledgerCompanyId) {
+          const kind = session.metadata?.type;
+          const label = kind === "application_fee" ? "Application fee (online)"
+            : kind === "manual_reservation" ? "Reservation (online)"
+            : kind === "rent_to_own_deposit" ? "Rent-to-own deposit (online)"
+            : kind === "occupant_background_check" ? "Occupant background check (online)"
+            : session.metadata?.productId ? "Propane (online)" : "Invoice payment (online)";
+          const { error: ledgerErr } = await supabase.from("rv_shift_payments").upsert({
+            company_id: ledgerCompanyId,
+            shift_id: null,
+            source_type: "stripe_online",
+            source_id: session.id,
+            description: label,
+            payer_name: session.customer_details?.name || session.customer_details?.email || session.customer_email || null,
+            amount: Math.round(Number(session.amount_total || 0)) / 100,
+            method: "stripe",
+            reference: typeof session.payment_intent === "string" ? session.payment_intent : null,
+            recorded_by_name: "Online payment",
+          }, { onConflict: "company_id,source_type,source_id", ignoreDuplicates: true });
+          if (ledgerErr) throw new Error(ledgerErr.message);
+        }
+      } catch (err: any) {
+        console.error("rv_shift_payments (online) failed:", err?.message);
+        if (ledgerCompanyId) {
+          await logSystemHealthIssue({
+            companyId: ledgerCompanyId, issueType: "shift_ledger_failed", source: "stripe_webhook",
+            message: `An online payment was received but could not be added to Shifts & Daily Close (${err?.message || "unknown error"}). Session ${session.id}.`,
+          });
+        }
+      }
+    }
+
     if (session.metadata?.type === "application_fee") {
       await handleApplicationFeePaid(session);
       return NextResponse.json({ received: true });
