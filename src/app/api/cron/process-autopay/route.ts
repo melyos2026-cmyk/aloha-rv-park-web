@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -104,6 +105,10 @@ export async function GET(request: Request) {
             .update({ status: "Paid" })
             .eq("id", invoice.id);
           chargedCount += 1;
+          await logRvOnlinePayment({
+            companyId: resident.company_id || null, sourceId: paymentIntent.id, description: "Autopay (online)",
+            payerName: resident.full_name, amountCents: paymentIntent.amount, reference: paymentIntent.id,
+          });
 
           // Aug 6 (per Mely): same "attach fee/tax as real invoice items,
           // then recompute total_amount" pattern the manual Pay Now

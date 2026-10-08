@@ -8,6 +8,7 @@ import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -48,43 +49,21 @@ export async function POST(req: Request) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    // Oct 8 (per Mely — Shifts & Daily Close): every online payment is also written to the RV-park
-    // payment ledger so the admin sees the whole day in one place. It is shown separately from the
-    // drawer (never part of a cash count). Best-effort: a failure here never touches the payment
-    // itself, but is logged to System Health so it does not go unnoticed.
+    // Oct 8 (per Mely — Shifts & Daily Close): every online payment also goes to the RV-park ledger.
     if (session.payment_status === "paid") {
-      const ledgerCompanyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
-      try {
-        if (ledgerCompanyId) {
-          const kind = session.metadata?.type;
-          const label = kind === "application_fee" ? "Application fee (online)"
-            : kind === "manual_reservation" ? "Reservation (online)"
-            : kind === "rent_to_own_deposit" ? "Rent-to-own deposit (online)"
-            : kind === "occupant_background_check" ? "Occupant background check (online)"
-            : session.metadata?.productId ? "Propane (online)" : "Invoice payment (online)";
-          const { error: ledgerErr } = await supabase.from("rv_shift_payments").upsert({
-            company_id: ledgerCompanyId,
-            shift_id: null,
-            source_type: "stripe_online",
-            source_id: session.id,
-            description: label,
-            payer_name: session.customer_details?.name || session.customer_details?.email || session.customer_email || null,
-            amount: Math.round(Number(session.amount_total || 0)) / 100,
-            method: "stripe",
-            reference: typeof session.payment_intent === "string" ? session.payment_intent : null,
-            recorded_by_name: "Online payment",
-          }, { onConflict: "company_id,source_type,source_id", ignoreDuplicates: true });
-          if (ledgerErr) throw new Error(ledgerErr.message);
-        }
-      } catch (err: any) {
-        console.error("rv_shift_payments (online) failed:", err?.message);
-        if (ledgerCompanyId) {
-          await logSystemHealthIssue({
-            companyId: ledgerCompanyId, issueType: "shift_ledger_failed", source: "stripe_webhook",
-            message: `An online payment was received but could not be added to Shifts & Daily Close (${err?.message || "unknown error"}). Session ${session.id}.`,
-          });
-        }
-      }
+      const kind = session.metadata?.type;
+      await logRvOnlinePayment({
+        companyId: await resolveCompanyIdFromMetadata(session.metadata).catch(() => null),
+        sourceId: session.id,
+        description: kind === "application_fee" ? "Application fee (online)"
+          : kind === "manual_reservation" ? "Reservation (online)"
+          : kind === "rent_to_own_deposit" ? "Rent-to-own deposit (online)"
+          : kind === "occupant_background_check" ? "Occupant background check (online)"
+          : kind === "propane_fillup" || session.metadata?.productId ? "Propane (online)" : "Invoice payment (online)",
+        payerName: session.customer_details?.name || session.customer_details?.email || session.customer_email || null,
+        amountCents: Number(session.amount_total || 0),
+        reference: typeof session.payment_intent === "string" ? session.payment_intent : null,
+      });
     }
 
     if (session.metadata?.type === "application_fee") {
@@ -305,6 +284,11 @@ export async function POST(req: Request) {
   async function resolveCompanyIdFromMetadata(metadata: Stripe.Metadata | null | undefined): Promise<string | null> {
     if (!metadata) return null;
     if (metadata.company_id) return metadata.company_id;
+    if (metadata.companyId) return metadata.companyId;
+    if (metadata.lot_order_id) {
+      const { data } = await supabase.from("reservations").select("company_id").eq("lot_order_id", metadata.lot_order_id).maybeSingle();
+      if (data?.company_id) return data.company_id;
+    }
     if (metadata.resident_id) {
       const { data } = await supabase.from("resident_accounts").select("company_id").eq("id", metadata.resident_id).maybeSingle();
       if (data?.company_id) return data.company_id;
@@ -318,6 +302,30 @@ export async function POST(req: Request) {
       if (data?.id) return data.id;
     }
     return null;
+  }
+
+  // Oct 8 (per Mely — Shifts & Daily Close): a full refund voids the online payment in the daily close;
+  // a partial refund cannot be split automatically, so it is flagged in System Health for review.
+  // Requires the event "charge.refunded" to be enabled on this webhook endpoint in the Stripe dashboard.
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
+    if (pi) {
+      const { data: rows } = await supabase.from("rv_shift_payments").select("id, company_id, amount, payer_name")
+        .eq("source_type", "stripe_online").eq("reference", pi).is("voided_at", null);
+      for (const row of rows || []) {
+        if (charge.refunded) {
+          await supabase.from("rv_shift_payments").update({
+            voided_at: new Date().toISOString(), void_reason: "Refunded in Stripe", voided_by_name: "Stripe",
+          }).eq("id", row.id);
+        } else {
+          await logSystemHealthIssue({
+            companyId: row.company_id, issueType: "shift_ledger_review", source: "stripe_webhook",
+            message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on an online payment of $${Number(row.amount).toFixed(2)} (${row.payer_name || "unknown payer"}). Daily Close still shows the full amount — review it.`,
+          });
+        }
+      }
+    }
   }
 
   if (event.type === "checkout.session.expired") {
