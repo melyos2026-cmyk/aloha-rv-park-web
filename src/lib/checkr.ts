@@ -16,7 +16,7 @@ const CHECKR_API_KEY = process.env.CHECKR_API_KEY as string;
 // Screening" is the same screening as Checkr's "Basic Plus Criminal" and only existed as a
 // separate package in staging. Checkr's PRODUCTION account has only the standard packages,
 // so in production the request is sent under the real package slug. Staging is unchanged.
-const PRODUCTION_PACKAGE_ALIASES: Record<string, string> = { rv_park_tenant_screening: "basic_plus_criminal" };
+const PRODUCTION_PACKAGE_ALIASES: Record<string, string> = {};
 function checkrPackageSlug(slug: string): string {
   return CHECKR_ENVIRONMENT === "production" ? PRODUCTION_PACKAGE_ALIASES[slug] ?? slug : slug;
 }
