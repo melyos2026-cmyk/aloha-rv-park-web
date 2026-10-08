@@ -1,4 +1,5 @@
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { alertCheckrFailure } from "@/lib/alertCheckrFailure";
 import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
 
 // Aug 24 (per Mely — found live testing "+ New Application"/Mark Fee
@@ -83,6 +84,7 @@ export async function sendCheckrInvitationsForApplication(applicationId: string)
   }
 
   const results: CheckrResultEntry[] = [];
+  const failures: { name: string; reason: string }[] = [];
   // Sep 29 (per Mely — same gap found in the Stripe-webhook path): capture
   // the PRIMARY applicant's Checkr candidate/invitation id + invitation_url
   // so it can be persisted to the top-level checkr_* columns below.
@@ -109,7 +111,18 @@ export async function sendCheckrInvitationsForApplication(applicationId: string)
     } catch (checkrErr: any) {
       console.error(`Checkr invitation failed for person ${person.personKey}:`, checkrErr.message);
       results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
+      failures.push({ name: person.name, reason: String(checkrErr?.message || "Unknown Checkr error").slice(0, 300) });
     }
+  }
+
+  if (failures.length > 0) {
+    await alertCheckrFailure({
+      applicationId: application.id,
+      applicantName: application.full_name || "Applicant",
+      companyId: application.company_id,
+      failures,
+      notifyPark: true,
+    });
   }
 
   const aggregateStatus = computeAggregateStatus(results);

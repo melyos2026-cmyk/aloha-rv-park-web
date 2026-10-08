@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
+import { alertCheckrFailure } from "@/lib/alertCheckrFailure";
 import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
 import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
@@ -781,7 +782,8 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     return;
   }
 
-   let primaryCandidateId: string | undefined;
+   const appFailures: { name: string; reason: string }[] = [];
+  let primaryCandidateId: string | undefined;
   let primaryInvitationId: string | undefined;
   let primaryInvitationUrl: string | undefined;
 
@@ -809,7 +811,19 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     } catch (checkrErr: any) {
       console.error(`Checkr invitation failed for person ${person.personKey}:`, checkrErr.message);
       results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
+      appFailures.push({ name: person.name, reason: String(checkrErr?.message || "Unknown Checkr error").slice(0, 300) });
     }
+  }
+
+  if (appFailures.length > 0) {
+    // Park admin is already emailed below; this adds the real reason + a MelyOS copy.
+    await alertCheckrFailure({
+      applicationId: application.id,
+      applicantName: application.full_name || "Applicant",
+      companyId: application.company_id,
+      failures: appFailures,
+      notifyPark: false,
+    });
   }
 
   const aggregateStatus = computeAggregateStatus(results);
