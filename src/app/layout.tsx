@@ -36,9 +36,20 @@ async function getHostCompany() {
 
 export async function generateMetadata(): Promise<Metadata> {
   const company = await getHostCompany();
+  const isAloha = ((await headers()).get("host") || "").toLowerCase().includes("aloharvparkfl.com");
 
   return {
     title: company?.company_name || "Aloha RV Park – Kissimmee, Florida",
+    // Oct 9: Aloha's compass as the tab icon, only on Aloha's own domain
+    // (this repo also serves other tenants' sites).
+    ...(isAloha
+      ? {
+          icons: {
+            icon: [{ url: "/aloha-favicon.png", type: "image/png" }],
+            apple: [{ url: "/aloha-apple.png" }],
+          },
+        }
+      : {}),
     description:
       company?.seo_description ||
       "Your home away from home near Orlando, Disney World, Universal Studios & SeaWorld. 4648 S. Orange Blossom Trl, Kissimmee FL 34746",
