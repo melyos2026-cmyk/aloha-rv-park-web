@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
+import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -69,6 +70,16 @@ export default function ResidentDashboard() {
   // admin message that concerns this resident.
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // Oct 9: mirror unread notifications on the installed app's icon.
+  useEffect(() => {
+    try {
+      const n = notifications.filter((x: any) => !x.resident_read_at).length;
+      const nav: any = navigator;
+      if (n > 0 && nav.setAppBadge) nav.setAppBadge(n).catch(() => {});
+      else if (nav.clearAppBadge) nav.clearAppBadge().catch(() => {});
+    } catch {}
+  }, [notifications]);
 
   async function loadNotifications(overrideResidentId?: string) {
     const id = overrideResidentId || residentId;
@@ -778,6 +789,7 @@ export default function ResidentDashboard() {
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#d3f8e2", fontWeight: 600, marginBottom: 8 }}>Resident Portal</div>
             <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, marginBottom: 4 }}>Welcome, {resident.full_name}</h1>
             <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : (resident.companies?.company_name || "")}</p>
+            <ResidentPushAlerts residentId={residentId} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
             <button
