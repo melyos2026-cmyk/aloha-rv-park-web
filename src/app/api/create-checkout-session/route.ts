@@ -133,6 +133,7 @@ export async function POST(req: Request) {
             payment_intent_data: {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
               transfer_data: { destination: connectSplit.connectedAccountId },
+              ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
             },
           }
         : {}),

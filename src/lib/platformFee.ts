@@ -32,6 +32,29 @@ export function estimateStripeCut(totalChargeAmount: number): number {
 export interface ConnectSplit {
   connectedAccountId: string;
   applicationFeeAmountCents: number;
+  // Oct 9 (per Mely): short park name appended to MelyOS LLC on the
+  // resident's card statement ("MELYOS LLC* ALOHA RV") so they know where
+  // the money is going. Undefined if it can't be derived safely.
+  statementDescriptorSuffix?: string;
+}
+
+// Stripe: suffix + account prefix must total 5-22 chars, and may not
+// contain < > \ ' " *. Keep the suffix short (<=10, whole words) so it
+// fits after any reasonable prefix.
+export function buildStatementSuffix(companyName?: string | null): string | undefined {
+  if (!companyName) return undefined;
+  const words = companyName
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  let out = "";
+  for (const w of words) {
+    const next = out ? out + " " + w : w;
+    if (next.length > 10) break;
+    out = next;
+  }
+  return out.length >= 2 ? out : undefined;
 }
 
 // Aug 4 (per Mely, Phase 2): looks up whether this company has a real
@@ -51,6 +74,12 @@ export async function resolveConnectSplit(
     .eq("company_id", companyId)
     .maybeSingle();
 
+  const { data: company } = await supabase
+    .from("companies")
+    .select("company_name")
+    .eq("id", companyId)
+    .maybeSingle();
+
   if (!settings?.stripe_connect_account_id || !settings.stripe_connect_onboarded) {
     return null;
   }
@@ -60,5 +89,6 @@ export async function resolveConnectSplit(
   return {
     connectedAccountId: settings.stripe_connect_account_id,
     applicationFeeAmountCents: Math.round(melyOsShare * 100),
+    statementDescriptorSuffix: buildStatementSuffix(company?.company_name),
   };
 }

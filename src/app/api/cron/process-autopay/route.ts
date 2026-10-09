@@ -95,6 +95,7 @@ export async function GET(request: Request) {
             ? {
                 application_fee_amount: connectSplit.applicationFeeAmountCents,
                 transfer_data: { destination: connectSplit.connectedAccountId },
+              ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
               }
             : {}),
         });
