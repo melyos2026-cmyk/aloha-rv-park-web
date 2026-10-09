@@ -1006,9 +1006,16 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
     if (company) {
       await supabase.from("resident_update_notifications").insert({
         company_id: company.id,
-        resident_name: customerEmail || null,
+        resident_name: session.customer_details?.name || customerEmail || null,
         update_type: "propane_payment",
-        message: `Propane payment received: ${quantity} ${productId === "motorhome" ? "gal" : "×"} ${PROPANE_PRODUCT_LABELS[productId as string] || productId} — $${((session.amount_total || 0) / 100).toFixed(2)}.`,
+        message: (() => {
+          const q = parseFloat(quantity as string);
+          const lbsPer = parseInt(String(productId), 10);
+          const what = productId === "motorhome"
+            ? `${q} gal Motor Home fill-up`
+            : `${q} × ${PROPANE_PRODUCT_LABELS[productId as string] || productId}${Number.isFinite(lbsPer) ? ` (${lbsPer * q} lbs)` : ""}`;
+          return `Bought ${what} — paid $${((session.amount_total || 0) / 100).toFixed(2)}`;
+        })(),
       });
     }
 
