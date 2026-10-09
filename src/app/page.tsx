@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 
 export default function Home() {
-  const { company } = useCompany();
+  const { company, loading: companyLoading } = useCompany();
+  const companyReady = !companyLoading && !!company;
   const [extraHeroImages, setExtraHeroImages] = useState<string[]>([]);
   const [heroIndex, setHeroIndex] = useState(0);
   // Aug 12 (per Mely): the map now computes its own true natural height
@@ -25,7 +26,11 @@ export default function Home() {
     return () => window.removeEventListener("message", handleMapHeight);
   }, []);
 
-  const heroImage = company?.hero_image_url || "/aloha-rv-park-header.jpg";
+  // Oct 9: never flash Aloha's photo on another tenant's site (demo.melyos.io).
+  // Wait for the company to load; the Aloha default photo is used only for Aloha.
+  const heroImage = !companyReady
+    ? ""
+    : company?.hero_image_url || (company?.park_id === "aloha" ? "/aloha-rv-park-header.jpg" : "");
 
   // Aug 5 (per Mely): additional carousel photos on top of the single
   // main Header Photo — together they rotate on the homepage every few
@@ -62,7 +67,7 @@ export default function Home() {
     <>
       {/* Hero Banner */}
       <section style={{
-        backgroundImage: `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)), url(${currentHeroImage})`,
+        backgroundImage: currentHeroImage ? `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)), url(${currentHeroImage})` : "linear-gradient(#1f2937, #111827)",
         backgroundSize: "cover",
         backgroundPosition: "center",
         transition: "background-image 1s ease-in-out",
@@ -76,7 +81,7 @@ export default function Home() {
           position: "absolute", inset: 0,
           background: "repeating-linear-gradient(45deg, transparent, transparent 40px, rgba(220,38,38,0.03) 40px, rgba(220,38,38,0.03) 80px)"
         }} />
-        <div style={{ position: "relative", maxWidth: 800, margin: "0 auto" }}>
+        <div style={{ position: "relative", maxWidth: 800, margin: "0 auto", visibility: companyReady ? "visible" : "hidden" }}>
           <div style={{ fontSize: 13, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--white)", fontWeight: 600, marginBottom: 16 }}>
             ★ {company?.hero_location_label || "Kissimmee, Florida"} ★
           </div>
