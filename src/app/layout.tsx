@@ -40,8 +40,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: company?.company_name || "Aloha RV Park – Kissimmee, Florida",
-    // Oct 9: Aloha's compass as the tab icon, only on Aloha's own domain
-    // (this repo also serves other tenants' sites).
+    // Oct 9: tab icon per tenant. Aloha gets its compass; every other
+    // company (Sunset Ridge, future clients) gets its own logo_url
+    // automatically; no logo -> no custom icon.
     ...(isAloha
       ? {
           icons: {
@@ -49,6 +50,8 @@ export async function generateMetadata(): Promise<Metadata> {
             apple: [{ url: "/aloha-apple.png" }],
           },
         }
+      : company?.logo_url
+      ? { icons: { icon: [{ url: company.logo_url }], apple: [{ url: company.logo_url }] } }
       : {}),
     description:
       company?.seo_description ||
