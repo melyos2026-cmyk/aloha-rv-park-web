@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
+import { closeSeenNotifications } from "@/lib/closeNotifications";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -70,6 +71,7 @@ export default function ResidentDashboard() {
   // admin message that concerns this resident.
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifLoadedOnce, setNotifLoadedOnce] = useState(false);
 
   // Oct 9: mirror unread notifications on the installed app's icon.
   useEffect(() => {
@@ -79,14 +81,22 @@ export default function ResidentDashboard() {
       if (n > 0 && nav.setAppBadge) nav.setAppBadge(n).catch(() => {});
       else if (nav.clearAppBadge) nav.clearAppBadge().catch(() => {});
     } catch {}
-  }, [notifications]);
+    if (notifLoadedOnce) {
+      closeSeenNotifications(
+        new Set(notifications.filter((x: any) => !x.resident_read_at).map((x: any) => String(x.id)))
+      );
+    }
+  }, [notifications, notifLoadedOnce]);
 
   async function loadNotifications(overrideResidentId?: string) {
     const id = overrideResidentId || residentId;
     if (!id) return;
     const res = await fetch(`/api/portal/notifications?residentId=${id}`);
     const result = await res.json();
-    if (res.ok) setNotifications(result.notifications || []);
+    if (res.ok) {
+      setNotifications(result.notifications || []);
+      setNotifLoadedOnce(true);
+    }
   }
 
   async function handleMarkAllNotificationsRead() {
