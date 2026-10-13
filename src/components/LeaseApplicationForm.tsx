@@ -3238,7 +3238,8 @@ export default function LeaseApplicationForm({
               on me (and any additional adult occupants listed above) for
               purposes of evaluating this rental application, and I
               acknowledge that the application fee, background check fee
-              and processing fee are non-refundable once paid.
+              and processing fee are non-refundable once paid, and that a $15
+              fee applies to any payment dispute or chargeback.
             </label>
           )}
           {mode === "applicant" &&
