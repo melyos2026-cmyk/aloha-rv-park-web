@@ -3237,8 +3237,8 @@ export default function LeaseApplicationForm({
               I authorize {company.name} to obtain a consumer background report
               on me (and any additional adult occupants listed above) for
               purposes of evaluating this rental application, and I
-              acknowledge the application fee is non-refundable once the
-              background check has been initiated.
+              acknowledge that the application fee, background check fee
+              and processing fee are non-refundable once paid.
             </label>
           )}
           {mode === "applicant" &&

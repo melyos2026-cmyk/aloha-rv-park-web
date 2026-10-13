@@ -129,7 +129,15 @@ export async function generateApplicationFeeReceiptPdf(params: {
   totalRow("Amount Paid", `$${params.totalPaid.toFixed(2)}`, { big: true });
 
   y -= 24;
-  page.drawText("This fee is non-refundable. Thank you for your application.", {
+  page.drawText("The application fee, background check fee and processing fee are non-refundable once paid.", {
+    x: marginX,
+    y,
+    size: 9,
+    font,
+    color: lightGray,
+  });
+  y -= 14;
+  page.drawText("Thank you for your application.", {
     x: marginX,
     y,
     size: 9,
