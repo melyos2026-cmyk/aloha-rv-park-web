@@ -59,8 +59,8 @@ export default function PrivacyPage() {
                 confirmations. These messages are not marketing messages.
               </p>
               <p style={p}>
-                <strong>We do not sell, rent or share your mobile phone number or text messaging
-                consent with third parties or affiliates for their marketing or promotional purposes.</strong>{" "}
+                <strong>We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes.</strong>{" "}
+                We also do not share your mobile phone number or text messaging consent with third parties or affiliates for their marketing or promotional purposes.{" "}
                 Mobile numbers are shared only with the service providers that deliver our messages
                 on our behalf.
               </p>

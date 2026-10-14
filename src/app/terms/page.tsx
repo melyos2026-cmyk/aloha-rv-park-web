@@ -13,11 +13,11 @@ export default function TermsPage() {
   return (
     <LegalPage
       eyebrow="Legal"
-      title="Terms of Use"
+      title="Terms & Conditions"
       updated="October 14, 2026"
       intro={
         <p>
-          These Terms apply when you use the {name} website and resident portal, or receive text
+          These Terms & Conditions apply when you use the {name} website and resident portal, or receive text
           messages from us. Rental of a lot or reservation is also governed by the lease or
           reservation agreement you sign with the park. If something here conflicts with your signed
           agreement, your signed agreement controls.
@@ -60,7 +60,7 @@ export default function TermsPage() {
           body: (
             <>
               <p style={p}>
-                <strong>Program:</strong> {name} account notifications.
+                <strong>Program:</strong> {name} account notifications, sent using the messaging platform of MelyOS LLC, the software provider for {name}.
               </p>
               <p style={p}>
                 <strong>Messages:</strong> By giving us your mobile number on a rental application,
