@@ -1413,6 +1413,12 @@ export default function LeaseApplicationForm({
           Month-to-month (no set end date)
         </label>
 
+        {data.month_to_month && (
+          <p style={{ margin: "6px 0 14px", padding: "10px 12px", borderRadius: 8, background: "#f0fdfa", border: "1px solid #99f6e4", color: "#134e4a", fontSize: 13, lineHeight: 1.45 }}>
+            Month-to-month is a verbal agreement with no fixed term. This application and the lease document record its terms. Either party may end it with written notice as stated in the lease.
+          </p>
+        )}
+
         {!data.month_to_month && (
           <div style={styles.row}>
             <div style={styles.field}>
