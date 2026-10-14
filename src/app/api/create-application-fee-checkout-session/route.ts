@@ -16,7 +16,7 @@ const MELYOS_CHECKR_PRICING: Record<string, number> = {
   basic_plus_criminal: 44.99,
   essential_criminal: 69.99,
   complete_criminal: 99.99,
-  rv_park_tenant_screening: 44.99,
+  rv_park_tenant_screening: 49.99, // Oct 14: includes driving record (MVR)
 };
 
 /**
