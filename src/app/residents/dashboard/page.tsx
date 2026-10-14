@@ -1718,19 +1718,19 @@ export default function ResidentDashboard() {
 
             {editingRvInfo ? (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                  <select value={rvType} onChange={e => setRvType(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, marginBottom: 12 }}>
+                  <select value={rvType} onChange={e => setRvType(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }}>
                     <option value="RV">RV</option>
                     <option value="Park Model">Park Model</option>
                     <option value="Mobile Home">Mobile Home</option>
                     <option value="Other">Other</option>
                   </select>
-                  <input placeholder="Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Width (ft) — optional" type="number" value={rvWidthFt} onChange={e => setRvWidthFt(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
+                  <input placeholder="Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="Width (ft) — optional" type="number" value={rvWidthFt} onChange={e => setRvWidthFt(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
