@@ -65,7 +65,11 @@ export default function Footer() {
         </div>
 
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.15)", paddingTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <p style={{ fontSize: 12, color: "#4b5563" }}>© 2026 {companyName}. All rights reserved.</p>
+          <p style={{ fontSize: 12, color: "#4b5563" }}>
+            © 2026 {companyName}. All rights reserved. ·{" "}
+            <Link href="/privacy" style={{ textDecoration: "underline" }}>Privacy</Link> ·{" "}
+            <Link href="/terms" style={{ textDecoration: "underline" }}>Terms</Link>
+          </p>
           <p style={{ fontSize: 11, color: "#4b5563", marginTop: 4 }}>
             Powered by{" "}
             <a href="https://melyos.io" target="_blank" rel="noopener noreferrer" style={{ color: "var(--red-dark)", textDecoration: "underline" }}>

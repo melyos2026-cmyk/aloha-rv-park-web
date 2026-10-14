@@ -1217,6 +1217,12 @@ export default function LeaseApplicationForm({
               value={data.tenant_phone}
               onChange={(e) => set("tenant_phone", formatPhoneAsTyped(e.target.value))}
             />
+            <div style={{ fontSize: 11, color: "#666", marginTop: 4, lineHeight: 1.4 }}>
+              By providing your phone number, you agree to receive account text messages (invoices,
+              application and reservation notices). Message and data rates may apply. Reply STOP to
+              opt out. See our <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> and{" "}
+              <a href="/terms" target="_blank" rel="noopener noreferrer">Terms</a>.
+            </div>
           </div>
         </div>
         <div style={styles.row}>
