@@ -127,6 +127,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               })()}
               onClick={(e) => e.stopPropagation()}
             >
+              {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
               <div className="mr-pop-head">
                 <b>{selected.slip_name}</b>
                 <span className={`mr-status ${selected.status}`}>{STATUS_TEXT[selected.status]}</span>
@@ -185,6 +186,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 
       {selected && !showMap && (
         <div className="mr-detail" aria-live="polite">
+          {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
           <div>
             <h3>{selected.slip_type === "dry" ? "Storage space" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"} {selected.slip_name}</h3>
             <span className={`mr-status ${selected.status}`}>{STATUS_TEXT[selected.status]}</span>

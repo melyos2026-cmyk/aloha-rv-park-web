@@ -31,6 +31,7 @@ export type SlipType = "wet" | "lift" | "dry";
 export type PublicSlip = {
   id: string;
   slip_type: SlipType;
+  photo: string | null;
   map: { points: [number, number][] } | null;
   slip_name: string;
   dock: string | null;
@@ -80,6 +81,7 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
     .map((s) => ({
       id: s.id,
       slip_type: (["wet", "lift", "dry"].includes(s.slip_type) ? s.slip_type : "wet") as SlipType,
+      photo: typeof s.photo_url === "string" && s.photo_url ? s.photo_url : null,
       map: mapPoints(s),
       slip_name: s.slip_name,
       dock: s.dock || null,
