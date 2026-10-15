@@ -45,7 +45,7 @@ function tooManyFromIp(ip: string): boolean {
 
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const marina = await getMarinaForRequest(req);
   if (!marina) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
@@ -168,4 +168,17 @@ Privacy: never share or confirm anything about a specific person, boat owner, ac
   }
 
   return NextResponse.json({ reply });
+}
+
+export async function POST(req: Request) {
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("marina chat: ANTHROPIC_API_KEY is not set in this environment");
+      return NextResponse.json({ reply: "Mely is not available right now. Please try again later." }, { status: 503 });
+    }
+    return await handle(req);
+  } catch (e) {
+    console.error("marina chat: unexpected error", e);
+    return NextResponse.json({ reply: "Sorry, something went wrong. Please try again in a moment." }, { status: 500 });
+  }
 }
