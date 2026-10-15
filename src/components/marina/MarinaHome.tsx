@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
 import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES } from "@/lib/marina/data";
-import HeroArt from "./HeroArt";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -29,21 +28,18 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
 
   return (
     <>
-      <section className="mr-hero">
-        <div className="mr-wrap mr-hero-grid">
-          <div>
-            <h1>{headline}</h1>
-            <p>{sub}</p>
-            <div className="mr-hero-cta">
-              <a className="mr-btn" href="#slips">See open slips</a>
-              <Link className="mr-btn ghost" href="/marina/account">Boater login</Link>
-            </div>
+      <section className="mr-hero" aria-label={`${company.company_name} marina`}>
+        <img className="mr-hero-photo full" src={company.hero_image_url || "/marina/hero.jpg"} alt={`${company.company_name}: slips at sunset and an overhead view of the docks`} />
+      </section>
+
+      <section className="mr-intro">
+        <div className="mr-wrap">
+          <h1>{headline}</h1>
+          <p>{sub}</p>
+          <div className="mr-hero-cta">
+            <a className="mr-btn" href="#slips">See open slips</a>
+            <Link className="mr-btn ghost" href="/marina/account">Boater login</Link>
           </div>
-          {company.hero_image_url ? (
-            <img className="mr-hero-photo" src={company.hero_image_url} alt={`${company.company_name} marina`} />
-          ) : (
-            <HeroArt />
-          )}
         </div>
       </section>
 

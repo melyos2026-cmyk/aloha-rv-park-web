@@ -6,14 +6,6 @@ import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 const money = (n: number | null) => (n === null ? "" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;
 
-function BoatIcon() {
-  return (
-    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-      <path d="M3 15 H23 L19 21 H7 Z" fill="currentColor" opacity=".8" />
-      <path d="M13 3 V14 H6 Z" fill="currentColor" opacity=".55" />
-    </svg>
-  );
-}
 
 export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   const [openOnly, setOpenOnly] = useState(false);
@@ -55,7 +47,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
       </div>
       <div className="mr-legend" aria-hidden="true">
         <span><i style={{ width: 16, height: 10, border: "2px dashed var(--mr-open)", borderRadius: 3 }} /> Open</span>
-        <span><i style={{ width: 16, height: 10, border: "2px solid var(--mr-taken)", background: "#dfe9eb", borderRadius: 3 }} /> Taken</span>
+        <span><i style={{ width: 16, height: 10, border: "2px solid #d64550", background: "#fbe3e5", borderRadius: 3 }} /> Taken</span>
         <span><i style={{ width: 16, height: 10, border: "2px solid var(--mr-buoy)", background: "#fff3d6", borderRadius: 3 }} /> Reserved</span>
       </div>
       <div className="mr-water">
@@ -73,11 +65,15 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                     data-dim={dim(s)}
                     aria-pressed={picked === s.id}
                     aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
-                    style={{ width: Math.max(64, Math.min(120, (s.length_ft || 30) * 2.2)) }}
                     onClick={() => setPicked(s.id)}
                   >
-                    {s.status !== "maintenance" && s.status !== "available" ? <BoatIcon /> : null}
-                    {s.slip_name}
+                    <span className="nm">{s.slip_name}</span>
+                    <span className="sz">{s.length_ft ? `${s.length_ft}′` : "—"}{s.max_beam_ft ? ` × ${Math.round(s.max_beam_ft * 10) / 10}′` : ""}</span>
+                    <span className="ic">
+                      {s.has_power && <svg width="12" height="12" viewBox="0 0 12 12" aria-label="Power"><path d="M7 0 2 7h3l-1 5 6-7H7z" fill="currentColor" /></svg>}
+                      {s.has_water && <svg width="12" height="12" viewBox="0 0 12 12" aria-label="Water"><path d="M6 0C4 3 2 5 2 7.5a4 4 0 0 0 8 0C10 5 8 3 6 0z" fill="currentColor" /></svg>}
+                    </span>
+                    <span className="st">{STATUS_TEXT[s.status]}</span>
                   </button>
                 ))}
               </div>
