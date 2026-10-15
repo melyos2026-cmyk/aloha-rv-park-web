@@ -372,3 +372,12 @@
     linear-gradient(90deg, transparent, #dcc7a4 35%, #dcc7a4 65%, transparent);
   background-repeat: no-repeat; background-size: 100% 2px, 100% 1px, 100% 1px;
   background-position: left top 0, left top 8px, left top 14px; }
+
+/* Nautical stripe: a white band behind the three hairlines */
+.mr-intro { padding-top: 74px;
+  background-image: linear-gradient(90deg, transparent, var(--mr-buoy) 12%, var(--mr-buoy) 88%, transparent),
+    linear-gradient(90deg, transparent, #c9a24a 20%, #c9a24a 80%, transparent),
+    linear-gradient(90deg, transparent, #b89968 30%, #b89968 70%, transparent),
+    linear-gradient(#fff, #fff);
+  background-size: 100% 2px, 100% 1px, 100% 1px, 100% 18px;
+  background-position: left top 3px, left top 8px, left top 13px, left top 0; }
