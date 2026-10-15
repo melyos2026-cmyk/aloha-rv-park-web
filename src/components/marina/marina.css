@@ -364,3 +364,11 @@
 /* Boater login: thin outer line */
 .mr-nav .mr-btn { outline: 1.5px solid #dcc7a4; outline-offset: 3px; }
 .mr-nav .mr-btn:hover, .mr-nav .mr-btn:focus-visible { outline-color: #fff; }
+
+/* Divider between the hero photo and the navy intro: sky, gold and bronze hairlines */
+.mr-intro { padding-top: 66px; background-color: var(--mr-ink);
+  background-image: linear-gradient(90deg, transparent, var(--mr-buoy) 15%, var(--mr-buoy) 85%, transparent),
+    linear-gradient(90deg, transparent, #c9a24a 25%, #c9a24a 75%, transparent),
+    linear-gradient(90deg, transparent, #dcc7a4 35%, #dcc7a4 65%, transparent);
+  background-repeat: no-repeat; background-size: 100% 2px, 100% 1px, 100% 1px;
+  background-position: left top 0, left top 8px, left top 14px; }
