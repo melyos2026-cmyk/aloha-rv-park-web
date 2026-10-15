@@ -84,7 +84,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const company = await getHostCompany();
   // Marina domains get their own header, footer and styles; everything else
   // keeps the RV-park layout untouched.
-  const marina = company?.business_type === "marina" ? await getMarinaForPage() : null;
+  const marina = company?.business_type === "marina" ? await getMarinaForPage().catch(() => null) : null;
   const schemaType = SCHEMA_TYPE_BY_BUSINESS_TYPE[company?.business_type || "rv_park"] || "LocalBusiness";
 
   const jsonLd = {
