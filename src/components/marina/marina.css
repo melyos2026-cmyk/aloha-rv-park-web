@@ -8,7 +8,7 @@
   --mr-glass: #e6ecf3;
   --mr-foam: #f5f7fa;
   --mr-paper: #ffffff;
-  --mr-buoy: #b08d57;
+  --mr-buoy: #6fb1dc;
   --mr-open: #1f9d74;
   --mr-taken: #d64550;
   --mr-line: #d3dbe6;
@@ -38,7 +38,7 @@
   font: 600 1rem 'Inter', sans-serif; cursor: pointer; text-decoration: none;
   background: var(--mr-buoy); color: var(--mr-ink);
 }
-.mr-btn:hover { background: #c4a068; }
+.mr-btn:hover { background: #8cc4ea; }
 .mr-btn.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.55); }
 .mr-btn.ghost:hover { background: rgba(255,255,255,.1); }
 .mr-btn.dark { background: var(--mr-ink); color: #fff; }
@@ -55,7 +55,7 @@
 .mr-header { position: sticky; top: 0; z-index: 40; background: var(--mr-ink); color: #fff; }
 .mr-header .mr-wrap { display: flex; align-items: center; gap: 24px; min-height: 68px; }
 .mr-brand { display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none; font: 800 1.3rem 'Playfair Display', sans-serif; letter-spacing: -.02em; }
-.mr-brand img { height: 38px; width: auto; border-radius: 6px; }
+.mr-brand img, .mr-brand svg { height: 40px; width: auto; border-radius: 6px; }
 .mr-nav { display: flex; gap: 22px; margin-left: auto; align-items: center; }
 .mr-nav a { color: #cfe3e6; text-decoration: none; font-weight: 500; }
 .mr-nav a:hover { color: #fff; }
@@ -220,8 +220,12 @@
 .mr-slip .st { align-self: end; font-weight: 700; font-size: .68rem; padding: 1px 8px; border-radius: 999px; background: #d5f1e6; color: #0b6a4c; }
 .mr-slip[data-status=occupied] { border-color: #d64550; background: rgba(255,255,255,.96); box-shadow: 0 0 18px 4px rgba(214,69,80,.7); }
 .mr-slip[data-status=occupied] .st { background: #fbe3e5; color: #9c1c26; }
-.mr-slip[data-status=reserved] { border-color: var(--mr-buoy); box-shadow: 0 0 18px 4px rgba(176,141,87,.8); }
-.mr-slip[data-status=reserved] .st { background: #f3e9d6; color: #7a5a1e; }
+.mr-slip[data-status=reserved] { border-color: #e3a82b; box-shadow: 0 0 18px 4px rgba(227,168,43,.8); }
+.mr-slip[data-status=reserved] .st { background: #fff1cc; color: #7a5200; }
 .mr-slip[data-status=maintenance] { border-color: #8c98a6; box-shadow: none; background: rgba(226,232,240,.9); }
 .mr-slip[data-status=maintenance] .st { background: #e2e8f0; color: #475569; }
 .mr-slip[data-dim=true] { opacity: .3; box-shadow: none; }
+
+.mr-brand svg { width: 40px; flex: none; }
+.mr-brand .mr-name { display: grid; line-height: 1.05; }
+.mr-brand .mr-name small { font: 500 .68rem 'Inter', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #9fb4cb; margin-top: 3px; }
