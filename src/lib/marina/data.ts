@@ -11,6 +11,7 @@ export type SlipType = "wet" | "lift" | "dry";
 export type PublicSlip = {
   id: string;
   slip_type: SlipType;
+  map: { x: number; y: number; w: number; h: number } | null;
   slip_name: string;
   dock: string | null;
   length_ft: number | null;
@@ -59,6 +60,10 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
     .map((s) => ({
       id: s.id,
       slip_type: (["wet", "lift", "dry"].includes(s.slip_type) ? s.slip_type : "wet") as SlipType,
+      map:
+        num(s.map_x) !== null && num(s.map_y) !== null && num(s.map_w) && num(s.map_h)
+          ? { x: num(s.map_x)!, y: num(s.map_y)!, w: num(s.map_w)!, h: num(s.map_h)! }
+          : null,
       slip_name: s.slip_name,
       dock: s.dock || null,
       length_ft: num(s.length_ft),

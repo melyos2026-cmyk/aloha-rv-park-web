@@ -239,3 +239,32 @@
 .mr-type[aria-pressed=true] { background: var(--mr-ink); border-color: var(--mr-ink); }
 .mr-type[aria-pressed=true] b, .mr-type[aria-pressed=true] em { color: #fff; }
 .mr-type[aria-pressed=true] span { color: #c5d2e0; }
+
+/* Interactive aerial map */
+.mr-views { display: flex; gap: 8px; margin: 6px 0 14px; }
+.mr-map { position: relative; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--mr-ink); background: #0b3a55; }
+.mr-map img { display: block; width: 100%; height: auto; }
+.mr-hot {
+  position: absolute; display: grid; place-items: center; padding: 0; cursor: pointer; border-radius: 4px;
+  border: 2px solid var(--mr-open); background: rgba(31,200,130,.22);
+  box-shadow: 0 0 14px 3px rgba(31,200,130,.85), inset 0 0 12px rgba(31,200,130,.5);
+  font: 700 clamp(.5rem, 1.1vw, .8rem) 'Inter', sans-serif; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  transition: background .12s ease;
+}
+.mr-hot:hover { background: rgba(31,200,130,.42); }
+.mr-hot[data-status=occupied] { border-color: #ff5560; background: rgba(214,69,80,.24); box-shadow: 0 0 14px 3px rgba(255,85,96,.85), inset 0 0 12px rgba(255,85,96,.5); }
+.mr-hot[data-status=occupied]:hover { background: rgba(214,69,80,.42); }
+.mr-hot[data-status=reserved] { border-color: #f2b233; background: rgba(227,168,43,.24); box-shadow: 0 0 14px 3px rgba(242,178,51,.85), inset 0 0 12px rgba(242,178,51,.5); }
+.mr-hot[data-status=maintenance] { border-color: #aab4c0; background: rgba(160,170,185,.3); box-shadow: none; }
+.mr-hot[data-dim=true] { opacity: .25; box-shadow: none; }
+.mr-hot[aria-pressed=true] { outline: 3px solid #fff; outline-offset: 1px; z-index: 3; }
+.mr-pop { position: absolute; z-index: 5; width: min(270px, 62%); background: rgba(255,255,255,.98); border-radius: 8px; padding: 14px 16px; display: grid; gap: 8px; box-shadow: 0 14px 40px -8px rgba(0,0,0,.55); border: 1.5px solid var(--mr-ink); }
+.mr-pop-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mr-pop-head b { font: 700 1.3rem 'Playfair Display', serif; color: var(--mr-ink); }
+.mr-pop-sub { color: var(--mr-muted); font-size: .85rem; }
+.mr-pop-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: .85rem; color: var(--mr-muted); }
+.mr-pop-rows b { color: var(--mr-ink); }
+.mr-pop .mr-btn { min-height: 38px; font-size: .9rem; }
+@media (max-width: 700px) { .mr-pop { position: fixed; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px; width: auto; } }
+
+.mr-water[hidden] { display: none; }

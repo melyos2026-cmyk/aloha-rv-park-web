@@ -18,6 +18,10 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   const [boat, setBoat] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [type, setType] = useState<SlipType | "all">("all");
+  const hasMap = slips.some((s) => s.map);
+  const [view, setView] = useState<"map" | "list">(hasMap ? "map" : "list");
+  // Dry storage is on land, so it is never drawn on the water map.
+  const showMap = view === "map" && hasMap && type !== "dry";
 
   const boatLen = Number(boat) || 0;
   const shown = useMemo(() => slips.filter((s) => type === "all" || s.slip_type === type), [slips, type]);
@@ -74,7 +78,64 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
         <span><i style={{ width: 16, height: 10, border: "2px solid #d64550", background: "#fbe3e5", borderRadius: 3 }} /> Taken</span>
         <span><i style={{ width: 16, height: 10, border: "2px solid var(--mr-buoy)", background: "#fff3d6", borderRadius: 3 }} /> Reserved</span>
       </div>
-      <div className="mr-water">
+      {hasMap && (
+        <div className="mr-views" role="group" aria-label="View">
+          <button type="button" className="mr-chip" aria-pressed={view === "map"} onClick={() => setView("map")}>Marina map</button>
+          <button type="button" className="mr-chip" aria-pressed={view === "list"} onClick={() => setView("list")}>By dock</button>
+        </div>
+      )}
+
+      {showMap && (
+        <div className="mr-map" onClick={() => setPicked(null)}>
+          <img src="/marina/map.jpg" alt="Aerial view of the marina docks" />
+          {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className="mr-hot"
+              data-status={s.status}
+              data-dim={dim(s)}
+              aria-pressed={picked === s.id}
+              aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
+              style={{ left: `${s.map!.x}%`, top: `${s.map!.y}%`, width: `${s.map!.w}%`, height: `${s.map!.h}%` }}
+              onClick={(e) => { e.stopPropagation(); setPicked(s.id); }}
+            >
+              <span>{s.slip_name}</span>
+            </button>
+          ))}
+          {selected && selected.map && (
+            <div
+              className="mr-pop"
+              style={{
+                top: `${Math.min(selected.map.y, 68)}%`,
+                ...(selected.map.x > 50 ? { right: `${100 - selected.map.x + 1}%` } : { left: `${selected.map.x + selected.map.w + 1}%` }),
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mr-pop-head">
+                <b>{selected.slip_name}</b>
+                <span className={`mr-status ${selected.status}`}>{STATUS_TEXT[selected.status]}</span>
+              </div>
+              <div className="mr-pop-sub">{selected.slip_type === "dry" ? "Dry storage" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"}{selected.dock ? ` · ${selected.dock}` : ""}</div>
+              <div className="mr-pop-rows">
+                {selected.length_ft && <span>Length <b>{selected.length_ft} ft</b></span>}
+                {selected.max_beam_ft && <span>Beam <b>{Math.round(selected.max_beam_ft * 10) / 10} ft</b></span>}
+                {selected.max_draft_ft && <span>Draft <b>{selected.max_draft_ft} ft</b></span>}
+                <span>Power <b>{selected.has_power ? "Yes" : "No"}</b></span>
+                <span>Water <b>{selected.has_water ? "Yes" : "No"}</b></span>
+                {selected.rates.monthly && <span>Monthly <b>{money(selected.rates.monthly.non_resident ?? selected.rates.monthly.resident)}</b></span>}
+              </div>
+              {selected.status !== "maintenance" && (
+                <button type="button" className="mr-btn dark" onClick={() => reserve(selected)}>
+                  {selected.status === "available" ? "Request this slip" : "Join the waitlist"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mr-water" hidden={showMap}>
         {docks.map(([dock, list]) => (
           <div key={dock}>
             <div className="mr-dock-label">{dock}</div>
@@ -107,7 +168,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
         ))}
       </div>
 
-      {selected && (
+      {selected && !showMap && (
         <div className="mr-detail" aria-live="polite">
           <div>
             <h3>{selected.slip_type === "dry" ? "Storage space" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"} {selected.slip_name}</h3>
