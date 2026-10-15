@@ -277,3 +277,17 @@
 .mr-hot[data-status=reserved] { border-color: #ffc545; box-shadow: 0 0 0 1px rgba(60,35,0,.55), 0 0 16px 4px rgba(255,197,69,.95), inset 0 0 14px rgba(255,197,69,.6); }
 .mr-hot[data-status=maintenance] { border: 3px dashed #e9eef5; background: rgba(15,37,64,.55); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
 .mr-hot span { text-shadow: 0 0 3px #000, 0 1px 3px #000; }
+
+/* Free-shape slips (SVG polygons over the aerial photo) */
+.mr-polys { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mr-poly { fill: rgba(93,255,168,.30); stroke: #5dffa8; stroke-width: 3; vector-effect: non-scaling-stroke; cursor: pointer; stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(93,255,168,.95)); transition: fill .12s ease; outline: none; }
+.mr-poly:hover, .mr-poly:focus-visible { fill: rgba(93,255,168,.5); }
+.mr-poly[data-status=occupied] { fill: rgba(214,69,80,.30); stroke: #ff6670; filter: drop-shadow(0 0 6px rgba(255,102,112,.95)); }
+.mr-poly[data-status=occupied]:hover { fill: rgba(214,69,80,.5); }
+.mr-poly[data-status=reserved] { fill: rgba(227,168,43,.30); stroke: #ffc545; filter: drop-shadow(0 0 6px rgba(255,197,69,.95)); }
+.mr-poly[data-status=maintenance] { fill: rgba(15,37,64,.55); stroke: #e9eef5; stroke-dasharray: 6 4; filter: none; }
+.mr-poly[data-dim=true] { opacity: .25; filter: none; }
+.mr-poly[data-picked=true] { stroke: #fff; stroke-width: 4; }
+.mr-polylabel { position: absolute; transform: translate(-50%, -50%); pointer-events: none; color: #fff; font: 700 clamp(.5rem, 1.1vw, .8rem) 'Inter', sans-serif; text-shadow: 0 0 3px #000, 0 1px 3px #000; }
+.mr-polylabel[data-dim=true] { opacity: .3; }

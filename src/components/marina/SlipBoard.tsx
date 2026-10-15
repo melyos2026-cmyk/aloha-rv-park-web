@@ -9,6 +9,10 @@ const TYPES: { key: SlipType; title: string; blurb: string }[] = [
   { key: "lift", title: "Lift slips", blurb: "Lifted out of the water between trips: safer and cleaner." },
   { key: "dry", title: "Dry storage", blurb: "Long-term storage, and a dry place for repairs." },
 ];
+const centroid = (pts: [number, number][]): [number, number] => [
+  pts.reduce((a, p) => a + p[0], 0) / pts.length,
+  pts.reduce((a, p) => a + p[1], 0) / pts.length,
+];
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;
 
 
@@ -88,28 +92,39 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
       {showMap && (
         <div className="mr-map" onClick={() => setPicked(null)}>
           <img src="/marina/map.jpg" alt="Aerial view of the marina docks" />
-          {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              className="mr-hot"
-              data-status={s.status}
-              data-dim={dim(s)}
-              aria-pressed={picked === s.id}
-              aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
-              style={{ left: `${s.map!.x}%`, top: `${s.map!.y}%`, width: `${s.map!.w}%`, height: `${s.map!.h}%`, transform: `rotate(${s.map!.r}deg)` }}
-              onClick={(e) => { e.stopPropagation(); setPicked(s.id); }}
-            >
-              <span>{s.slip_name}</span>
-            </button>
-          ))}
+          <svg className="mr-polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Slips on the marina map">
+            {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => (
+              <polygon
+                key={s.id}
+                className="mr-poly"
+                data-status={s.status}
+                data-dim={dim(s)}
+                data-picked={picked === s.id}
+                points={s.map!.points.map((p) => p.join(",")).join(" ")}
+                role="button"
+                tabIndex={0}
+                aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
+                aria-pressed={picked === s.id}
+                onClick={(e) => { e.stopPropagation(); setPicked(s.id); }}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicked(s.id); } }}
+              />
+            ))}
+          </svg>
+          {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => {
+            const c = centroid(s.map!.points);
+            return <span key={s.id} className="mr-polylabel" data-dim={dim(s)} style={{ left: `${c[0]}%`, top: `${c[1]}%` }}>{s.slip_name}</span>;
+          })}
           {selected && selected.map && (
             <div
               className="mr-pop"
-              style={{
-                top: `${Math.min(selected.map.y, 68)}%`,
-                ...(selected.map.x > 50 ? { right: `${100 - selected.map.x + 1}%` } : { left: `${selected.map.x + selected.map.w + 1}%` }),
-              }}
+              style={(() => {
+                const xs = selected.map.points.map((p) => p[0]), ys = selected.map.points.map((p) => p[1]);
+                const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys);
+                return {
+                  top: `${Math.min(minY, 68)}%`,
+                  ...(minX > 50 ? { right: `${100 - minX + 1}%` } : { left: `${maxX + 1}%` }),
+                };
+              })()}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mr-pop-head">

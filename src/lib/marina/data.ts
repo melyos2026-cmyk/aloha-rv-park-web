@@ -6,12 +6,32 @@ export type { RateType };
 
 export type SlipRates = Partial<Record<RateType, { resident: number | null; non_resident: number | null }>>;
 
+// Slip outline on the aerial map, as [x%, y%] corners. Uses the free-form shape when the
+// marina drew one, otherwise the older rectangle (with its rotation).
+function mapPoints(s: any): { points: [number, number][] } | null {
+  const raw = s.map_shape;
+  if (Array.isArray(raw) && raw.length >= 3) {
+    const pts = raw.map((p: any) => [Number(p?.[0]), Number(p?.[1])] as [number, number]);
+    if (pts.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))) return { points: pts };
+  }
+  const x = num(s.map_x), y = num(s.map_y), w = num(s.map_w), h = num(s.map_h);
+  if (x === null || y === null || !w || !h) return null;
+  const r = ((Number(s.map_r) || 0) * Math.PI) / 180, AX = 15.36, AY = 10.24;
+  const cx = (x + w / 2) * AX, cy = (y + h / 2) * AY, hw = (w * AX) / 2, hh = (h * AY) / 2, c = Math.cos(r), sn = Math.sin(r);
+  return {
+    points: ([[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]] as [number, number][]).map(([px, py]) => [
+      Math.round(((cx + px * c - py * sn) / AX) * 100) / 100,
+      Math.round(((cy + px * sn + py * c) / AY) * 100) / 100,
+    ] as [number, number]),
+  };
+}
+
 export type SlipType = "wet" | "lift" | "dry";
 
 export type PublicSlip = {
   id: string;
   slip_type: SlipType;
-  map: { x: number; y: number; w: number; h: number; r: number } | null;
+  map: { points: [number, number][] } | null;
   slip_name: string;
   dock: string | null;
   length_ft: number | null;
@@ -60,10 +80,7 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
     .map((s) => ({
       id: s.id,
       slip_type: (["wet", "lift", "dry"].includes(s.slip_type) ? s.slip_type : "wet") as SlipType,
-      map:
-        num(s.map_x) !== null && num(s.map_y) !== null && num(s.map_w) && num(s.map_h)
-          ? { x: num(s.map_x)!, y: num(s.map_y)!, w: num(s.map_w)!, h: num(s.map_h)!, r: Number(s.map_r) || 0 }
-          : null,
+      map: mapPoints(s),
       slip_name: s.slip_name,
       dock: s.dock || null,
       length_ft: num(s.length_ft),
