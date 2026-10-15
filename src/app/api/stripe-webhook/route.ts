@@ -9,6 +9,7 @@ import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
+import { recordMarinaOnlinePayment } from "@/lib/marina/payments";
 import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -48,6 +49,20 @@ export async function POST(req: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
+
+    // Oct 15: marina boaters paying an invoice. Handled on its own and
+    // returned right away so none of the RV-park logic below ever runs for it.
+    if (session.metadata?.type === "marina_invoice") {
+      if (session.payment_status === "paid" && session.metadata.company_id && session.metadata.invoice_id) {
+        await recordMarinaOnlinePayment({
+          companyId: session.metadata.company_id,
+          invoiceId: session.metadata.invoice_id,
+          amount: Number(session.metadata.invoice_amount || 0),
+          reference: `online:${session.id}`,
+        });
+      }
+      return NextResponse.json({ received: true });
+    }
 
     // Oct 8 (per Mely — Shifts & Daily Close): every online payment also goes to the RV-park ledger.
     if (session.payment_status === "paid") {

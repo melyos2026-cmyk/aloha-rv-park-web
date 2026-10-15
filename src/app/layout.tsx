@@ -7,6 +7,8 @@ import Mely from "@/components/Mely";
 import PageTracker from "@/components/PageTracker";
 import { CompanyProvider } from "@/lib/CompanyContext";
 import { supabase } from "@/lib/supabase";
+import { getMarinaForPage } from "@/lib/marina/company";
+import { MarinaShell } from "@/components/marina/MarinaChrome";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -61,6 +63,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const company = await getHostCompany();
+  // Marina domains get their own header, footer and styles; everything else
+  // keeps the RV-park layout untouched.
+  const marina = company?.business_type === "marina" ? await getMarinaForPage() : null;
   const schemaType = SCHEMA_TYPE_BY_BUSINESS_TYPE[company?.business_type || "rv_park"] || "LocalBusiness";
 
   const jsonLd = {
@@ -92,6 +97,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         )}
       </head>
       <body>
+        {marina ? (
+          <MarinaShell company={marina}>{children}</MarinaShell>
+        ) : (
         <CompanyProvider>
           <Header />
           <main>{children}</main>
@@ -99,6 +107,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Mely />
           <PageTracker />
         </CompanyProvider>
+        )}
       </body>
     </html>
   );

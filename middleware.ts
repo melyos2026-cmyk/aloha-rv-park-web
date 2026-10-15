@@ -4,6 +4,10 @@ const SITE_USER = process.env.SITE_PASSWORD_USER || "aloha";
 const SITE_PASS = process.env.SITE_PASSWORD || "changeme";
 
 export function middleware(req: NextRequest) {
+  // Public marina demo site: open to buyers without the shared staging password.
+  const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
+  if (host === "marinademo.melyos.io") return NextResponse.next();
+
   const authHeader = req.headers.get("authorization");
 
   if (authHeader) {

@@ -1,0 +1,211 @@
+import { supabaseAdmin } from "@/lib/supabase-admin";
+
+export const RATE_TYPES = ["annual", "seasonal", "monthly", "transient_weekly", "transient_daily"] as const;
+export type RateType = (typeof RATE_TYPES)[number];
+
+export const RATE_LABEL: Record<RateType, string> = {
+  annual: "Annual",
+  seasonal: "Seasonal",
+  monthly: "Monthly",
+  transient_weekly: "Weekly",
+  transient_daily: "Daily",
+};
+
+export type SlipRates = Partial<Record<RateType, { resident: number | null; non_resident: number | null }>>;
+
+export type PublicSlip = {
+  id: string;
+  slip_name: string;
+  dock: string | null;
+  length_ft: number | null;
+  max_beam_ft: number | null;
+  max_draft_ft: number | null;
+  has_power: boolean;
+  has_water: boolean;
+  status: "available" | "occupied" | "reserved" | "maintenance";
+  rates: SlipRates;
+};
+
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+export const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export function todayET(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+// Public slip board: only what a visitor should see. Notes, owners and boats
+// are never included.
+export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> {
+  const [{ data: slips }, { data: rates }] = await Promise.all([
+    supabaseAdmin
+      .from("marina_slips")
+      .select("id, slip_name, dock, length_ft, max_beam_ft, max_draft_ft, has_power, has_water, status")
+      .eq("company_id", companyId),
+    supabaseAdmin
+      .from("marina_slip_rates")
+      .select("slip_id, rate_type, resident_rate, non_resident_rate")
+      .eq("company_id", companyId),
+  ]);
+
+  const ratesBySlip = new Map<string, SlipRates>();
+  for (const r of rates || []) {
+    const entry = ratesBySlip.get(r.slip_id) || {};
+    entry[r.rate_type as RateType] = { resident: num(r.resident_rate), non_resident: num(r.non_resident_rate) };
+    ratesBySlip.set(r.slip_id, entry);
+  }
+
+  return (slips || [])
+    .map((s) => ({
+      id: s.id,
+      slip_name: s.slip_name,
+      dock: s.dock || null,
+      length_ft: num(s.length_ft),
+      max_beam_ft: num(s.max_beam_ft),
+      max_draft_ft: num(s.max_draft_ft),
+      has_power: !!s.has_power,
+      has_water: !!s.has_water,
+      status: s.status as PublicSlip["status"],
+      rates: ratesBySlip.get(s.id) || {},
+    }))
+    .sort((a, b) => (a.dock || "").localeCompare(b.dock || "") || a.slip_name.localeCompare(b.slip_name, undefined, { numeric: true }));
+}
+
+export type RateSummary = Partial<Record<RateType, { resident: number | null; non_resident: number | null }>>;
+
+// "From" prices across every slip, for the rates table.
+export function summarizeRates(slips: PublicSlip[]): RateSummary {
+  const out: RateSummary = {};
+  for (const type of RATE_TYPES) {
+    let res: number | null = null;
+    let non: number | null = null;
+    for (const s of slips) {
+      const r = s.rates[type];
+      if (!r) continue;
+      if (r.resident !== null && (res === null || r.resident < res)) res = r.resident;
+      if (r.non_resident !== null && (non === null || r.non_resident < non)) non = r.non_resident;
+    }
+    if (res !== null || non !== null) out[type] = { resident: res, non_resident: non };
+  }
+  return out;
+}
+
+export type AccountInvoice = {
+  id: string;
+  invoice_number: string;
+  category: string;
+  description: string;
+  amount: number;
+  paid: number;
+  balance: number;
+  issue_date: string;
+  due_date: string;
+  status: "open" | "void";
+  overdue: boolean;
+};
+
+export type AccountData = {
+  member: { id: string; full_name: string; email: string | null };
+  boats: { id: string; boat_name: string; make_model: string | null; length_ft: number | null; slip_name: string | null; dock: string | null }[];
+  invoices: AccountInvoice[];
+  payments: { id: string; invoice_number: string; amount: number; method: string; received_at: string }[];
+  totalDue: number;
+};
+
+export async function loadAccount(companyId: string, memberId: string): Promise<AccountData | null> {
+  const { data: member } = await supabaseAdmin
+    .from("marina_members")
+    .select("id, full_name, email")
+    .eq("id", memberId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (!member) return null;
+
+  const [{ data: boats }, { data: invoices }] = await Promise.all([
+    supabaseAdmin
+      .from("marina_boats")
+      .select("id, boat_name, make_model, length_ft, slip_id")
+      .eq("member_id", memberId)
+      .eq("company_id", companyId),
+    supabaseAdmin
+      .from("marina_invoices")
+      .select("id, invoice_number, category, description, amount, issue_date, due_date, status")
+      .eq("member_id", memberId)
+      .eq("company_id", companyId)
+      .order("issue_date", { ascending: false }),
+  ]);
+
+  const slipIds = [...new Set((boats || []).map((b) => b.slip_id).filter(Boolean))] as string[];
+  const { data: slips } = slipIds.length
+    ? await supabaseAdmin.from("marina_slips").select("id, slip_name, dock").eq("company_id", companyId).in("id", slipIds)
+    : { data: [] as { id: string; slip_name: string; dock: string | null }[] };
+  const slipById = new Map((slips || []).map((s) => [s.id, s]));
+
+  const invoiceIds = (invoices || []).map((i) => i.id);
+  const { data: pays } = invoiceIds.length
+    ? await supabaseAdmin
+        .from("marina_invoice_payments")
+        .select("id, invoice_id, amount, method, received_at, returned_at")
+        .eq("company_id", companyId)
+        .in("invoice_id", invoiceIds)
+        .order("received_at", { ascending: false })
+    : { data: [] as any[] };
+
+  const paidBy = new Map<string, number>();
+  for (const p of pays || []) {
+    if (p.returned_at) continue;
+    paidBy.set(p.invoice_id, (paidBy.get(p.invoice_id) || 0) + Number(p.amount));
+  }
+
+  const today = todayET();
+  const list: AccountInvoice[] = (invoices || []).map((i) => {
+    const paid = round2(paidBy.get(i.id) || 0);
+    const amount = round2(Number(i.amount));
+    const balance = i.status === "void" ? 0 : round2(Math.max(amount - paid, 0));
+    return {
+      id: i.id,
+      invoice_number: i.invoice_number,
+      category: i.category,
+      description: i.description,
+      amount,
+      paid,
+      balance,
+      issue_date: i.issue_date,
+      due_date: i.due_date,
+      status: i.status,
+      overdue: balance > 0 && i.due_date < today,
+    };
+  });
+
+  const numberById = new Map(list.map((i) => [i.id, i.invoice_number]));
+
+  return {
+    member: { id: member.id, full_name: member.full_name, email: member.email },
+    boats: (boats || []).map((b) => {
+      const s = b.slip_id ? slipById.get(b.slip_id) : null;
+      return {
+        id: b.id,
+        boat_name: b.boat_name,
+        make_model: b.make_model,
+        length_ft: num(b.length_ft),
+        slip_name: s?.slip_name || null,
+        dock: s?.dock || null,
+      };
+    }),
+    invoices: list.filter((i) => i.status === "open"),
+    payments: (pays || [])
+      .filter((p) => !p.returned_at)
+      .map((p) => ({
+        id: p.id,
+        invoice_number: numberById.get(p.invoice_id) || "",
+        amount: round2(Number(p.amount)),
+        method: p.method,
+        received_at: p.received_at,
+      })),
+    totalDue: round2(list.reduce((s, i) => s + i.balance, 0)),
+  };
+}
