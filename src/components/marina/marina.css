@@ -381,3 +381,14 @@
     linear-gradient(#fff, #fff);
   background-size: 100% 2px, 100% 1px, 100% 1px, 100% 18px;
   background-position: left top 3px, left top 8px, left top 13px, left top 0; }
+
+/* List view */
+.mr-listwrap { overflow-x: auto; margin-top: 16px; }
+.mr-slips-table { margin-top: 0; min-width: 640px; }
+.mr-slips-table th, .mr-slips-table td { padding: 11px 14px; font-size: .92rem; }
+.mr-slips-table td small { display: block; color: var(--mr-muted); font-weight: 400; font-size: .78rem; }
+.mr-slips-table tr[data-dim=true] { opacity: .4; }
+.mr-slips-table tr[data-picked=true] { background: #eaf3fa; }
+.mr-slips-table .mr-btn.link { min-height: 0; padding: 4px 6px; }
+.mr-detail { margin-bottom: 16px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

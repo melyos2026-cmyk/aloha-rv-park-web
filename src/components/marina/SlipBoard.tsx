@@ -34,14 +34,6 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 
   const boatLen = Number(boat) || 0;
   const shown = useMemo(() => slips.filter((s) => type === "all" || s.slip_type === type), [slips, type]);
-  const docks = useMemo(() => {
-    const m = new Map<string, PublicSlip[]>();
-    for (const s of shown) {
-      const k = s.dock || "Main dock";
-      m.set(k, [...(m.get(k) || []), s]);
-    }
-    return [...m.entries()];
-  }, [shown]);
 
   // A slip is open on a day if it is free now, or its contract ends by then, and nobody booked that day.
   const openOn = (s: PublicSlip, d: string) =>
@@ -116,7 +108,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
       {hasMap && (
         <div className="mr-views" role="group" aria-label="View">
           <button type="button" className="mr-chip" aria-pressed={view === "map"} onClick={() => setView("map")}>Marina map</button>
-          <button type="button" className="mr-chip" aria-pressed={view === "list"} onClick={() => setView("list")}>By dock</button>
+          <button type="button" className="mr-chip" aria-pressed={view === "list"} onClick={() => setView("list")}>List</button>
         </div>
       )}
 
@@ -187,39 +179,6 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
         </div>
       )}
 
-      <div className="mr-water" hidden={showMap}>
-        {docks.map(([dock, list]) => (
-          <div key={dock}>
-            <div className="mr-dock-label">{dock}</div>
-            <div className="mr-pier">
-              <div className="mr-row">
-                {list.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className="mr-slip"
-                    data-status={eff(s)}
-                    data-dim={dim(s)}
-                    aria-pressed={picked === s.id}
-                    aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[eff(s)]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
-                    onClick={() => setPicked(s.id)}
-                  >
-                    <span className="nm">{s.slip_name}</span>
-                    <span className="sz">{s.length_ft ? `${s.length_ft}′` : "—"}{s.max_beam_ft ? ` × ${Math.round(s.max_beam_ft * 10) / 10}′` : ""}</span>
-                    <span className="ic">
-                      {s.has_power && <svg width="12" height="12" viewBox="0 0 12 12" aria-label="Power"><path d="M7 0 2 7h3l-1 5 6-7H7z" fill="currentColor" /></svg>}
-                      {s.has_water && <svg width="12" height="12" viewBox="0 0 12 12" aria-label="Water"><path d="M6 0C4 3 2 5 2 7.5a4 4 0 0 0 8 0C10 5 8 3 6 0z" fill="currentColor" /></svg>}
-                    </span>
-                    <span className="st">{STATUS_TEXT[eff(s)]}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="mr-planks" />
-            </div>
-          </div>
-        ))}
-      </div>
-
       {selected && !showMap && (
         <div className="mr-detail" aria-live="polite">
           {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
@@ -256,6 +215,33 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
           )}
         </div>
       )}
+      {!showMap && (
+        <div className="mr-listwrap">
+          <table className="mr-table mr-slips-table">
+            <thead>
+              <tr><th>Slip</th><th>Type</th><th>Size</th><th>Utilities</th><th>Monthly</th><th>Status</th><th><span className="sr-only">Details</span></th></tr>
+            </thead>
+            <tbody>
+              {shown.map((s) => {
+                const st = eff(s);
+                const m = s.rates.monthly ? s.rates.monthly.non_resident ?? s.rates.monthly.resident : null;
+                return (
+                  <tr key={s.id} data-dim={dim(s)} data-picked={picked === s.id}>
+                    <td className="num">{s.slip_name}{s.dock ? <small>{s.dock}</small> : null}</td>
+                    <td>{s.slip_type === "dry" ? "Dry storage" : s.slip_type === "lift" ? "Lift slip" : "Wet slip"}</td>
+                    <td className="num">{s.length_ft ? `${s.length_ft}′` : "—"}{s.max_beam_ft ? ` × ${Math.round(s.max_beam_ft * 10) / 10}′` : ""}</td>
+                    <td>{[s.has_power && "Power", s.has_water && "Water"].filter(Boolean).join(", ") || "—"}</td>
+                    <td className="num">{m ? money(m) : "—"}</td>
+                    <td><span className={`mr-status ${st}`}>{STATUS_TEXT[st]}</span>{s.status === "occupied" && s.available_from && st !== "available" ? <small>Opens {fmt(s.available_from)}</small> : null}</td>
+                    <td><button type="button" className="mr-btn link" onClick={() => setPicked(s.id)} aria-label={`Details for slip ${s.slip_name}`}>Details</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {booking && <ReserveModal slip={booking} startDate={onDate || undefined} onClose={() => setBooking(null)} />}
     </div>
   );
