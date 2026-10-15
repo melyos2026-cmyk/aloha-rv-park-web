@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
-import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/data";
+import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 
 const money = (n: number | null) => (n === null ? "" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;

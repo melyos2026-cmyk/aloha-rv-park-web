@@ -6,7 +6,6 @@ import { isDemoDomain } from "@/lib/marina/host";
 export function MarinaShell({ company, children }: { company: MarinaCompany; children: React.ReactNode }) {
   const demo = isDemoDomain(company.domain);
   const style = {
-    ...(company.primary_color ? { "--mr-ink": company.primary_color } : {}),
     ...(company.secondary_color ? { "--mr-tide": company.secondary_color } : {}),
   } as React.CSSProperties;
   return (

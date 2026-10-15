@@ -1,15 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export const RATE_TYPES = ["annual", "seasonal", "monthly", "transient_weekly", "transient_daily"] as const;
-export type RateType = (typeof RATE_TYPES)[number];
-
-export const RATE_LABEL: Record<RateType, string> = {
-  annual: "Annual",
-  seasonal: "Seasonal",
-  monthly: "Monthly",
-  transient_weekly: "Weekly",
-  transient_daily: "Daily",
-};
+import { RATE_TYPES, RATE_LABEL, type RateType } from "./rates";
+export { RATE_TYPES, RATE_LABEL };
+export type { RateType };
 
 export type SlipRates = Partial<Record<RateType, { resident: number | null; non_resident: number | null }>>;
 
