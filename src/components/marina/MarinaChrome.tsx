@@ -1,3 +1,4 @@
+import MarinaMely from "./MarinaMely";
 import Link from "next/link";
 import "./marina.css";
 import type { MarinaCompany } from "@/lib/marina/company";
@@ -41,6 +42,7 @@ export function MarinaShell({ company, children }: { company: MarinaCompany; chi
         </div>
       </header>
       <main>{children}</main>
+      <MarinaMely companyName={company.company_name} demo={demo} />
       <footer className="mr-footer" id="contact">
         <div className="mr-wrap">
           <div className="mr-footer-grid">
