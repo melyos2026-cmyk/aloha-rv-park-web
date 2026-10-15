@@ -50,6 +50,7 @@
 /* Demo banner */
 .mr-demobar { position: relative; background: #fff; color: var(--mr-ink); font-size: .9rem; font-weight: 600; text-align: center; padding: 9px 16px 11px; border-bottom: 1px solid var(--mr-buoy); }
 .mr-demobar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: #c9a24a; }
+.mr-demobar::before { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 1px; background: #dcc7a4; z-index: 1; }
 .mr-demobar a { text-decoration: underline; }
 
 /* Header */
