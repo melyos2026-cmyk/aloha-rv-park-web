@@ -40,7 +40,24 @@ export async function generateMetadata(): Promise<Metadata> {
   const company = await getHostCompany();
   const isAloha = ((await headers()).get("host") || "").toLowerCase().includes("aloharvparkfl.com");
 
+  // Link previews (iMessage, WhatsApp, Facebook, LinkedIn) for marina sites.
+  const host = ((await headers()).get("host") || "").replace(/^www\./, "");
+  const isMarina = company?.business_type === "marina";
+  const marinaShare = isMarina
+    ? (() => {
+        const title = `${company?.company_name} Marina`;
+        const description = company?.seo_description || `Slips, rates and online reservations at ${company?.company_name}.`;
+        const image = company?.logo_url || `https://${host}/marina/og.png`;
+        return {
+          metadataBase: new URL(`https://${host}`),
+          openGraph: { title, description, url: `https://${host}`, siteName: company?.company_name, type: "website" as const, images: [{ url: image, width: 1200, height: 630, alt: title }] },
+          twitter: { card: "summary_large_image" as const, title, description, images: [image] },
+        };
+      })()
+    : {};
+
   return {
+    ...marinaShare,
     title: company?.company_name || "Aloha RV Park – Kissimmee, Florida",
     // Oct 9: tab icon per tenant. Aloha gets its compass; every other
     // company (Sunset Ridge, future clients) gets its own logo_url
