@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
+import ReserveModal from "./ReserveModal";
 
 const money = (n: number | null) => (n === null ? "" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
 const TYPES: { key: SlipType; title: string; blurb: string }[] = [
@@ -21,6 +22,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   const [power, setPower] = useState(false);
   const [boat, setBoat] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
+  const [booking, setBooking] = useState<PublicSlip | null>(null);
   const [type, setType] = useState<SlipType | "all">("all");
   const hasMap = slips.some((s) => s.map);
   const [view, setView] = useState<"map" | "list">(hasMap ? "map" : "list");
@@ -142,9 +144,14 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                 {selected.rates.monthly && <span>Monthly <b>{money(selected.rates.monthly.non_resident ?? selected.rates.monthly.resident)}</b></span>}
               </div>
               {selected.status !== "maintenance" && (
-                <button type="button" className="mr-btn dark" onClick={() => reserve(selected)}>
-                  {selected.status === "available" ? "Request this slip" : "Join the waitlist"}
-                </button>
+                selected.status === "available" ? (
+                  <>
+                    <button type="button" className="mr-btn dark" onClick={() => setBooking(selected)}>Reserve online</button>
+                    <button type="button" className="mr-btn link" onClick={() => reserve(selected)}>Ask the office</button>
+                  </>
+                ) : (
+                  <button type="button" className="mr-btn dark" onClick={() => reserve(selected)}>Join the waitlist</button>
+                )
               )}
             </div>
           )}
@@ -207,13 +214,19 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
             <p className="mr-note">This slip is closed for repair.</p>
           ) : (
             <div>
-              <button type="button" className="mr-btn dark" onClick={() => reserve(selected)}>
-                {selected.status === "available" ? "Request this slip" : "Join the waitlist for this size"}
-              </button>
+              {selected.status === "available" ? (
+                <>
+                  <button type="button" className="mr-btn dark" onClick={() => setBooking(selected)}>Reserve online</button>
+                  <button type="button" className="mr-btn link" onClick={() => reserve(selected)}>Ask the office</button>
+                </>
+              ) : (
+                <button type="button" className="mr-btn dark" onClick={() => reserve(selected)}>Join the waitlist for this size</button>
+              )}
             </div>
           )}
         </div>
       )}
+      {booking && <ReserveModal slip={booking} onClose={() => setBooking(null)} />}
     </div>
   );
 }
