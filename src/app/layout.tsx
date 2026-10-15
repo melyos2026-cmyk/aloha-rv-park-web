@@ -52,6 +52,8 @@ export async function generateMetadata(): Promise<Metadata> {
             apple: [{ url: "/aloha-apple.png" }],
           },
         }
+      : company?.business_type === "marina" && !company?.logo_url
+      ? { icons: { icon: [{ url: "/marina/favicon.svg", type: "image/svg+xml" }] } }
       : company?.logo_url
       ? { icons: { icon: [{ url: company.logo_url }], apple: [{ url: company.logo_url }] } }
       : {}),
