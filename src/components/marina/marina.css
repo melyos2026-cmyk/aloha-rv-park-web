@@ -48,9 +48,10 @@
 .mr-root select:focus-visible, .mr-root textarea:focus-visible { outline: 3px solid var(--mr-buoy); outline-offset: 2px; }
 
 /* Demo banner */
-.mr-demobar { position: relative; background: #fff; color: var(--mr-ink); font-size: .9rem; font-weight: 600; text-align: center; padding: 9px 16px 11px; border-bottom: 1px solid var(--mr-buoy); }
-.mr-demobar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -4px; height: 1px; background: #c9a24a; }
-.mr-demobar::before { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 1px; background: #dcc7a4; z-index: 1; }
+.mr-demobar { background-color: #fff; color: var(--mr-ink); font-size: .9rem; font-weight: 600; text-align: center; padding: 9px 16px 17px;
+  background-image: linear-gradient(#dcc7a4, #dcc7a4), linear-gradient(#c9a24a, #c9a24a), linear-gradient(var(--mr-buoy), var(--mr-buoy));
+  background-repeat: no-repeat; background-size: 100% 2px, 100% 2px, 100% 2px;
+  background-position: left bottom, left bottom 5px, left bottom 10px; }
 .mr-demobar a { text-decoration: underline; }
 
 /* Header */
