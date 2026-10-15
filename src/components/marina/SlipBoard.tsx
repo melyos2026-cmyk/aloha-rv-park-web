@@ -97,7 +97,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               data-dim={dim(s)}
               aria-pressed={picked === s.id}
               aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
-              style={{ left: `${s.map!.x}%`, top: `${s.map!.y}%`, width: `${s.map!.w}%`, height: `${s.map!.h}%` }}
+              style={{ left: `${s.map!.x}%`, top: `${s.map!.y}%`, width: `${s.map!.w}%`, height: `${s.map!.h}%`, transform: `rotate(${s.map!.r}deg)` }}
               onClick={(e) => { e.stopPropagation(); setPicked(s.id); }}
             >
               <span>{s.slip_name}</span>

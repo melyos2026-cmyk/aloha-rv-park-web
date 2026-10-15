@@ -268,3 +268,12 @@
 @media (max-width: 700px) { .mr-pop { position: fixed; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px; width: auto; } }
 
 .mr-water[hidden] { display: none; }
+
+/* Clearer status colours on the aerial map: brighter green, thicker edge, readable labels */
+.mr-hot { border-width: 3px; border-color: #5dffa8; background: rgba(93,255,168,.30);
+  box-shadow: 0 0 0 1px rgba(0,40,20,.55), 0 0 16px 4px rgba(93,255,168,.95), inset 0 0 14px rgba(93,255,168,.65); }
+.mr-hot:hover { background: rgba(93,255,168,.5); }
+.mr-hot[data-status=occupied] { border-color: #ff6670; box-shadow: 0 0 0 1px rgba(60,0,5,.55), 0 0 16px 4px rgba(255,102,112,.95), inset 0 0 14px rgba(255,102,112,.6); }
+.mr-hot[data-status=reserved] { border-color: #ffc545; box-shadow: 0 0 0 1px rgba(60,35,0,.55), 0 0 16px 4px rgba(255,197,69,.95), inset 0 0 14px rgba(255,197,69,.6); }
+.mr-hot[data-status=maintenance] { border: 3px dashed #e9eef5; background: rgba(15,37,64,.55); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+.mr-hot span { text-shadow: 0 0 3px #000, 0 1px 3px #000; }
