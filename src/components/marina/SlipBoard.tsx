@@ -14,6 +14,8 @@ const centroid = (pts: [number, number][]): [number, number] => [
   pts.reduce((a, p) => a + p[0], 0) / pts.length,
   pts.reduce((a, p) => a + p[1], 0) / pts.length,
 ];
+const fmt = (iso: string) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const todayLocal = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;
 
 
@@ -23,6 +25,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   const [boat, setBoat] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [booking, setBooking] = useState<PublicSlip | null>(null);
+  const [onDate, setOnDate] = useState("");
   const [type, setType] = useState<SlipType | "all">("all");
   const hasMap = slips.some((s) => s.map);
   const [view, setView] = useState<"map" | "list">(hasMap ? "map" : "list");
@@ -40,15 +43,35 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
     return [...m.entries()];
   }, [shown]);
 
+  // A slip is open on a day if it is free now, or its contract ends by then, and nobody booked that day.
+  const openOn = (s: PublicSlip, d: string) =>
+    (s.status === "available" || (s.status === "occupied" && !!s.available_from && s.available_from <= d)) &&
+    !s.booked.some(([a, b]) => a <= d && d < b);
+  // What the visitor sees: with a date picked, status answers "is it open that day?"
+  const eff = (s: PublicSlip): PublicSlip["status"] =>
+    !onDate || s.status === "maintenance" ? s.status : openOn(s, onDate) ? "available" : s.status === "available" ? "reserved" : s.status === "reserved" ? "reserved" : "occupied";
   const fits = (s: PublicSlip) =>
-    s.status === "available" && (!boatLen || (s.length_ft ?? 0) >= boatLen) && (!power || s.has_power);
-  const dim = (s: PublicSlip) => (openOnly || boatLen > 0 || power) && !fits(s);
+    eff(s) === "available" && (!boatLen || (s.length_ft ?? 0) >= boatLen) && (!power || s.has_power);
+  const dim = (s: PublicSlip) => (openOnly || boatLen > 0 || power || !!onDate) && !fits(s);
   const selected = slips.find((s) => s.id === picked) || null;
 
   function reserve(s: PublicSlip) {
     window.dispatchEvent(new CustomEvent("mr-pick-slip", { detail: { slip: s.slip_name, length: s.length_ft } }));
     document.getElementById("waitlist")?.scrollIntoView({ behavior: "smooth" });
   }
+
+
+  const canBook = (s: PublicSlip) => s.status === "available" || (s.status === "occupied" && !!s.available_from);
+  const when = (s: PublicSlip) => (
+    <>
+      {s.status === "occupied" && s.available_from && (
+        <div className="mr-opens">{s.available_from <= todayLocal() ? "Contract ended: opening soon" : <>Opens <b>{fmt(s.available_from)}</b></>}</div>
+      )}
+      {s.booked.length > 0 && (
+        <div className="mr-opens held">Booked: {s.booked.slice(0, 3).map(([a, b]) => `${fmt(a)} to ${fmt(b)}`).join("; ")}</div>
+      )}
+    </>
+  );
 
   if (!slips.length) return <p className="mr-note">Slip availability is being updated. Call the office for current openings.</p>;
 
@@ -60,7 +83,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
         <div className="mr-types" role="group" aria-label="Choose a type">
           {present.map((t) => {
             const all = slips.filter((s) => s.slip_type === t.key);
-            const open = all.filter((s) => s.status === "available").length;
+            const open = all.filter((s) => eff(s) === "available").length;
             return (
               <button key={t.key} type="button" className="mr-type" aria-pressed={type === t.key} onClick={() => { setType(type === t.key ? "all" : t.key); setPicked(null); }}>
                 <b>{t.title}</b>
@@ -76,13 +99,19 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
           My boat length (ft)
           <input type="number" min="0" inputMode="decimal" value={boat} onChange={(e) => setBoat(e.target.value)} placeholder="e.g. 32" />
         </label>
+        <label>
+          Arriving on
+          <input type="date" min={todayLocal()} value={onDate} onChange={(e) => setOnDate(e.target.value)} />
+        </label>
+        {onDate && <button type="button" className="mr-chip" onClick={() => setOnDate("")}>Clear date</button>}
         <button type="button" className="mr-chip" aria-pressed={openOnly} onClick={() => setOpenOnly(!openOnly)}>Open slips only</button>
         <button type="button" className="mr-chip" aria-pressed={power} onClick={() => setPower(!power)}>Shore power</button>
       </div>
-      <div className="mr-legend" aria-hidden="true">
-        <span><i style={{ width: 16, height: 10, border: "2px dashed var(--mr-open)", borderRadius: 3 }} /> Open</span>
-        <span><i style={{ width: 16, height: 10, border: "2px solid #d64550", background: "#fbe3e5", borderRadius: 3 }} /> Taken</span>
-        <span><i style={{ width: 16, height: 10, border: "2px solid var(--mr-buoy)", background: "#fff3d6", borderRadius: 3 }} /> Reserved</span>
+      <div className="mr-legend" role="list" aria-label="Map colors">
+        <span role="listitem"><i className="lg open" /> Open: you can reserve it</span>
+        <span role="listitem"><i className="lg taken" /> Taken: tap it to see when it opens</span>
+        <span role="listitem"><i className="lg held" /> Reserved: booked for upcoming dates</span>
+        <span role="listitem"><i className="lg closed" /> Closed for repair</span>
       </div>
       {hasMap && (
         <div className="mr-views" role="group" aria-label="View">
@@ -99,13 +128,13 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               <polygon
                 key={s.id}
                 className="mr-poly"
-                data-status={s.status}
+                data-status={eff(s)}
                 data-dim={dim(s)}
                 data-picked={picked === s.id}
                 points={s.map!.points.map((p) => p.join(",")).join(" ")}
                 role="button"
                 tabIndex={0}
-                aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
+                aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[eff(s)]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
                 aria-pressed={picked === s.id}
                 onClick={(e) => { e.stopPropagation(); setPicked(s.id); }}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicked(s.id); } }}
@@ -121,20 +150,20 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               className="mr-pop"
               style={(() => {
                 const xs = selected.map.points.map((p) => p[0]), ys = selected.map.points.map((p) => p[1]);
-                const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys);
-                return {
-                  top: `${Math.min(minY, 68)}%`,
-                  ...(minX > 50 ? { right: `${100 - minX + 1}%` } : { left: `${maxX + 1}%` }),
-                };
+                const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+                // Lower half of the map: grow upward so the card is never cut off.
+                const vertical = minY > 40 ? { bottom: `${Math.max(100 - maxY, 2)}%` } : { top: `${Math.max(minY, 2)}%` };
+                return { ...vertical, ...(minX > 50 ? { right: `${100 - minX + 1}%` } : { left: `${maxX + 1}%` }) };
               })()}
               onClick={(e) => e.stopPropagation()}
             >
               {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
               <div className="mr-pop-head">
                 <b>{selected.slip_name}</b>
-                <span className={`mr-status ${selected.status}`}>{STATUS_TEXT[selected.status]}</span>
+                <span className={`mr-status ${eff(selected)}`}>{STATUS_TEXT[eff(selected)]}</span>
               </div>
               <div className="mr-pop-sub">{selected.slip_type === "dry" ? "Dry storage" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"}{selected.dock ? ` · ${selected.dock}` : ""}</div>
+              {when(selected)}
               <div className="mr-pop-rows">
                 {selected.length_ft && <span>Length <b>{selected.length_ft} ft</b></span>}
                 {selected.max_beam_ft && <span>Beam <b>{Math.round(selected.max_beam_ft * 10) / 10} ft</b></span>}
@@ -144,9 +173,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                 {selected.rates.monthly && <span>Monthly <b>{money(selected.rates.monthly.non_resident ?? selected.rates.monthly.resident)}</b></span>}
               </div>
               {selected.status !== "maintenance" && (
-                selected.status === "available" ? (
+                canBook(selected) ? (
                   <>
-                    <button type="button" className="mr-btn dark" onClick={() => setBooking(selected)}>Reserve online</button>
+                    <button type="button" className="mr-btn dark" onClick={() => setBooking(selected)}>{selected.status === "occupied" ? `Reserve from ${fmt(selected.available_from!)}` : "Reserve online"}</button>
                     <button type="button" className="mr-btn link" onClick={() => reserve(selected)}>Ask the office</button>
                   </>
                 ) : (
@@ -169,10 +198,10 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                     key={s.id}
                     type="button"
                     className="mr-slip"
-                    data-status={s.status}
+                    data-status={eff(s)}
                     data-dim={dim(s)}
                     aria-pressed={picked === s.id}
-                    aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[s.status]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
+                    aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[eff(s)]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
                     onClick={() => setPicked(s.id)}
                   >
                     <span className="nm">{s.slip_name}</span>
@@ -181,7 +210,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                       {s.has_power && <svg width="12" height="12" viewBox="0 0 12 12" aria-label="Power"><path d="M7 0 2 7h3l-1 5 6-7H7z" fill="currentColor" /></svg>}
                       {s.has_water && <svg width="12" height="12" viewBox="0 0 12 12" aria-label="Water"><path d="M6 0C4 3 2 5 2 7.5a4 4 0 0 0 8 0C10 5 8 3 6 0z" fill="currentColor" /></svg>}
                     </span>
-                    <span className="st">{STATUS_TEXT[s.status]}</span>
+                    <span className="st">{STATUS_TEXT[eff(s)]}</span>
                   </button>
                 ))}
               </div>
@@ -196,8 +225,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
           {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
           <div>
             <h3>{selected.slip_type === "dry" ? "Storage space" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"} {selected.slip_name}</h3>
-            <span className={`mr-status ${selected.status}`}>{STATUS_TEXT[selected.status]}</span>
+            <span className={`mr-status ${eff(selected)}`}>{STATUS_TEXT[eff(selected)]}</span>
           </div>
+          {when(selected)}
           <div className="mr-facts">
             {selected.length_ft && <span>Length <b>{selected.length_ft} ft</b></span>}
             {selected.max_beam_ft && <span>Max beam <b>{selected.max_beam_ft} ft</b></span>}
@@ -214,9 +244,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
             <p className="mr-note">This slip is closed for repair.</p>
           ) : (
             <div>
-              {selected.status === "available" ? (
+              {canBook(selected) ? (
                 <>
-                  <button type="button" className="mr-btn dark" onClick={() => setBooking(selected)}>Reserve online</button>
+                  <button type="button" className="mr-btn dark" onClick={() => setBooking(selected)}>{selected.status === "occupied" ? `Reserve from ${fmt(selected.available_from!)}` : "Reserve online"}</button>
                   <button type="button" className="mr-btn link" onClick={() => reserve(selected)}>Ask the office</button>
                 </>
               ) : (
@@ -226,7 +256,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
           )}
         </div>
       )}
-      {booking && <ReserveModal slip={booking} onClose={() => setBooking(null)} />}
+      {booking && <ReserveModal slip={booking} startDate={onDate || undefined} onClose={() => setBooking(null)} />}
     </div>
   );
 }

@@ -16,14 +16,15 @@ const todayISO = () => {
 
 type Summary = { slip: string; dock: string | null; start: string; end: string; amount: number; invoice: string };
 
-export default function ReserveModal({ slip, onClose }: { slip: PublicSlip; onClose: () => void }) {
+export default function ReserveModal({ slip, startDate, onClose }: { slip: PublicSlip; startDate?: string; onClose: () => void }) {
+  const minDate = slip.status === "occupied" && slip.available_from && slip.available_from > todayISO() ? slip.available_from : todayISO();
   const offered = useMemo(
     () => STAYS.filter((s) => { const r = slip.rates[s.key]; return r && (r.non_resident ?? r.resident); }),
     [slip],
   );
   const [stay, setStay] = useState<Stay>(offered[0]?.key ?? "transient_daily");
   const [units, setUnits] = useState(1);
-  const [start, setStart] = useState(todayISO());
+  const [start, setStart] = useState(startDate && startDate > minDate ? startDate : minDate);
   const [state, setState] = useState<"idle" | "sending" | "done">("idle");
   const [error, setError] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -91,6 +92,9 @@ export default function ReserveModal({ slip, onClose }: { slip: PublicSlip; onCl
               {slip.dock ? ` · ${slip.dock}` : ""}{slip.length_ft ? ` · up to ${slip.length_ft} ft` : ""}
             </div>
 
+            {slip.booked.length > 0 && (
+              <p className="mr-note">Already booked: {slip.booked.slice(0, 4).map(([a, b]) => `${fmtDate(a)} to ${fmtDate(b)}`).join("; ")}. Pick other dates.</p>
+            )}
             {offered.length === 0 ? (
               <p className="mr-note">Online booking is not offered for this slip yet. Call the dock office to reserve it.</p>
             ) : (
@@ -104,7 +108,7 @@ export default function ReserveModal({ slip, onClose }: { slip: PublicSlip; onCl
                   ))}
                 </div>
                 <div className="two">
-                  <label>Arrival date<input type="date" required min={todayISO()} value={start} onChange={(e) => setStart(e.target.value)} /></label>
+                  <label>Arrival date<input type="date" required min={minDate} value={start} onChange={(e) => setStart(e.target.value)} /></label>
                   <label>
                     How many {cur.unit}s
                     <input type="number" required min={1} max={cur.max} value={units} onChange={(e) => setUnits(Math.max(1, Math.min(cur.max, Math.floor(Number(e.target.value)) || 1)))} />

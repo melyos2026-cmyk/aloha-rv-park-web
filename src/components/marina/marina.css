@@ -265,7 +265,7 @@
 .mr-pop-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: .85rem; color: var(--mr-muted); }
 .mr-pop-rows b { color: var(--mr-ink); }
 .mr-pop .mr-btn { min-height: 38px; font-size: .9rem; }
-@media (max-width: 700px) { .mr-pop { position: fixed; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px; width: auto; } }
+@media (max-width: 700px) { .mr-pop { position: fixed; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px !important; width: auto; max-height: 80vh; overflow-y: auto; } }
 
 .mr-water[hidden] { display: none; }
 
@@ -318,3 +318,15 @@
 .mr-btn.sky { background: var(--mr-buoy); color: var(--mr-ink); }
 .mr-pop .mr-btn + .mr-btn, .mr-detail .mr-btn + .mr-btn { margin-left: 8px; }
 .mr-pop .mr-btn.link, .mr-detail .mr-btn.link { background: none; color: var(--mr-deep); text-decoration: underline; min-height: 0; padding: 6px 4px; }
+
+/* Map legend, slip opening dates, date picker */
+.mr-legend { gap: 8px 22px; padding: 10px 14px; background: #fff; border: 1.5px solid var(--mr-line); border-radius: 8px; }
+.mr-legend .lg { display: inline-block; width: 22px; height: 13px; border-radius: 3px; border: 2.5px solid; }
+.mr-legend .lg.open { border-color: #1fbf7d; background: rgba(93,255,168,.45); }
+.mr-legend .lg.taken { border-color: #e04555; background: rgba(214,69,80,.4); }
+.mr-legend .lg.held { border-color: #e3a82b; background: rgba(227,168,43,.4); }
+.mr-legend .lg.closed { border-color: #0f2540; border-style: dashed; background: rgba(15,37,64,.55); }
+.mr-opens { font-size: .9rem; color: var(--mr-ink); background: #eaf3fa; border-radius: 6px; padding: 6px 10px; }
+.mr-opens.held { background: #fff3d6; }
+.mr-pop-photo { aspect-ratio: 16 / 9; }
+.mr-tools input[type=date] { min-height: 44px; }

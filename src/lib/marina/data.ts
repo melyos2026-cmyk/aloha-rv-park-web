@@ -41,6 +41,10 @@ export type PublicSlip = {
   has_power: boolean;
   has_water: boolean;
   status: "available" | "occupied" | "reserved" | "maintenance";
+  /** Occupied slips: the day the current contract ends and the slip opens. */
+  available_from: string | null;
+  /** Upcoming online bookings [start, end) so the calendar can show conflicts. */
+  booked: [string, string][];
   rates: SlipRates;
 };
 
@@ -59,7 +63,8 @@ export function todayET(): string {
 // Public slip board: only what a visitor should see. Notes, owners and boats
 // are never included.
 export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> {
-  const [{ data: slips }, { data: rates }] = await Promise.all([
+  const holdSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const [{ data: slips }, { data: rates }, { data: bookings }] = await Promise.all([
     supabaseAdmin
       .from("marina_slips")
       .select("*")
@@ -68,7 +73,19 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
       .from("marina_slip_rates")
       .select("slip_id, rate_type, resident_rate, non_resident_rate")
       .eq("company_id", companyId),
+    supabaseAdmin
+      .from("marina_reservations")
+      .select("slip_id, start_date, end_date, status, created_at")
+      .eq("company_id", companyId)
+      .in("status", ["confirmed", "pending"])
+      .gte("end_date", todayET()),
   ]);
+
+  const bookedBySlip = new Map<string, [string, string][]>();
+  for (const b of bookings || []) {
+    if (b.status === "pending" && b.created_at <= holdSince) continue;
+    bookedBySlip.set(b.slip_id, [...(bookedBySlip.get(b.slip_id) || []), [b.start_date, b.end_date]]);
+  }
 
   const ratesBySlip = new Map<string, SlipRates>();
   for (const r of rates || []) {
@@ -91,6 +108,8 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
       has_power: !!s.has_power,
       has_water: !!s.has_water,
       status: s.status as PublicSlip["status"],
+      available_from: typeof s.available_from === "string" && s.available_from ? s.available_from : null,
+      booked: (bookedBySlip.get(s.id) || []).sort((a, b) => a[0].localeCompare(b[0])),
       rates: ratesBySlip.get(s.id) || {},
     }))
     .sort((a, b) => (a.dock || "").localeCompare(b.dock || "") || a.slip_name.localeCompare(b.slip_name, undefined, { numeric: true }));

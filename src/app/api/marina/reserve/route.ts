@@ -75,12 +75,19 @@ export async function POST(req: Request) {
 
   const { data: slip } = await supabaseAdmin
     .from("marina_slips")
-    .select("id, slip_name, dock, length_ft, max_beam_ft, max_draft_ft, status")
+    .select("*")
     .eq("id", String(b.slip_id || ""))
     .eq("company_id", company.id)
     .maybeSingle();
   if (!slip) return NextResponse.json({ error: "That slip was not found." }, { status: 404 });
-  if (slip.status !== "available") return NextResponse.json({ error: "That slip is not open for booking." }, { status: 409 });
+  const opensOn = typeof slip.available_from === "string" ? slip.available_from : null;
+  const open = slip.status === "available" || (slip.status === "occupied" && !!opensOn && start >= opensOn);
+  if (!open) {
+    return NextResponse.json(
+      { error: slip.status === "occupied" && opensOn ? `This slip is taken until ${opensOn}. Choose an arrival date on or after that day.` : "That slip is not open for booking." },
+      { status: 409 },
+    );
+  }
   if (slip.length_ft && boatLen > Number(slip.length_ft)) {
     return NextResponse.json({ error: `This slip fits boats up to ${slip.length_ft} ft. Pick a longer slip.` }, { status: 400 });
   }
