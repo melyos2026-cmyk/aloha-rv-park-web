@@ -6,8 +6,11 @@ export type { RateType };
 
 export type SlipRates = Partial<Record<RateType, { resident: number | null; non_resident: number | null }>>;
 
+export type SlipType = "wet" | "lift" | "dry";
+
 export type PublicSlip = {
   id: string;
+  slip_type: SlipType;
   slip_name: string;
   dock: string | null;
   length_ft: number | null;
@@ -37,7 +40,7 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
   const [{ data: slips }, { data: rates }] = await Promise.all([
     supabaseAdmin
       .from("marina_slips")
-      .select("id, slip_name, dock, length_ft, max_beam_ft, max_draft_ft, has_power, has_water, status")
+      .select("*")
       .eq("company_id", companyId),
     supabaseAdmin
       .from("marina_slip_rates")
@@ -55,6 +58,7 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
   return (slips || [])
     .map((s) => ({
       id: s.id,
+      slip_type: (["wet", "lift", "dry"].includes(s.slip_type) ? s.slip_type : "wet") as SlipType,
       slip_name: s.slip_name,
       dock: s.dock || null,
       length_ft: num(s.length_ft),

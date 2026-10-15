@@ -229,3 +229,13 @@
 .mr-brand svg { width: 40px; flex: none; }
 .mr-brand .mr-name { display: grid; line-height: 1.05; }
 .mr-brand .mr-name small { font: 500 .68rem 'Inter', sans-serif; letter-spacing: .14em; text-transform: uppercase; color: #9fb4cb; margin-top: 3px; }
+
+/* Slip type tiles */
+.mr-types { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin: 26px 0 4px; }
+.mr-type { text-align: left; display: grid; gap: 6px; padding: 18px 20px; border-radius: 8px; border: 1.5px solid var(--mr-line); background: #fff; cursor: pointer; font: 400 .95rem 'Inter', sans-serif; color: var(--mr-muted); }
+.mr-type b { font: 600 1.25rem 'Playfair Display', serif; color: var(--mr-ink); }
+.mr-type em { font-style: normal; font-weight: 600; color: var(--mr-deep); font-size: .88rem; }
+.mr-type:hover { border-color: var(--mr-deep); }
+.mr-type[aria-pressed=true] { background: var(--mr-ink); border-color: var(--mr-ink); }
+.mr-type[aria-pressed=true] b, .mr-type[aria-pressed=true] em { color: #fff; }
+.mr-type[aria-pressed=true] span { color: #c5d2e0; }

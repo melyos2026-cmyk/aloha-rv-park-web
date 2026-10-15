@@ -1,9 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
-import type { PublicSlip } from "@/lib/marina/data";
+import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 
 const money = (n: number | null) => (n === null ? "" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+const TYPES: { key: SlipType; title: string; blurb: string }[] = [
+  { key: "wet", title: "Wet slips", blurb: "Your boat stays in the water, ready to go in minutes." },
+  { key: "lift", title: "Lift slips", blurb: "Lifted out of the water between trips: safer and cleaner." },
+  { key: "dry", title: "Dry storage", blurb: "Long-term storage, and a dry place for repairs." },
+];
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;
 
 
@@ -12,16 +17,18 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   const [power, setPower] = useState(false);
   const [boat, setBoat] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
+  const [type, setType] = useState<SlipType | "all">("all");
 
   const boatLen = Number(boat) || 0;
+  const shown = useMemo(() => slips.filter((s) => type === "all" || s.slip_type === type), [slips, type]);
   const docks = useMemo(() => {
     const m = new Map<string, PublicSlip[]>();
-    for (const s of slips) {
+    for (const s of shown) {
       const k = s.dock || "Main dock";
       m.set(k, [...(m.get(k) || []), s]);
     }
     return [...m.entries()];
-  }, [slips]);
+  }, [shown]);
 
   const fits = (s: PublicSlip) =>
     s.status === "available" && (!boatLen || (s.length_ft ?? 0) >= boatLen) && (!power || s.has_power);
@@ -35,8 +42,25 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 
   if (!slips.length) return <p className="mr-note">Slip availability is being updated. Call the office for current openings.</p>;
 
+  const present = TYPES.filter((t) => slips.some((s) => s.slip_type === t.key));
+
   return (
     <div>
+      {present.length > 1 && (
+        <div className="mr-types" role="group" aria-label="Choose a type">
+          {present.map((t) => {
+            const all = slips.filter((s) => s.slip_type === t.key);
+            const open = all.filter((s) => s.status === "available").length;
+            return (
+              <button key={t.key} type="button" className="mr-type" aria-pressed={type === t.key} onClick={() => { setType(type === t.key ? "all" : t.key); setPicked(null); }}>
+                <b>{t.title}</b>
+                <span>{t.blurb}</span>
+                <em>{open} open of {all.length}</em>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="mr-tools">
         <label>
           My boat length (ft)
@@ -86,7 +110,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
       {selected && (
         <div className="mr-detail" aria-live="polite">
           <div>
-            <h3>Slip {selected.slip_name}</h3>
+            <h3>{selected.slip_type === "dry" ? "Storage space" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"} {selected.slip_name}</h3>
             <span className={`mr-status ${selected.status}`}>{STATUS_TEXT[selected.status]}</span>
           </div>
           <div className="mr-facts">
