@@ -33,6 +33,16 @@ Use a dash for anything unknown. Say that the MelyOS team will email them soon. 
 
 If someone asks about booking a slip on this demo, explain that this is a demo marina with sample slips, and that they can try the Reserve online button on any open slip to see how it works for boaters.`;
 
+const hits = new Map<string, number[]>();
+function tooManyFromIp(ip: string): boolean {
+  const now = Date.now();
+  const recent = (hits.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+  recent.push(now);
+  hits.set(ip, recent);
+  if (hits.size > 5000) for (const k of hits.keys()) { if (!(hits.get(k) || []).some((t) => now - t < 600000)) hits.delete(k); }
+  return recent.length > 25;
+}
+
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
 export async function POST(req: Request) {
@@ -53,7 +63,26 @@ export async function POST(req: Request) {
   if (!history.length || history[history.length - 1].role !== "user") return NextResponse.json({ error: "Empty message." }, { status: 400 });
   while (history.length && history[0].role !== "user") history.shift();
 
-  // Flood guard: one browser session, one hour.
+  // Flood guards. The browser session id can be changed by anyone, so the real limits are
+  // per IP (best effort, per server instance) and per marina (counted in the database).
+  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
+  if (tooManyFromIp(ip)) {
+    return NextResponse.json({ reply: "You are sending messages very quickly. Please wait a few minutes and try again." }, { status: 429 });
+  }
+  {
+    const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
+    const { count } = await supabaseAdmin
+      .from("mely_chat_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("company_id", marina.id)
+      .eq("role", "user")
+      .gte("created_at", hourAgo);
+    if ((count || 0) >= 300) {
+      return NextResponse.json({ reply: "Mely is very busy right now. Please try again in a little while, or email the team directly." }, { status: 429 });
+    }
+  }
+
+  // One browser session, one hour.
   if (sessionId) {
     const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
     const { count } = await supabaseAdmin
