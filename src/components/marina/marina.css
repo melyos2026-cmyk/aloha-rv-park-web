@@ -360,3 +360,7 @@
 .mr-chat-in button { border: 0; background: var(--mr-ink); color: #fff; border-radius: 6px; padding: 0 16px; font-weight: 600; cursor: pointer; }
 .mr-chat-in button:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 700px) { .mr-chat-tip { display: none; } .mr-chat { right: 12px; bottom: 90px; } }
+
+/* Boater login: thin outer line */
+.mr-nav .mr-btn { outline: 1.5px solid #dcc7a4; outline-offset: 3px; }
+.mr-nav .mr-btn:hover, .mr-nav .mr-btn:focus-visible { outline-color: #fff; }
