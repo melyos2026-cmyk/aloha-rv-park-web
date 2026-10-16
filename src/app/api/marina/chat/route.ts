@@ -132,7 +132,7 @@ Privacy: never share or confirm anything about a specific person, boat owner, ac
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY as string, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 900, system, messages: history }),
+    body: JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 900, system, messages: history }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

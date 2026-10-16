@@ -446,7 +446,7 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: "claude-sonnet-5-5",
         max_tokens: 1000,
         system: systemPrompt,
         messages: (messages || []).map((m: { role: string; text: string }) => ({
