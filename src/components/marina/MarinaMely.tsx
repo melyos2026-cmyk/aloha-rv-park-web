@@ -56,8 +56,7 @@ export default function MarinaMely({ companyName, demo }: { companyName: string;
       const res = await fetch("/api/marina/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: next, sessionId: sid.current }) });
       const data = await res.json().catch(() => ({}));
       if (data.reply) reply = data.reply;
-      else reply = `[diagnostic] HTTP ${res.status} ${data.error || ""}`; // TEMP
-    } catch (err) { reply = `[diagnostic] network: ${String((err as any)?.message || err)}`; } // TEMP
+    } catch {}
     const wait = 1500 - (Date.now() - started);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     setMsgs((m) => [...m, { role: "assistant", text: reply }]);

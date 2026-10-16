@@ -137,9 +137,7 @@ Privacy: never share or confirm anything about a specific person, boat owner, ac
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error("marina chat: Anthropic error", data);
-    // TEMP diagnostic: show Anthropic's error type/message (contains no secrets)
-    const d = `${res.status} ${data?.error?.type || ""}: ${String(data?.error?.message || "").slice(0, 200)}`;
-    return NextResponse.json({ reply: `[diagnostic] ${d}` });
+    return NextResponse.json({ error: "Chat service error" }, { status: 502 });
   }
   const raw: string = (data.content || []).find((b: any) => b.type === "text")?.text || "Sorry, I could not get a response.";
 
@@ -181,6 +179,6 @@ export async function POST(req: Request) {
     return await handle(req);
   } catch (e) {
     console.error("marina chat: unexpected error", e);
-    return NextResponse.json({ reply: `[diagnostic] exception: ${String((e as any)?.message || e).slice(0, 250)}` });
+    return NextResponse.json({ reply: "Sorry, something went wrong. Please try again in a moment." }, { status: 500 });
   }
 }
