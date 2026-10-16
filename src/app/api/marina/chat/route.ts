@@ -181,6 +181,6 @@ export async function POST(req: Request) {
     return await handle(req);
   } catch (e) {
     console.error("marina chat: unexpected error", e);
-    return NextResponse.json({ reply: "Sorry, something went wrong. Please try again in a moment." }, { status: 500 });
+    return NextResponse.json({ reply: `[diagnostic] exception: ${String((e as any)?.message || e).slice(0, 250)}` });
   }
 }
