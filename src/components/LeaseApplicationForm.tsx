@@ -4161,7 +4161,10 @@ be sent to me electronically.
                 >
                   Go Back &amp; Check
                 </button>
-                {!isWalkIn && (
+                {/* Oct 19 (per Mely): Family/Friends invitations (email, SMS
+                    or link) also get the pay-in-person option, same as a
+                    walk-in. Everyone else pays online. */}
+                {!(isWalkIn || isFamilyFriend) && (
                   <button
                     onClick={() => {
                       setShowConfirmModal(false);
@@ -4190,7 +4193,7 @@ be sent to me electronically.
                   </button>
                 )}
               </div>
-              {isWalkIn && (
+              {(isWalkIn || isFamilyFriend) && (
                 <div style={{ display: "flex", gap: 10 }}>
                   <button
                     onClick={() => {
