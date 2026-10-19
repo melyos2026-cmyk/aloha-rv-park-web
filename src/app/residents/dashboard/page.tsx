@@ -1523,7 +1523,17 @@ export default function ResidentDashboard() {
                   <p style={{ fontWeight: 700 }}>{person.full_name}</p>
                   <p style={{ fontSize: 13 }}>{person.relationship}</p>
                   <p style={{ color: "var(--gray)", fontSize: 13 }}>{person.phone} {person.email}</p>
-                  {age !== null && <p style={{ color: "var(--gray)", fontSize: 12 }}>Age: {age}</p>}
+                  {/* Oct 19 (per Mely): show the date of birth the way it was entered (mm/dd/yyyy) */}
+                  {person.date_of_birth && (
+                    <p style={{ color: "var(--gray)", fontSize: 12 }}>
+                      Date of Birth: {(() => {
+                        const m = String(person.date_of_birth).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                        return m ? `${m[2]}/${m[3]}/${m[1]}` : String(person.date_of_birth);
+                      })()}
+                      {age !== null ? ` · Age: ${age}` : ""}
+                    </p>
+                  )}
+                  {!person.date_of_birth && age !== null && <p style={{ color: "var(--gray)", fontSize: 12 }}>Age: {age}</p>}
                   <div style={{ display: "flex", gap: 12, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
                     <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
