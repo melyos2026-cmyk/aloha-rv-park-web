@@ -2718,19 +2718,9 @@ export default function LeaseApplicationForm({
             )}
           </div>
         </div>
-        <div style={styles.field}>
-          <label style={styles.label}>RV Description (Optional)</label>
-          <p style={{ fontSize: 12, color: "#777", marginTop: 0, marginBottom: 6 }}>
-            Please provide any additional details about your RV that may help us assign the
-            appropriate site, including special features, oversized equipment, or other space
-            requirements.
-          </p>
-          <textarea
-            style={{ ...styles.input, minHeight: 70 }}
-            value={data.rv_description}
-            onChange={(e) => set("rv_description", e.target.value)}
-          />
-        </div>
+        {/* Oct 19 (per Mely): "RV Description (Optional)" removed — lots are
+            already sized by the admin and the RV's dimensions are validated
+            against the chosen lot. Still editable in admin Resident Accounts. */}
         {rvTooLong && (
           <div
             style={{
