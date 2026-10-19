@@ -3736,18 +3736,34 @@ export default function LeaseApplicationForm({
               small print like other leasing companies. Must match
               collectionsDisclosureText() in melyos-builder's
               FullApplicationView.tsx. */}
-          <p style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.5, margin: "0 0 10px" }}>
-            <strong>Collection &amp; Credit Reporting Disclosure.</strong> If any amount I owe under this
-            application or lease becomes past due, I authorize {company.name || "the park"} and its agents to
-            share my information, including my name, date of birth, Social Security number, contact
-            information, employer, and account balance, with collection agencies and consumer credit
-            reporting agencies for the purpose of collecting the debt. Any collection activity will comply
-            with the Florida Consumer Collection Practices Act (Fla. Stat. §§ 559.55–559.785) and the federal
-            Fair Debt Collection Practices Act. By checking the box below and signing, I acknowledge this disclosure.
-          </p>
-          <label style={styles.checkboxRow}>
+          <div
+            style={{
+              margin: "14px 0 14px",
+              padding: "12px 14px",
+              background: "#f9fafb",
+              border: "1px solid #e5e7eb",
+              borderRadius: 6,
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#374151", marginBottom: 6 }}>
+              Collection &amp; Credit Reporting Disclosure
+            </div>
+            <p style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
+              If any amount I owe under this application or lease becomes past due, I authorize{" "}
+              {company.name || "the park"} and its agents to share my information, including my name, date of
+              birth, Social Security number, contact information, employer, and account balance, with collection
+              agencies and consumer credit reporting agencies for the purpose of collecting the debt.
+            </p>
+            <p style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.6, margin: "6px 0 0" }}>
+              Any collection activity will comply with the Florida Consumer Collection Practices Act (Fla. Stat.
+              §§ 559.55–559.785) and the federal Fair Debt Collection Practices Act. By checking the box below and
+              signing, I acknowledge this disclosure.
+            </p>
+          </div>
+          <label style={{ ...styles.checkboxRow, alignItems: "flex-start" }}>
             <input
               type="checkbox"
+              style={{ marginTop: 4, flexShrink: 0 }}
               checked={data.tenant_signature_agreed}
               onChange={(e) =>
                 set("tenant_signature_agreed", e.target.checked)
