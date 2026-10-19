@@ -1,4 +1,5 @@
 "use client";
+import { portalAlert } from "@/components/portalDialog";
 import { useState } from "react";
 
 export default function InquiryModal({
@@ -114,10 +115,10 @@ export default function InquiryModal({
                     setForm({ fullName: "", email: "", phone: "", preferredDate: "", preferredTime: "", message: "" });
                   } else {
                     const result = await res.json();
-                    alert(result.error || "Something went wrong. Please try again.");
+                    void portalAlert(result.error || "Something went wrong. Please try again.");
                   }
                 } catch (err) {
-                  alert("Something went wrong. Please try again.");
+                  void portalAlert("Something went wrong. Please try again.");
                 }
                 setSending(false);
               }}

@@ -1,3 +1,4 @@
+import { portalAlert } from "@/components/portalDialog";
 import { useState, useEffect, useRef } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -830,7 +831,7 @@ export default function LeaseApplicationForm({
       const url = await onUploadFile(file, slotId);
       onDone(url);
     } catch (e) {
-      alert("Couldn't upload the file. Please try again (a photo works best).");
+      void portalAlert("Couldn't upload the file. Please try again (a photo works best).");
     } finally {
       setUploadingSlot(null);
     }
@@ -3610,11 +3611,11 @@ export default function LeaseApplicationForm({
                       if (result.url) {
                         window.location.href = result.url;
                       } else {
-                        alert(result.error || "Could not start the deposit payment. Please try again.");
+                        void portalAlert(result.error || "Could not start the deposit payment. Please try again.");
                         setPayingDeposit(false);
                       }
                     } catch {
-                      alert("Could not start the deposit payment. Please try again.");
+                      void portalAlert("Could not start the deposit payment. Please try again.");
                       setPayingDeposit(false);
                     }
                   }}
