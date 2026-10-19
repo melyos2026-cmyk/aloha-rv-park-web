@@ -149,6 +149,8 @@ export default function ResidentDashboard() {
   // background check before move-in is compliant (skipping it risks lease
   // termination, per Mely). Visitors don't need this.
   const [occDateOfBirth, setOccDateOfBirth] = useState("");
+  // Oct 19 (per Mely): adults (18+) need their SSN — stored privately, never shown back
+  const [occSsn, setOccSsn] = useState("");
   const [editingVisitorId, setEditingVisitorId] = useState<string | null>(null);
 
   const [addingVehicle, setAddingVehicle] = useState(false);
@@ -598,6 +600,24 @@ export default function ResidentDashboard() {
       setOccupantMessage("Please enter this person's Date of Birth.");
       return;
     }
+    // Oct 19 (per Mely — Aloha's paper application): adults (18+) living
+    // here must give their own email and Social Security number. When
+    // editing, the SSN can be left blank to keep the one already on file.
+    const occAge = calculateAge(occDateOfBirth);
+    const occIsAdult = occType === "household" && occAge !== null && occAge >= 18;
+    const occSsnDigits = occSsn.replace(/\D/g, "");
+    if (occIsAdult && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(occEmail.trim())) {
+      setOccupantMessage("Please enter a valid email for this adult (18+).");
+      return;
+    }
+    if (occIsAdult && !editingVisitorId && occSsnDigits.length !== 9) {
+      setOccupantMessage("Please enter this adult's Social Security # (9 digits).");
+      return;
+    }
+    if (occIsAdult && editingVisitorId && occSsnDigits.length > 0 && occSsnDigits.length !== 9) {
+      setOccupantMessage("Social Security # must be 9 digits (or leave it blank to keep the one on file).");
+      return;
+    }
 
     // SECURITY (Aug 2): moved from direct client-side Supabase
     // insert/update to a session-guarded server route — see
@@ -620,6 +640,7 @@ export default function ResidentDashboard() {
           stayStart: occStayStart || null,
           stayEnd: occStayEnd || null,
           dateOfBirth: occType === "household" ? occDateOfBirth || null : null,
+          ssn: occIsAdult && occSsnDigits.length === 9 ? occSsnDigits : undefined,
         }),
       });
       const result = await res.json();
@@ -635,6 +656,7 @@ export default function ResidentDashboard() {
       setOccStayStart("");
       setOccStayEnd("");
       setOccDateOfBirth("");
+      setOccSsn("");
       setOccType("household");
       setEditingVisitorId(null);
       setAddingOccupant(false);
@@ -658,6 +680,7 @@ export default function ResidentDashboard() {
     setOccStayStart(person.stay_start_date || "");
     setOccStayEnd(person.stay_end_date || "");
     setOccDateOfBirth(person.date_of_birth || "");
+    setOccSsn("");
     setOccType(person.occupant_type === "visitor" ? "visitor" : "household");
     setAddingOccupant(true);
   }
@@ -1450,6 +1473,32 @@ export default function ResidentDashboard() {
                     <label style={{ fontSize: 12, color: "var(--gray)" }}>Date of Birth (required)</label>
                     <input type="date" value={occDateOfBirth} onChange={e => setOccDateOfBirth(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
+                  {(() => {
+                    const a = calculateAge(occDateOfBirth);
+                    if (a === null || a < 18) return null;
+                    return (
+                      <div style={{ gridColumn: "span 2" }}>
+                        <label style={{ fontSize: 12, color: "var(--gray)" }}>
+                          Social Security # {editingVisitorId ? "(leave blank to keep the one on file)" : "(required for adults 18+)"}
+                        </label>
+                        <input
+                          placeholder="123-45-6789"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={11}
+                          value={occSsn}
+                          onChange={(e) => {
+                            const d = e.target.value.replace(/\D/g, "").slice(0, 9);
+                            setOccSsn(d.length <= 3 ? d : d.length <= 5 ? `${d.slice(0, 3)}-${d.slice(3)}` : `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`);
+                          }}
+                          style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }}
+                        />
+                        <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 4 }}>
+                          Email is also required for adults. Stored securely; the office only sees the last 4 digits.
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
                   {editingVisitorId ? "Update Occupant" : "Save"}

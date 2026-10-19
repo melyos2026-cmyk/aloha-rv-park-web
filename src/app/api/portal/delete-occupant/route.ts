@@ -41,6 +41,10 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await supabase.from("resident_occupants").delete().eq("id", occupantId);
+  // Oct 19: also remove that person's SSN from the private table
+  if (!error) {
+    await supabase.from("applicant_ssn").delete().eq("occupant_id", String(occupantId));
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
