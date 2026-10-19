@@ -504,6 +504,20 @@ function ApplyPageInner() {
 
       const applicationId = invitationId || crypto.randomUUID();
 
+      // Oct 19 (per Mely): Social Security numbers must NEVER land in
+      // resident_applications (the admin app reads it, and form_draft_json
+      // is handed back by draft recovery). Pull them out here; they're
+      // sent separately and written only to the private applicant_ssn
+      // table by /api/submit-lease-application.
+      const { primary_applicant_ssn, ...dataWithoutSsn } = data;
+      const occupantsWithoutSsn = (data.occupants || []).map(({ ssn: _ssn, ...rest }) => rest);
+      const safeFormData = { ...dataWithoutSsn, occupants: occupantsWithoutSsn };
+      const ssnRecords = [
+        { person_role: "primary", person_index: null, full_name: data.tenant_names, ssn: primary_applicant_ssn },
+        ...(data.occupants || [])
+          .map((occ, idx) => ({ person_role: "occupant", person_index: idx, full_name: occ.name, ssn: occ.ssn })),
+      ].filter((r) => (r.ssn || "").replace(/\D/g, "").length === 9);
+
       const row: Record<string, any> = {
         // Aug 20 (per Mely — draft recovery after navigating back from
         // Stripe): the exact form shape, stored verbatim — recovering
@@ -511,7 +525,7 @@ function ApplyPageInner() {
         // column name differs from the form field name (email vs
         // tenant_email, monthly_rent vs rent_amount, etc.), which is
         // fragile and easy to get subtly wrong.
-        form_draft_json: data,
+        form_draft_json: safeFormData,
         company_id: company.id,
         full_name: data.tenant_names,
         tenant_names: data.tenant_names,
@@ -532,8 +546,42 @@ function ApplyPageInner() {
         primary_applicant_license_photo_url:
           data.primary_applicant_license_photo_url,
 
-        occupants: data.occupants,
+        occupants: occupantsWithoutSsn,
         occupants_enabled: data.occupants_enabled,
+
+        // Oct 19 (per Mely — Aloha's paper application)
+        current_address: data.current_address || null,
+        current_city: data.current_city || null,
+        current_state: data.current_state || null,
+        current_zip: data.current_zip || null,
+        emergency_contact_name: data.emergency_contact_name || null,
+        emergency_contact_phone: data.emergency_contact_phone || null,
+        emergency_contact_relationship: data.emergency_contact_relationship || null,
+        employment_info: {
+          not_employed: !!data.employment_not_employed,
+          employer: data.employment_not_employed ? "" : data.employer_name,
+          address: data.employment_not_employed ? "" : data.employer_address,
+          city: data.employment_not_employed ? "" : data.employer_city,
+          state: data.employment_not_employed ? "" : data.employer_state,
+          zip: data.employment_not_employed ? "" : data.employer_zip,
+          phone: data.employment_not_employed ? "" : data.employer_phone,
+          time_with_company: data.employment_not_employed ? "" : data.employer_time_with_company,
+          supervisor: data.employment_not_employed ? "" : data.employer_supervisor,
+          income_amount: Number(String(data.income_amount || "").replace(/[^0-9.]/g, "")) || null,
+          income_frequency: data.income_frequency || null,
+        },
+        housing_company_info: data.housing_paid_by_company
+          ? {
+              company_name: data.housing_company_name,
+              contact_name: data.housing_company_contact,
+              phone: data.housing_company_phone,
+              address: data.housing_company_address,
+              city: data.housing_company_city,
+              state: data.housing_company_state,
+              zip: data.housing_company_zip,
+              fax: data.housing_company_fax,
+            }
+          : null,
         vehicles: data.vehicles,
         vehicles_enabled: data.vehicles_enabled,
 
@@ -620,6 +668,7 @@ function ApplyPageInner() {
           applicationId: invitationId ? undefined : applicationId,
           invitationId: invitationId || undefined,
           row,
+          ssnRecords,
         }),
       });
       const submitResult = await submitRes.json();

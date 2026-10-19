@@ -33,6 +33,39 @@ export interface LeaseApplicationData {
   primary_applicant_dob: string;
   primary_applicant_license: string;
   primary_applicant_license_photo_url: string;
+  // Oct 19 (per Mely — Aloha's paper application asks for these). SSN is
+  // NEVER saved to resident_applications/form_draft_json: /apply strips it
+  // before building the row and writes it only to the private
+  // applicant_ssn table (RLS on, no policies — readable only from the
+  // Supabase dashboard / service role, never shown in the admin app).
+  primary_applicant_ssn: string;
+  current_address: string;
+  current_city: string;
+  current_state: string;
+  current_zip: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  emergency_contact_relationship: string;
+  employment_not_employed: boolean; // retired / not currently employed — skips employer fields, income still required
+  employer_name: string;
+  employer_address: string;
+  employer_city: string;
+  employer_state: string;
+  employer_zip: string;
+  employer_phone: string;
+  employer_time_with_company: string;
+  employer_supervisor: string;
+  income_amount: string;
+  income_frequency: string; // "weekly" | "biweekly" | "monthly"
+  housing_paid_by_company: boolean;
+  housing_company_name: string;
+  housing_company_contact: string;
+  housing_company_phone: string;
+  housing_company_address: string;
+  housing_company_city: string;
+  housing_company_state: string;
+  housing_company_zip: string;
+  housing_company_fax: string;
 
   property_address: string;
   space_id: string;
@@ -137,6 +170,8 @@ export interface OccupantInfo {
   license_number: string;
   license_photo_url: string;
   email?: string; // optional — falls back to the primary applicant's email for Checkr invitations
+  phone?: string; // Oct 19: required for adults (Aloha's paper form asks spouse's phone)
+  ssn?: string; // Oct 19: required for adults — stripped before saving, see primary_applicant_ssn note
 }
 
 function calculateAge(dateOfBirth: string): number | null {
@@ -370,6 +405,34 @@ const emptyForm: LeaseApplicationData = {
   primary_applicant_dob: "",
   primary_applicant_license: "",
   primary_applicant_license_photo_url: "",
+  primary_applicant_ssn: "",
+  current_address: "",
+  current_city: "",
+  current_state: "",
+  current_zip: "",
+  emergency_contact_name: "",
+  emergency_contact_phone: "",
+  emergency_contact_relationship: "",
+  employment_not_employed: false,
+  employer_name: "",
+  employer_address: "",
+  employer_city: "",
+  employer_state: "",
+  employer_zip: "",
+  employer_phone: "",
+  employer_time_with_company: "",
+  employer_supervisor: "",
+  income_amount: "",
+  income_frequency: "",
+  housing_paid_by_company: false,
+  housing_company_name: "",
+  housing_company_contact: "",
+  housing_company_phone: "",
+  housing_company_address: "",
+  housing_company_city: "",
+  housing_company_state: "",
+  housing_company_zip: "",
+  housing_company_fax: "",
   property_address: "",
   space_id: "",
   lease_start_date: "",
@@ -793,6 +856,38 @@ export default function LeaseApplicationForm({
     return isAdult && !occ.email?.trim();
   });
 
+  // Oct 19 (per Mely — Aloha's paper application): SSN, current address,
+  // emergency contact, employer/income, and optional company-paid housing.
+  const ssnDigits = (v?: string) => (v || "").replace(/\D/g, "");
+  const primarySsnMissing = ssnDigits(data.primary_applicant_ssn).length !== 9;
+  const adultOccupantsMissingSsn = data.occupants.some((occ) => {
+    const age = calculateAge(occ.date_of_birth);
+    const isAdult = occ.name.trim() !== "" && age !== null && age >= 18;
+    return isAdult && ssnDigits(occ.ssn).length !== 9;
+  });
+  const adultOccupantsMissingPhone = data.occupants.some((occ) => {
+    const age = calculateAge(occ.date_of_birth);
+    const isAdult = occ.name.trim() !== "" && age !== null && age >= 18;
+    return isAdult && !occ.phone?.trim();
+  });
+  const currentAddressMissing =
+    !data.current_address?.trim() || !data.current_city?.trim() ||
+    !data.current_state?.trim() || !data.current_zip?.trim();
+  const emergencyContactMissing =
+    !data.emergency_contact_name?.trim() || !data.emergency_contact_phone?.trim() ||
+    !data.emergency_contact_relationship?.trim();
+  const employerMissing =
+    !data.employment_not_employed &&
+    (!data.employer_name?.trim() || !data.employer_address?.trim() ||
+      !data.employer_city?.trim() || !data.employer_state?.trim() ||
+      !data.employer_zip?.trim() || !data.employer_phone?.trim() ||
+      !data.employer_time_with_company?.trim() || !data.employer_supervisor?.trim());
+  const incomeMissing = !data.income_amount?.trim() || !data.income_frequency;
+  const housingCompanyMissing =
+    !!data.housing_paid_by_company &&
+    (!data.housing_company_name?.trim() || !data.housing_company_contact?.trim() ||
+      !data.housing_company_phone?.trim());
+
   const proration = calculateProration(
     data.lease_start_date,
     Number(data.rent_amount) || 0,
@@ -1011,6 +1106,14 @@ export default function LeaseApplicationForm({
         !primaryApplicantUnderage &&
         !adultOccupantsMissingLicense &&
         !adultOccupantsMissingEmail &&
+        !primarySsnMissing &&
+        !adultOccupantsMissingSsn &&
+        !adultOccupantsMissingPhone &&
+        !currentAddressMissing &&
+        !emergencyContactMissing &&
+        !employerMissing &&
+        !incomeMissing &&
+        !housingCompanyMissing &&
         data.tenant_signature_name &&
         signatureMatchesName &&
         data.tenant_signature_agreed &&
@@ -1028,6 +1131,38 @@ export default function LeaseApplicationForm({
   // real blocker). Named list of exactly which conditions are unmet,
   // shown under the generic message so this is never a guessing game
   // again — for the applicant AND for us debugging it remotely.
+  // Oct 19: small helpers for the new Aloha paper-form fields below.
+  const showReq = (missing: boolean) =>
+    mode === "applicant" && attemptedSubmit && missing ? (
+      <div style={styles.requiredNote}>Field required</div>
+    ) : null;
+  const formatSsn = (v: string) => {
+    const d = v.replace(/\D/g, "").slice(0, 9);
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  };
+  type TextKey = {
+    [K in keyof LeaseApplicationData]: LeaseApplicationData[K] extends string ? K : never;
+  }[keyof LeaseApplicationData];
+  const textField = (
+    label: string,
+    key: TextKey,
+    opts: { required?: boolean; phone?: boolean; placeholder?: string; inputMode?: "numeric" | "text" | "tel" } = {}
+  ) => (
+    <div style={styles.field}>
+      <label style={styles.label}>{label}</label>
+      <input
+        style={styles.input}
+        value={data[key] || ""}
+        placeholder={opts.placeholder}
+        inputMode={opts.phone ? "tel" : opts.inputMode}
+        onChange={(e) => set(key, opts.phone ? formatPhoneAsTyped(e.target.value) : e.target.value)}
+      />
+      {opts.required && showReq(!String(data[key] || "").trim())}
+    </div>
+  );
+
   const unmetRequirements: string[] =
     mode === "admin"
       ? []
@@ -1045,6 +1180,14 @@ export default function LeaseApplicationForm({
           primaryApplicantUnderage && "Primary applicant must be 18 or older",
           adultOccupantsMissingLicense && "An adult occupant is missing their license number or photo",
           adultOccupantsMissingEmail && "An adult occupant is missing their email",
+          primarySsnMissing && "Social Security # (9 digits)",
+          adultOccupantsMissingSsn && "An adult occupant is missing their Social Security # (9 digits)",
+          adultOccupantsMissingPhone && "An adult occupant is missing their phone #",
+          currentAddressMissing && "Current address (street, city, state, zip)",
+          emergencyContactMissing && "Emergency contact (name, phone, relationship)",
+          employerMissing && "Employer information (or check \"Retired / not currently employed\")",
+          incomeMissing && "Income amount and how often (weekly, biweekly, monthly)",
+          housingCompanyMissing && "Company paying for housing: company name, contact name, and phone",
           !data.tenant_signature_name && "Signature (type your name)",
           data.tenant_signature_name && !signatureMatchesName && "Signature must exactly match your first + last name above",
           !data.tenant_signature_agreed && "You must check the signature agreement box",
@@ -1304,6 +1447,129 @@ export default function LeaseApplicationForm({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Oct 19 (per Mely — Aloha's paper application): SSN, current
+          address, emergency contact. */}
+      <div style={styles.card}>
+        <div style={styles.sectionTitle}>Personal Information</div>
+        <div style={styles.row}>
+          <div style={styles.field}>
+            <label style={styles.label}>Social Security #</label>
+            <input
+              style={styles.input}
+              value={data.primary_applicant_ssn || ""}
+              placeholder="123-45-6789"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={11}
+              onChange={(e) => set("primary_applicant_ssn", formatSsn(e.target.value))}
+            />
+            <div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
+              Stored securely. Not shown to park staff.
+            </div>
+            {showReq(primarySsnMissing)}
+          </div>
+        </div>
+        <div style={styles.row}>
+          {textField("Current Address", "current_address", { required: true })}
+        </div>
+        <div style={styles.row}>
+          {textField("City", "current_city", { required: true })}
+          {textField("State", "current_state", { required: true })}
+          {textField("Zip", "current_zip", { required: true, inputMode: "numeric" })}
+        </div>
+        <div style={{ ...styles.sectionTitle, fontSize: 14, marginTop: 12 }}>Emergency Contact</div>
+        <div style={styles.row}>
+          {textField("Name", "emergency_contact_name", { required: true })}
+          {textField("Phone #", "emergency_contact_phone", { required: true, phone: true })}
+          {textField("Relationship to you", "emergency_contact_relationship", { required: true })}
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.sectionTitle}>Employer Information</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={!!data.employment_not_employed}
+            onChange={(e) => set("employment_not_employed", e.target.checked)}
+          />
+          Retired / not currently employed
+        </label>
+        {!data.employment_not_employed && (
+          <>
+            <div style={styles.row}>
+              {textField("Employer", "employer_name", { required: true })}
+            </div>
+            <div style={styles.row}>
+              {textField("Address", "employer_address", { required: true })}
+            </div>
+            <div style={styles.row}>
+              {textField("City", "employer_city", { required: true })}
+              {textField("State", "employer_state", { required: true })}
+              {textField("Zip", "employer_zip", { required: true, inputMode: "numeric" })}
+            </div>
+            <div style={styles.row}>
+              {textField("Phone #", "employer_phone", { required: true, phone: true })}
+              {textField("How long have you been with the company?", "employer_time_with_company", { required: true, placeholder: "e.g. 2 years" })}
+            </div>
+            <div style={styles.row}>
+              {textField("Name of manager or supervisor", "employer_supervisor", { required: true })}
+            </div>
+          </>
+        )}
+        <div style={styles.row}>
+          {textField("Income ($)", "income_amount", { required: true, inputMode: "numeric", placeholder: "e.g. 1200" })}
+          <div style={styles.field}>
+            <label style={styles.label}>How often</label>
+            <select
+              style={styles.input}
+              value={data.income_frequency || ""}
+              onChange={(e) => set("income_frequency", e.target.value)}
+            >
+              <option value="">Select...</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Biweekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            {showReq(!data.income_frequency)}
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.sectionTitle}>Company Information</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={!!data.housing_paid_by_company}
+            onChange={(e) => set("housing_paid_by_company", e.target.checked)}
+          />
+          The company I work for is paying for my housing
+        </label>
+        {data.housing_paid_by_company && (
+          <>
+            <div style={styles.row}>
+              {textField("Company Name", "housing_company_name", { required: true })}
+            </div>
+            <div style={styles.row}>
+              {textField("Contact Name", "housing_company_contact", { required: true })}
+              {textField("Phone", "housing_company_phone", { required: true, phone: true })}
+            </div>
+            <div style={styles.row}>
+              {textField("Company Address", "housing_company_address")}
+            </div>
+            <div style={styles.row}>
+              {textField("City", "housing_company_city")}
+              {textField("State", "housing_company_state")}
+              {textField("Zip", "housing_company_zip", { inputMode: "numeric" })}
+            </div>
+            <div style={styles.row}>
+              {textField("Fax", "housing_company_fax", { phone: true })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* 3-4. Lease Term & Rent */}
@@ -1961,6 +2227,52 @@ export default function LeaseApplicationForm({
                               Email is required for adult occupants.
                             </div>
                           )}
+                      </div>
+                    )}
+                    {/* Oct 19 (per Mely — Aloha's paper form asks the
+                        spouse's SS # and phone): adults only. SSN is
+                        stripped before saving, see primary_applicant_ssn. */}
+                    {age !== null && age >= 18 && (
+                      <div style={styles.field}>
+                        <label style={styles.label}>Phone # (required)</label>
+                        <input
+                          style={styles.input}
+                          inputMode="tel"
+                          value={occ.phone || ""}
+                          onChange={(e) => {
+                            const updated = [...data.occupants];
+                            updated[i] = { ...occ, phone: formatPhoneAsTyped(e.target.value) };
+                            set("occupants", updated);
+                          }}
+                        />
+                        {mode === "applicant" && attemptedSubmit && !occ.phone?.trim() && (
+                          <div style={{ fontSize: 12, color: "#c00", marginTop: 4 }}>
+                            Phone is required for adult occupants.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {age !== null && age >= 18 && (
+                      <div style={styles.field}>
+                        <label style={styles.label}>Social Security # (required)</label>
+                        <input
+                          style={styles.input}
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={11}
+                          placeholder="123-45-6789"
+                          value={occ.ssn || ""}
+                          onChange={(e) => {
+                            const updated = [...data.occupants];
+                            updated[i] = { ...occ, ssn: formatSsn(e.target.value) };
+                            set("occupants", updated);
+                          }}
+                        />
+                        {mode === "applicant" && attemptedSubmit && ssnDigits(occ.ssn).length !== 9 && (
+                          <div style={{ fontSize: 12, color: "#c00", marginTop: 4 }}>
+                            Social Security # (9 digits) is required for adult occupants.
+                          </div>
+                        )}
                       </div>
                     )}
                     <div style={styles.field}>
