@@ -618,6 +618,10 @@ function ApplyPageInner() {
         pets_allowed: data.pets_allowed,
         pets_count: Number(data.pets_count) || null,
         pets_types: data.pets_types,
+        // Oct 19 (per Mely — Aloha paper form): per-pet name/breed/color/weight/shots
+        pet_details: data.pets_allowed && Array.isArray(data.pet_details)
+          ? data.pet_details.slice(0, Number(data.pets_count) || 0)
+          : [],
         pet_deposit: Number(data.pet_deposit) || null,
         pet_restrictions: data.pet_restrictions,
 

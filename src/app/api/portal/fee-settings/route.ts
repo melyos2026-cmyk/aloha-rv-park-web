@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   // give, instead of them guessing.
   const { data: parkSettings } = await supabase
     .from("park_settings")
-    .select("move_out_threshold_days")
+    .select("move_out_threshold_days, lease_defaults")
     .eq("company_id", resident.company_id)
     .maybeSingle();
 
@@ -55,5 +55,8 @@ export async function GET(req: NextRequest) {
     acceptOnlinePayments: true,
     autopayAvailable: !!feeSettings?.autopay_available,
     moveOutThresholdDays: parkSettings?.move_out_threshold_days ?? 15,
+    // Oct 19 (per Mely): the park's restricted-breed notice, shown in the
+    // portal's Pets section (same text as the application).
+    petRestrictions: (parkSettings as any)?.lease_defaults?.pet_restrictions || "",
   });
 }

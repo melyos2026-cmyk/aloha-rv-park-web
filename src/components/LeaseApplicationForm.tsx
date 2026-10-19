@@ -122,6 +122,7 @@ export interface LeaseApplicationData {
   pets_allowed: boolean;
   pets_count: string;
   pets_types: string;
+  pet_details: PetInfo[]; // Oct 19 (per Mely — Aloha paper form): one entry per pet
   pet_deposit: string;
   pet_restrictions: string;
 
@@ -162,6 +163,28 @@ export interface ParkRule {
   id: string;
   title: string;
   text: string;
+}
+
+// Oct 19 (per Mely — Aloha's paper form, page 2): per-pet details.
+export interface PetInfo {
+  type: string; // dog, cat, ...
+  name: string;
+  breed: string;
+  color: string;
+  weight: string;
+  shots_provided: "" | "yes" | "no";
+}
+
+export const emptyPet: PetInfo = { type: "", name: "", breed: "", color: "", weight: "", shots_provided: "" };
+
+export function summarizePetTypes(pets: PetInfo[]): string {
+  const counts: Record<string, number> = {};
+  for (const p of pets) {
+    const t = (p.type || "").trim().toLowerCase();
+    if (!t) continue;
+    counts[t] = (counts[t] || 0) + 1;
+  }
+  return Object.entries(counts).map(([t, n]) => `${n} ${t}`).join(", ");
 }
 
 export interface OccupantInfo {
@@ -477,6 +500,7 @@ const emptyForm: LeaseApplicationData = {
   pets_allowed: false,
   pets_count: "",
   pets_types: "",
+  pet_details: [],
   pet_deposit: "",
   pet_restrictions: "No aggressive or restricted breeds (e.g. Pit Bulls).",
   smoking_policy: "prohibited",
@@ -883,6 +907,14 @@ export default function LeaseApplicationForm({
       !data.employer_zip?.trim() || !data.employer_phone?.trim() ||
       !data.employer_time_with_company?.trim() || !data.employer_supervisor?.trim());
   const incomeMissing = !data.income_amount?.trim() || !data.income_frequency;
+  const petDetailsArr: PetInfo[] = Array.isArray(data.pet_details) ? data.pet_details : [];
+  const declaredPetCount = data.pets_allowed ? Number(data.pets_count) || 0 : 0;
+  const petDetailsMissing =
+    declaredPetCount > 0 &&
+    (petDetailsArr.length < declaredPetCount ||
+      petDetailsArr.slice(0, declaredPetCount).some(
+        (p) => !p.type?.trim() || !p.name?.trim() || !p.breed?.trim() || !p.color?.trim() || !p.weight?.trim() || !p.shots_provided
+      ));
   const housingCompanyMissing =
     !!data.housing_paid_by_company &&
     (!data.housing_company_name?.trim() || !data.housing_company_contact?.trim() ||
@@ -1114,6 +1146,7 @@ export default function LeaseApplicationForm({
         !employerMissing &&
         !incomeMissing &&
         !housingCompanyMissing &&
+        !petDetailsMissing &&
         data.tenant_signature_name &&
         signatureMatchesName &&
         data.tenant_signature_agreed &&
@@ -1188,6 +1221,7 @@ export default function LeaseApplicationForm({
           employerMissing && "Employer information (or check \"Retired / not currently employed\")",
           incomeMissing && "Income amount and how often (weekly, biweekly, monthly)",
           housingCompanyMissing && "Company paying for housing: company name, contact name, and phone",
+          petDetailsMissing && "Pet information (type, name, breed, color, weight, and shots records for each pet)",
           !data.tenant_signature_name && "Signature (type your name)",
           data.tenant_signature_name && !signatureMatchesName && "Signature must exactly match your first + last name above",
           !data.tenant_signature_agreed && "You must check the signature agreement box",
@@ -2996,30 +3030,96 @@ export default function LeaseApplicationForm({
               <strong>Pets:</strong>{" "}
               {data.pets_allowed ? (
                 <>
-                  Permitted. {data.pet_restrictions}
+                  Permitted.
+                  {/* Oct 19 (per Mely — Aloha paper form): the park's
+                      restricted-breed notice (editable in Lease Defaults →
+                      Breed/Pet Restrictions). Warning only — it doesn't
+                      block the application. */}
+                  {data.pet_restrictions?.trim() && (
+                    <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 6, padding: "10px 12px", margin: "8px 0 12px", fontSize: 13, color: "#78350f", whiteSpace: "pre-wrap" }}>
+                      ⚠️ {data.pet_restrictions}
+                    </div>
+                  )}
                   <div style={styles.row}>
                     <div style={styles.field}>
-                      <label style={styles.label}># of Pets</label>
-                      <input
-                        type="number"
+                      <label style={styles.label}>How many pets?</label>
+                      <select
                         style={styles.input}
-                        value={data.pets_count}
-                        onChange={(e) =>
-                          set("pets_count", e.target.value)
-                        }
-                      />
-                    </div>
-                    <div style={styles.field}>
-                      <label style={styles.label}>Pet Type(s)</label>
-                      <input
-                        style={styles.input}
-                        value={data.pets_types}
-                        onChange={(e) =>
-                          set("pets_types", e.target.value)
-                        }
-                      />
+                        value={data.pets_count || "0"}
+                        onChange={(e) => {
+                          const n = Number(e.target.value) || 0;
+                          const current: PetInfo[] = Array.isArray(data.pet_details) ? data.pet_details : [];
+                          const next = Array.from({ length: n }, (_, i) => current[i] || { ...emptyPet });
+                          setData((prev) => ({
+                            ...prev,
+                            pets_count: n ? String(n) : "",
+                            pet_details: next,
+                            pets_types: summarizePetTypes(next),
+                          }));
+                        }}
+                      >
+                        {[0, 1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={String(n)}>{n}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+                  {Array.from({ length: Number(data.pets_count) || 0 }, (_, i) =>
+                    (Array.isArray(data.pet_details) && data.pet_details[i]) || { ...emptyPet }
+                  ).map((pet, i, all) => {
+                    const updatePet = (patch: Partial<PetInfo>) => {
+                      const list = [...all];
+                      list[i] = { ...pet, ...patch };
+                      setData((prev) => ({ ...prev, pet_details: list, pets_types: summarizePetTypes(list) }));
+                    };
+                    const petReq = (missing: boolean) =>
+                      mode === "applicant" && attemptedSubmit && missing ? (
+                        <div style={styles.requiredNote}>Field required</div>
+                      ) : null;
+                    return (
+                      <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Pet {i + 1}</div>
+                        <div style={styles.row}>
+                          <div style={styles.field}>
+                            <label style={styles.label}>Type</label>
+                            <input style={styles.input} placeholder="e.g. Dog, Cat" value={pet.type} onChange={(e) => updatePet({ type: e.target.value })} />
+                            {petReq(!pet.type?.trim())}
+                          </div>
+                          <div style={styles.field}>
+                            <label style={styles.label}>Name of your pet</label>
+                            <input style={styles.input} value={pet.name} onChange={(e) => updatePet({ name: e.target.value })} />
+                            {petReq(!pet.name?.trim())}
+                          </div>
+                          <div style={styles.field}>
+                            <label style={styles.label}>Breed</label>
+                            <input style={styles.input} value={pet.breed} onChange={(e) => updatePet({ breed: e.target.value })} />
+                            {petReq(!pet.breed?.trim())}
+                          </div>
+                        </div>
+                        <div style={styles.row}>
+                          <div style={styles.field}>
+                            <label style={styles.label}>Color</label>
+                            <input style={styles.input} value={pet.color} onChange={(e) => updatePet({ color: e.target.value })} />
+                            {petReq(!pet.color?.trim())}
+                          </div>
+                          <div style={styles.field}>
+                            <label style={styles.label}>Weight (lbs)</label>
+                            <input style={styles.input} inputMode="numeric" value={pet.weight} onChange={(e) => updatePet({ weight: e.target.value })} />
+                            {petReq(!pet.weight?.trim())}
+                          </div>
+                          <div style={styles.field}>
+                            <label style={styles.label}>Provided shots records?</label>
+                            <select style={styles.input} value={pet.shots_provided} onChange={(e) => updatePet({ shots_provided: e.target.value as PetInfo["shots_provided"] })}>
+                              <option value="">Select...</option>
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                            {petReq(!pet.shots_provided)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                   {data.pet_deposit && Number(data.pet_deposit) > 0 && (
                     <div>${data.pet_deposit} fee/deposit applies.</div>
                   )}

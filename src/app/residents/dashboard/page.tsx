@@ -184,6 +184,12 @@ export default function ResidentDashboard() {
   const [petsAllowedInput, setPetsAllowedInput] = useState(false);
   const [petsCountInput, setPetsCountInput] = useState("");
   const [petsTypesInput, setPetsTypesInput] = useState("");
+  // Oct 19 (per Mely — Aloha paper form): per-pet details + the park's
+  // restricted-breed notice (from Lease Defaults → Breed/Pet Restrictions).
+  type PortalPet = { type: string; name: string; breed: string; color: string; weight: string; shots_provided: "" | "yes" | "no" };
+  const emptyPortalPet: PortalPet = { type: "", name: "", breed: "", color: "", weight: "", shots_provided: "" };
+  const [petDetailsInput, setPetDetailsInput] = useState<PortalPet[]>([]);
+  const [petRestrictions, setPetRestrictions] = useState("");
   const [petsMessage, setPetsMessage] = useState("");
 
   // Aug 4: resident_payments (the legacy billing table) was fully unified
@@ -276,6 +282,7 @@ export default function ResidentDashboard() {
     setAcceptOnlinePayments(feeSettingsData?.acceptOnlinePayments ?? true);
     setAutopayAvailable(!!feeSettingsData?.autopayAvailable);
     setMoveOutThresholdDays(feeSettingsData?.moveOutThresholdDays ?? 15);
+    setPetRestrictions(feeSettingsData?.petRestrictions || "");
 
     const pendingBgData = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`)
       .then((r) => r.json())
@@ -510,6 +517,17 @@ export default function ResidentDashboard() {
   // /api/portal/save-pets).
   async function savePets() {
     setPetsMessage("");
+    if (petsAllowedInput && petDetailsInput.length === 0) {
+      setPetsMessage("Please select how many pets you have.");
+      return;
+    }
+    if (
+      petsAllowedInput &&
+      petDetailsInput.some((p) => !p.type.trim() || !p.name.trim() || !p.breed.trim() || !p.color.trim() || !p.weight.trim() || !p.shots_provided)
+    ) {
+      setPetsMessage("Please fill in type, name, breed, color, weight, and shots records for each pet.");
+      return;
+    }
     try {
       const res = await fetch("/api/portal/save-pets", {
         method: "POST",
@@ -519,6 +537,7 @@ export default function ResidentDashboard() {
           petsAllowed: petsAllowedInput,
           petsCount: petsCountInput,
           petsTypes: petsTypesInput,
+          petDetails: petDetailsInput,
         }),
       });
       const result = await res.json();
@@ -1626,6 +1645,11 @@ export default function ResidentDashboard() {
                     setPetsAllowedInput(!!resident?.pets_allowed);
                     setPetsCountInput(resident?.pets_count != null ? String(resident.pets_count) : "");
                     setPetsTypesInput(resident?.pets_types || "");
+                    {
+                      const saved: PortalPet[] = Array.isArray(resident?.pet_details) ? resident.pet_details : [];
+                      const n = saved.length || Number(resident?.pets_count) || 0;
+                      setPetDetailsInput(Array.from({ length: Math.min(n, 5) }, (_, i) => ({ ...emptyPortalPet, ...(saved[i] || {}) })));
+                    }
                     setPetsMessage("");
                     setEditingPets(true);
                   }}
@@ -1647,6 +1671,19 @@ export default function ResidentDashboard() {
                   ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
                   : "Not permitted"}
               </p>
+              {resident?.pets_allowed && Array.isArray(resident?.pet_details) && resident.pet_details.length > 0 && (
+                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                  {resident.pet_details.map((p: PortalPet, i: number) => (
+                    <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}>
+                      <strong>{p.name || `Pet ${i + 1}`}</strong>
+                      {` — ${[p.type, p.breed, p.color, p.weight ? `${p.weight} lbs` : ""].filter(Boolean).join(", ")}`}
+                      <span style={{ color: p.shots_provided === "yes" ? "#16a34a" : "#b45309", marginLeft: 6 }}>
+                        {p.shots_provided === "yes" ? "Shots records provided" : "Shots records not provided"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <p style={{ marginTop: 8 }}><strong>Parking Sticker ID#(s):</strong>{" "}
                 {vehicles.length === 0
                   ? "No vehicles on file"
@@ -1663,35 +1700,62 @@ export default function ResidentDashboard() {
           ) : (
             <div style={{ ...card, marginTop: 16 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Pets</h2>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              {petRestrictions.trim() && (
+                <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 13, color: "#78350f", whiteSpace: "pre-wrap" }}>
+                  ⚠️ {petRestrictions}
+                </div>
+              )}
+              {/* Oct 19 (per Mely): only the box is clickable, not the text. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                 <input
                   type="checkbox"
+                  style={{ cursor: "pointer", width: 16, height: 16, margin: 0 }}
                   checked={petsAllowedInput}
                   onChange={(e) => setPetsAllowedInput(e.target.checked)}
                 />
-                I have pet(s)
-              </label>
+                <span>I have pet(s)</span>
+              </div>
               {petsAllowedInput && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}># of Pets</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={petsCountInput}
-                      onChange={(e) => setPetsCountInput(e.target.value)}
-                      style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }}
-                    />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>How many pets?</label>
+                    <select
+                      value={String(petDetailsInput.length)}
+                      onChange={(e) => {
+                        const n = Number(e.target.value) || 0;
+                        setPetDetailsInput((prev) => Array.from({ length: n }, (_, i) => prev[i] || { ...emptyPortalPet }));
+                      }}
+                      style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%", background: "#fff" }}
+                    >
+                      {[0, 1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={String(n)}>{n}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Pet Type(s)</label>
-                    <input
-                      placeholder="e.g. 1 dog, 1 cat"
-                      value={petsTypesInput}
-                      onChange={(e) => setPetsTypesInput(e.target.value)}
-                      style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }}
-                    />
-                  </div>
+                  {petDetailsInput.map((pet, i) => {
+                    const update = (patch: Partial<PortalPet>) =>
+                      setPetDetailsInput((prev) => prev.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+                    const inputStyle = { border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" } as const;
+                    const lbl = { fontSize: 12, color: "var(--gray)" } as const;
+                    return (
+                      <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                        <strong style={{ fontSize: 13 }}>Pet {i + 1}</strong>
+                        <div><label style={lbl}>Type</label><input style={inputStyle} placeholder="e.g. Dog, Cat" value={pet.type} onChange={(e) => update({ type: e.target.value })} /></div>
+                        <div><label style={lbl}>Name of your pet</label><input style={inputStyle} value={pet.name} onChange={(e) => update({ name: e.target.value })} /></div>
+                        <div><label style={lbl}>Breed</label><input style={inputStyle} value={pet.breed} onChange={(e) => update({ breed: e.target.value })} /></div>
+                        <div><label style={lbl}>Color</label><input style={inputStyle} value={pet.color} onChange={(e) => update({ color: e.target.value })} /></div>
+                        <div><label style={lbl}>Weight (lbs)</label><input style={inputStyle} inputMode="numeric" value={pet.weight} onChange={(e) => update({ weight: e.target.value })} /></div>
+                        <div>
+                          <label style={lbl}>Provided shots records?</label>
+                          <select style={{ ...inputStyle, background: "#fff" }} value={pet.shots_provided} onChange={(e) => update({ shots_provided: e.target.value as PortalPet["shots_provided"] })}>
+                            <option value="">Select...</option>
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
