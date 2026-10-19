@@ -59,7 +59,8 @@ export default function GolfCartCard({
   if (maxCarts <= 0 && saved.length === 0) return null;
 
   function startEdit() {
-    setCarts(saved.map((g) => ({ ...empty, ...g })));
+    // Oct 19 (per Mely): first "+ Add" opens the golf cart form directly
+    setCarts(saved.length ? saved.map((g) => ({ ...empty, ...g })) : [{ ...empty }]);
     setMessage("");
     setEditing(true);
   }
