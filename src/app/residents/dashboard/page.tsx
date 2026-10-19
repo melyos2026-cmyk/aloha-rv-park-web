@@ -666,7 +666,18 @@ export default function ResidentDashboard() {
       setOccType("household");
       setEditingVisitorId(null);
       setAddingOccupant(false);
-      loadResidentDashboard();
+      // Oct 19 (per Mely): after saving, keep the resident on the Household
+      // Occupants section (instead of jumping elsewhere) so they see right
+      // away if an adult still needs a photo ID uploaded.
+      const savedType = occType;
+      await loadResidentDashboard();
+      setTimeout(() => {
+        const el = document.getElementById(savedType === "visitor" ? "visitors-section" : "household-occupants");
+        if (el) {
+          const top = el.getBoundingClientRect().top + window.scrollY - 90;
+          window.scrollTo({ top, behavior: "smooth" });
+        }
+      }, 150);
     } catch (err: any) {
       setOccupantMessage("Could not save (unexpected error): " + (err?.message || err));
     }
@@ -1580,7 +1591,7 @@ export default function ResidentDashboard() {
           </div>
 
           {/* Visitors */}
-          <div style={card}>
+          <div id="visitors-section" style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18 }}>Visitors</h2>
               <button onClick={() => { setOccType("visitor"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setOccStayStart(""); setOccStayEnd(""); setAddingOccupant(!addingOccupant || occType !== "visitor"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
