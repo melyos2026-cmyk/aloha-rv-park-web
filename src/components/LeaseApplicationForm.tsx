@@ -3016,12 +3016,17 @@ export default function LeaseApplicationForm({
                 (data as any).mailbox_key_replacement_fee) && (
                 <div style={{ fontSize: 12, color: "#777", marginTop: 2 }}>
                   Replacement fees if lost, not returned, or damaged:{" "}
-                  {(data as any).parking_sticker_replacement_fee &&
-                    `$${(data as any).parking_sticker_replacement_fee} per parking sticker`}
-                  {(data as any).gate_clicker_replacement_fee &&
-                    `, $${(data as any).gate_clicker_replacement_fee} per gate clicker`}
-                  {(data as any).mailbox_key_replacement_fee &&
-                    `, $${(data as any).mailbox_key_replacement_fee} per mailbox key`}
+                  {/* Oct 19: join only the fees that are set (no stray leading comma) */}
+                  {[
+                    (data as any).parking_sticker_replacement_fee &&
+                      `$${(data as any).parking_sticker_replacement_fee} per parking sticker`,
+                    (data as any).gate_clicker_replacement_fee &&
+                      `$${(data as any).gate_clicker_replacement_fee} per gate clicker`,
+                    (data as any).mailbox_key_replacement_fee &&
+                      `$${(data as any).mailbox_key_replacement_fee} per mailbox key`,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
                   .
                 </div>
               )}
