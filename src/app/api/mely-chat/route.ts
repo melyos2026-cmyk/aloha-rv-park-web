@@ -325,6 +325,22 @@ export async function POST(req: NextRequest) {
         if (Number(defaults.pet_deposit) > 0 && defaults.pets_allowed) {
           moveInLines.push(`Pet fee/deposit: $${defaults.pet_deposit} if the resident has a pet.`);
         }
+        // Oct 19 (per Mely): late fee policy, read live from Lease Defaults
+        if (defaults.late_fee_enabled !== false && Number(defaults.late_fee_amount) > 0) {
+          const amt = `$${Number(defaults.late_fee_amount).toFixed(2)}`;
+          const freq = defaults.late_fee_frequency || "daily";
+          const grace = Number(defaults.late_fee_grace_days) || 0;
+          const days = String(defaults.late_fee_charge_days || "").split(/[^0-9]+/).filter(Boolean).join(", ");
+          moveInLines.push(
+            freq === "days_of_month" && days
+              ? `Late fee: ${amt} is added on day(s) ${days} of each month while rent is still unpaid, and it keeps adding up until the balance is paid.`
+              : freq === "weekly"
+              ? `Late fee: ${amt} for each week rent stays unpaid${grace ? `, starting after a ${grace}-day grace period` : ""}.`
+              : freq === "one_time"
+              ? `Late fee: a one-time ${amt} if rent is not paid${grace ? ` within ${grace} day(s) after the due date` : " by the due date"}.`
+              : `Late fee: ${amt} for each day rent stays unpaid${grace ? ` after a ${grace}-day grace period` : ""}.`
+          );
+        }
         moveInLines.push(
           defaults.first_month_proration_method === "daily_rate"
             ? "Partial first month (moving in mid-month): the park charges the lot's nightly rate for each remaining day of that month (for example, moving in on the 31st means 1 night at the lot's nightly rate)."
