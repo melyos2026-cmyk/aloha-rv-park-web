@@ -1489,14 +1489,16 @@ export default function LeaseApplicationForm({
 
       <div style={styles.card}>
         <div style={styles.sectionTitle}>Employer Information</div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12, cursor: "pointer" }}>
+        {/* Oct 19 (per Mely): only the box is clickable, not the text. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
           <input
             type="checkbox"
+            style={{ cursor: "pointer", width: 16, height: 16, margin: 0 }}
             checked={!!data.employment_not_employed}
             onChange={(e) => set("employment_not_employed", e.target.checked)}
           />
-          Retired / not currently employed
-        </label>
+          <span style={{ userSelect: "text", cursor: "default" }}>Retired / not currently employed</span>
+        </div>
         {!data.employment_not_employed && (
           <>
             <div style={styles.row}>
@@ -1540,14 +1542,16 @@ export default function LeaseApplicationForm({
 
       <div style={styles.card}>
         <div style={styles.sectionTitle}>Company Information</div>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12, cursor: "pointer" }}>
+        {/* Oct 19 (per Mely): only the box is clickable, not the text. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
           <input
             type="checkbox"
+            style={{ cursor: "pointer", width: 16, height: 16, margin: 0 }}
             checked={!!data.housing_paid_by_company}
             onChange={(e) => set("housing_paid_by_company", e.target.checked)}
           />
-          The company I work for is paying for my housing
-        </label>
+          <span style={{ userSelect: "text", cursor: "default" }}>The company I work for is paying for my housing</span>
+        </div>
         {data.housing_paid_by_company && (
           <>
             <div style={styles.row}>
