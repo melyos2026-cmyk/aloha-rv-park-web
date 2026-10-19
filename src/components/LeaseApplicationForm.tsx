@@ -2819,7 +2819,7 @@ export default function LeaseApplicationForm({
           <>
             <div style={styles.field}>
               <label style={styles.label}>
-                Utilities Included (Month-to-Month / Long-Term)
+                Utilities Included (Monthly Residents)
               </label>
               <input
                 style={styles.input}
