@@ -326,9 +326,10 @@ export async function POST(req: NextRequest) {
           moveInLines.push(`Pet fee/deposit: $${defaults.pet_deposit} if the resident has a pet.`);
         }
         // Oct 19 (per Mely): late fee policy, read live from Lease Defaults
-        if (defaults.late_fee_enabled !== false && Number(defaults.late_fee_amount) > 0) {
+        // Only describe it once the park has chosen how often it repeats
+        if (defaults.late_fee_enabled !== false && Number(defaults.late_fee_amount) > 0 && defaults.late_fee_frequency) {
           const amt = `$${Number(defaults.late_fee_amount).toFixed(2)}`;
-          const freq = defaults.late_fee_frequency || "daily";
+          const freq = defaults.late_fee_frequency;
           const grace = Number(defaults.late_fee_grace_days) || 0;
           const days = String(defaults.late_fee_charge_days || "").split(/[^0-9]+/).filter(Boolean).join(", ");
           moveInLines.push(
