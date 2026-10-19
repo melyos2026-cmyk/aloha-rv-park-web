@@ -123,6 +123,14 @@ export interface LeaseApplicationData {
   pets_count: string;
   pets_types: string;
   pet_details: PetInfo[]; // Oct 19 (per Mely — Aloha paper form): one entry per pet
+  // Oct 19 (per Mely — Aloha rule: golf carts must be insured and driven by
+  // a licensed driver). golf_carts_max / golf_cart_insurance_required come
+  // from Lease Defaults; 0 = golf carts not allowed.
+  golf_carts_max?: string;
+  golf_cart_insurance_required?: boolean;
+  has_golf_cart: boolean;
+  golf_carts: GolfCartInfo[];
+  golf_cart_driver_ack: boolean;
   pet_deposit: string;
   pet_restrictions: string;
 
@@ -174,6 +182,23 @@ export interface PetInfo {
   weight: string;
   shots_provided: "" | "yes" | "no";
 }
+
+export interface GolfCartInfo {
+  make: string;
+  model: string;
+  year: string;
+  color: string;
+  serial_or_tag: string;
+  insurance_company: string;
+  policy_number: string;
+  insurance_expiration: string; // yyyy-mm-dd
+  insurance_doc_path: string; // private storage path
+}
+
+export const emptyGolfCart: GolfCartInfo = {
+  make: "", model: "", year: "", color: "", serial_or_tag: "",
+  insurance_company: "", policy_number: "", insurance_expiration: "", insurance_doc_path: "",
+};
 
 export const emptyPet: PetInfo = { type: "", name: "", breed: "", color: "", weight: "", shots_provided: "" };
 
@@ -501,6 +526,9 @@ const emptyForm: LeaseApplicationData = {
   pets_count: "",
   pets_types: "",
   pet_details: [],
+  has_golf_cart: false,
+  golf_carts: [],
+  golf_cart_driver_ack: false,
   pet_deposit: "",
   pet_restrictions: "No aggressive or restricted breeds (e.g. Pit Bulls).",
   smoking_policy: "prohibited",
@@ -802,7 +830,7 @@ export default function LeaseApplicationForm({
       const url = await onUploadFile(file, slotId);
       onDone(url);
     } catch (e) {
-      alert("Couldn't upload photo. Please try again.");
+      alert("Couldn't upload the file. Please try again (a photo works best).");
     } finally {
       setUploadingSlot(null);
     }
@@ -914,6 +942,21 @@ export default function LeaseApplicationForm({
     (petDetailsArr.length < declaredPetCount ||
       petDetailsArr.slice(0, declaredPetCount).some(
         (p) => !p.type?.trim() || !p.name?.trim() || !p.breed?.trim() || !p.color?.trim() || !p.weight?.trim() || !p.shots_provided
+      ));
+  const golfCartsMax = Number(data.golf_carts_max ?? 2);
+  const golfCartsAllowed = golfCartsMax > 0;
+  const golfCartInsuranceRequired = data.golf_cart_insurance_required !== false;
+  const golfCartList: GolfCartInfo[] = Array.isArray(data.golf_carts) ? data.golf_carts : [];
+  const golfCartsMissing =
+    golfCartsAllowed &&
+    !!data.has_golf_cart &&
+    (golfCartList.length === 0 ||
+      !data.golf_cart_driver_ack ||
+      golfCartList.some(
+        (g) =>
+          !g.make?.trim() || !g.model?.trim() || !g.year?.trim() || !g.color?.trim() ||
+          !g.insurance_company?.trim() || !g.policy_number?.trim() || !g.insurance_expiration ||
+          (golfCartInsuranceRequired && !g.insurance_doc_path)
       ));
   const housingCompanyMissing =
     !!data.housing_paid_by_company &&
@@ -1147,6 +1190,7 @@ export default function LeaseApplicationForm({
         !incomeMissing &&
         !housingCompanyMissing &&
         !petDetailsMissing &&
+        !golfCartsMissing &&
         data.tenant_signature_name &&
         signatureMatchesName &&
         data.tenant_signature_agreed &&
@@ -1176,7 +1220,7 @@ export default function LeaseApplicationForm({
     return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
   };
   type TextKey = {
-    [K in keyof LeaseApplicationData]: LeaseApplicationData[K] extends string ? K : never;
+    [K in keyof LeaseApplicationData]-?: LeaseApplicationData[K] extends string ? K : never;
   }[keyof LeaseApplicationData];
   const textField = (
     label: string,
@@ -1222,6 +1266,7 @@ export default function LeaseApplicationForm({
           incomeMissing && "Income amount and how often (weekly, biweekly, monthly)",
           housingCompanyMissing && "Company paying for housing: company name, contact name, and phone",
           petDetailsMissing && "Pet information (type, name, breed, color, weight, and shots records for each pet)",
+          golfCartsMissing && `Golf cart information (make, model, year, color, insurance company, policy #, expiration${golfCartInsuranceRequired ? ", insurance copy" : ""}) and the licensed-driver checkbox`,
           !data.tenant_signature_name && "Signature (type your name)",
           data.tenant_signature_name && !signatureMatchesName && "Signature must exactly match your first + last name above",
           !data.tenant_signature_agreed && "You must check the signature agreement box",
@@ -3152,6 +3197,168 @@ export default function LeaseApplicationForm({
           </div>
         )}
       </div>
+
+      {/* Oct 19 (per Mely): golf carts — the park requires insurance and a
+          licensed driver. Hidden when Lease Defaults sets max = 0. */}
+      {golfCartsAllowed && mode === "applicant" && (
+        <div style={styles.card}>
+          <div style={styles.sectionTitle}>Golf Cart</div>
+          <p style={styles.helper}>
+            All golf carts must be insured and driven by a person with a valid driver's license.
+          </p>
+          <div style={styles.row}>
+            <div style={styles.field}>
+              <label style={styles.label}>Will you have a golf cart at the park?</label>
+              <select
+                style={styles.input}
+                value={data.has_golf_cart ? "yes" : "no"}
+                onChange={(e) => {
+                  const yes = e.target.value === "yes";
+                  setData((prev) => ({
+                    ...prev,
+                    has_golf_cart: yes,
+                    golf_carts: yes
+                      ? (Array.isArray(prev.golf_carts) && prev.golf_carts.length > 0 ? prev.golf_carts : [{ ...emptyGolfCart }])
+                      : [],
+                    golf_cart_driver_ack: yes ? prev.golf_cart_driver_ack : false,
+                  }));
+                }}
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
+            {data.has_golf_cart && golfCartsMax > 1 && (
+              <div style={styles.field}>
+                <label style={styles.label}>How many golf carts?</label>
+                <select
+                  style={styles.input}
+                  value={String(golfCartList.length || 1)}
+                  onChange={(e) => {
+                    const n = Math.min(Number(e.target.value) || 1, golfCartsMax);
+                    setData((prev) => {
+                      const cur: GolfCartInfo[] = Array.isArray(prev.golf_carts) ? prev.golf_carts : [];
+                      return { ...prev, golf_carts: Array.from({ length: n }, (_, i) => cur[i] || { ...emptyGolfCart }) };
+                    });
+                  }}
+                >
+                  {Array.from({ length: golfCartsMax }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={String(n)}>{n}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          {data.has_golf_cart &&
+            golfCartList.map((cart, i) => {
+              const update = (patch: Partial<GolfCartInfo>) =>
+                setData((prev) => ({
+                  ...prev,
+                  golf_carts: (prev.golf_carts || []).map((g, j) => (j === i ? { ...g, ...patch } : g)),
+                }));
+              const req = (missing: boolean) =>
+                mode === "applicant" && attemptedSubmit && missing ? <div style={styles.requiredNote}>Field required</div> : null;
+              const slot = `golfcart-insurance-${i}`;
+              return (
+                <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Golf Cart {i + 1}</div>
+                  <div style={styles.row}>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Make</label>
+                      <input style={styles.input} placeholder="e.g. Club Car" value={cart.make} onChange={(e) => update({ make: e.target.value })} />
+                      {req(!cart.make?.trim())}
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Model</label>
+                      <input style={styles.input} value={cart.model} onChange={(e) => update({ model: e.target.value })} />
+                      {req(!cart.model?.trim())}
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Year</label>
+                      <input style={styles.input} inputMode="numeric" value={cart.year} onChange={(e) => update({ year: e.target.value })} />
+                      {req(!cart.year?.trim())}
+                    </div>
+                  </div>
+                  <div style={styles.row}>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Color</label>
+                      <input style={styles.input} value={cart.color} onChange={(e) => update({ color: e.target.value })} />
+                      {req(!cart.color?.trim())}
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Serial # or tag # (optional)</label>
+                      <input style={styles.input} value={cart.serial_or_tag} onChange={(e) => update({ serial_or_tag: e.target.value })} />
+                    </div>
+                  </div>
+                  <div style={styles.row}>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Insurance company</label>
+                      <input style={styles.input} value={cart.insurance_company} onChange={(e) => update({ insurance_company: e.target.value })} />
+                      {req(!cart.insurance_company?.trim())}
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Policy #</label>
+                      <input style={styles.input} value={cart.policy_number} onChange={(e) => update({ policy_number: e.target.value })} />
+                      {req(!cart.policy_number?.trim())}
+                    </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Insurance expiration date</label>
+                      <input type="date" style={styles.input} value={cart.insurance_expiration} onChange={(e) => update({ insurance_expiration: e.target.value })} />
+                      {req(!cart.insurance_expiration)}
+                    </div>
+                  </div>
+                  <div style={styles.field}>
+                    <label style={styles.label}>
+                      Copy of insurance (photo or PDF){golfCartInsuranceRequired ? "" : " — optional, you can also bring it to the office"}
+                    </label>
+                    {cart.insurance_doc_path ? (
+                      <div style={{ fontSize: 13, color: "#166534" }}>
+                        ✓ Uploaded{" "}
+                        <button
+                          type="button"
+                          onClick={() => update({ insurance_doc_path: "" })}
+                          style={{ marginLeft: 8, fontSize: 12, color: "#c00", background: "none", border: "none", cursor: "pointer" }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        style={styles.input}
+                        disabled={uploadingSlot === slot}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handlePhotoUpload(file, slot, (path) => update({ insurance_doc_path: path }));
+                        }}
+                      />
+                    )}
+                    {uploadingSlot === slot && <span style={{ fontSize: 12, color: "#777" }}>Uploading...</span>}
+                    {golfCartInsuranceRequired && req(!cart.insurance_doc_path)}
+                  </div>
+                </div>
+              );
+            })}
+          {data.has_golf_cart && (
+            <label style={{ ...styles.checkboxRow, alignItems: "flex-start" }}>
+              <input
+                type="checkbox"
+                style={{ marginTop: 4, flexShrink: 0 }}
+                checked={!!data.golf_cart_driver_ack}
+                onChange={(e) => set("golf_cart_driver_ack", e.target.checked)}
+              />
+              <span>
+                I confirm my golf cart(s) will only be driven by a person with a valid driver's license, and I will keep
+                the insurance current and give the office a copy of each renewal.
+              </span>
+            </label>
+          )}
+          {data.has_golf_cart && mode === "applicant" && attemptedSubmit && !data.golf_cart_driver_ack && (
+            <div style={styles.requiredNote}>Please check this box</div>
+          )}
+        </div>
+      )}
 
       {/* Additional Provisions */}
       <div style={styles.card}>

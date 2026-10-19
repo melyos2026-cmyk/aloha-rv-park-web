@@ -1,4 +1,5 @@
 "use client";
+import GolfCartCard from "@/components/GolfCartCard";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -192,6 +193,9 @@ export default function ResidentDashboard() {
   const emptyPortalPet: PortalPet = { type: "", name: "", breed: "", color: "", weight: "", shots_provided: "" };
   const [petDetailsInput, setPetDetailsInput] = useState<PortalPet[]>([]);
   const [petRestrictions, setPetRestrictions] = useState("");
+  // Oct 19 (per Mely): golf cart settings from Lease Defaults
+  const [golfCartsMax, setGolfCartsMax] = useState(2);
+  const [golfCartInsuranceRequired, setGolfCartInsuranceRequired] = useState(true);
   const [petsMessage, setPetsMessage] = useState("");
 
   // Aug 4: resident_payments (the legacy billing table) was fully unified
@@ -285,6 +289,8 @@ export default function ResidentDashboard() {
     setAutopayAvailable(!!feeSettingsData?.autopayAvailable);
     setMoveOutThresholdDays(feeSettingsData?.moveOutThresholdDays ?? 15);
     setPetRestrictions(feeSettingsData?.petRestrictions || "");
+    setGolfCartsMax(typeof feeSettingsData?.golfCartsMax === "number" ? feeSettingsData.golfCartsMax : 2);
+    setGolfCartInsuranceRequired(feeSettingsData?.golfCartInsuranceRequired !== false);
 
     const pendingBgData = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`)
       .then((r) => r.json())
@@ -1814,6 +1820,16 @@ export default function ResidentDashboard() {
                 {petsMessage && <p style={{ fontSize: 13, color: petsMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{petsMessage}</p>}
               </div>
             </div>
+          )}
+
+          {/* Oct 19 (per Mely): golf carts — insurance + licensed driver required */}
+          {resident && (
+            <GolfCartCard
+              resident={resident}
+              maxCarts={golfCartsMax}
+              insuranceRequired={golfCartInsuranceRequired}
+              onSaved={loadResidentDashboard}
+            />
           )}
 
           <div style={{ ...card, marginTop: 16 }}>

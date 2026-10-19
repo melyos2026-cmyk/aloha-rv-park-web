@@ -58,5 +58,11 @@ export async function GET(req: NextRequest) {
     // Oct 19 (per Mely): the park's restricted-breed notice, shown in the
     // portal's Pets section (same text as the application).
     petRestrictions: (parkSettings as any)?.lease_defaults?.pet_restrictions || "",
+    // Oct 19 (per Mely): golf cart settings from Lease Defaults
+    golfCartsMax: (() => {
+      const v = (parkSettings as any)?.lease_defaults?.golf_carts_max;
+      return v === undefined || v === "" || v === null ? 2 : Number(v) || 0;
+    })(),
+    golfCartInsuranceRequired: (parkSettings as any)?.lease_defaults?.golf_cart_insurance_required !== false,
   });
 }

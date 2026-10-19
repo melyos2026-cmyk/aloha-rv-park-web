@@ -619,6 +619,9 @@ function ApplyPageInner() {
         pets_count: Number(data.pets_count) || null,
         pets_types: data.pets_types,
         // Oct 19 (per Mely — Aloha paper form): per-pet name/breed/color/weight/shots
+        // Oct 19 (per Mely): golf carts (insurance copy = private storage path)
+        golf_carts: data.has_golf_cart && Array.isArray(data.golf_carts) ? data.golf_carts : [],
+        golf_cart_driver_ack: !!data.has_golf_cart && !!data.golf_cart_driver_ack,
         pet_details: data.pets_allowed && Array.isArray(data.pet_details)
           ? data.pet_details.slice(0, Number(data.pets_count) || 0)
           : [],
