@@ -1120,6 +1120,8 @@ export default function ResidentDashboard() {
                   autopayEnabled={autopayEnabled}
                   cardLast4={autopayCardLast4}
                   onChange={loadResidentDashboard}
+                  parkName={resident?.companies?.company_name || ""}
+                  authorizedAt={resident?.autopay_authorized_at || null}
                 />
               </div>
             ) : (
