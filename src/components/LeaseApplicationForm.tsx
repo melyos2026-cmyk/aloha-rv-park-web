@@ -1500,7 +1500,7 @@ export default function LeaseApplicationForm({
               onChange={(e) => set("primary_applicant_ssn", formatSsn(e.target.value))}
             />
             <div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
-              Stored securely. Not shown to park staff.
+              Stored securely. Park staff only see the last 4 digits.
             </div>
             {showReq(primarySsnMissing)}
           </div>
@@ -3732,6 +3732,19 @@ export default function LeaseApplicationForm({
               {data.tenant_signature_name}
             </div>
           )}
+          {/* Oct 19 (per Mely): collections/credit-reporting disclosure,
+              small print like other leasing companies. Must match
+              collectionsDisclosureText() in melyos-builder's
+              FullApplicationView.tsx. */}
+          <p style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.5, margin: "0 0 10px" }}>
+            <strong>Collection &amp; Credit Reporting Disclosure.</strong> If any amount I owe under this
+            application or lease becomes past due, I authorize {company.name || "the park"} and its agents to
+            share my information, including my name, date of birth, Social Security number, contact
+            information, employer, and account balance, with collection agencies and consumer credit
+            reporting agencies for the purpose of collecting the debt. Any collection activity will comply
+            with the Florida Consumer Collection Practices Act (Fla. Stat. §§ 559.55–559.785) and the federal
+            Fair Debt Collection Practices Act. By checking the box below and signing, I acknowledge this disclosure.
+          </p>
           <label style={styles.checkboxRow}>
             <input
               type="checkbox"
