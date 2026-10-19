@@ -1,4 +1,5 @@
 "use client";
+import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
 
@@ -87,7 +88,7 @@ export default function InvoicesPage() {
       const res = await fetch(`/api/portal/invoice-pdf?invoiceId=${invoiceId}&residentId=${residentId}`);
       if (!res.ok) {
         const result = await res.json().catch(() => ({}));
-        alert("Could not download invoice: " + (result?.error || res.status));
+        void portalAlert("Could not download invoice: " + (result?.error || res.status));
         return;
       }
       const blob = await res.blob();
@@ -100,7 +101,7 @@ export default function InvoicesPage() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert("Could not download invoice (unexpected error): " + (err?.message || err));
+      void portalAlert("Could not download invoice (unexpected error): " + (err?.message || err));
     }
     setDownloadingId(null);
   }

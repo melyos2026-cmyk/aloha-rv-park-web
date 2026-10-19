@@ -1,4 +1,5 @@
 "use client";
+import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
@@ -31,7 +32,7 @@ export default function MaintenancePage() {
   }
 
   async function cancelRequest(requestId: string) {
-    const confirmed = confirm(
+    const confirmed = await portalConfirm(
       "Are you sure you want to cancel this maintenance request?"
     );
 

@@ -1,4 +1,5 @@
 "use client";
+import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -250,7 +251,7 @@ function DocumentsContent() {
   }
 
   async function deleteDocument(documentId: string) {
-    if (!confirm("Remove this document?")) return;
+    if (!(await portalConfirm("Remove this document?", { danger: true }))) return;
 
     const residentId = localStorage.getItem("resident_id");
     if (!residentId) {

@@ -1,4 +1,5 @@
 "use client";
+import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import GolfCartCard from "@/components/GolfCartCard";
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -393,7 +394,7 @@ export default function ResidentDashboard() {
     const data = await response.json();
 
     if (!response.ok) {
-      alert(data.error || "Could not start payment.");
+      void portalAlert(data.error || "Could not start payment.");
       return;
     }
 
@@ -443,7 +444,7 @@ export default function ResidentDashboard() {
   }
 
   async function handleCancelMoveOut() {
-    if (!confirm("Cancel your move-out request? You can submit a new date afterward.")) return;
+    if (!(await portalConfirm("Cancel your move-out request? You can submit a new date afterward.", { danger: true }))) return;
     setMoveOutSubmitting(true);
     setMoveOutMessage("");
     try {
@@ -703,7 +704,7 @@ export default function ResidentDashboard() {
   }
 
   async function deleteVisitor(id: string) {
-    if (!confirm("Remove this person?")) return;
+    if (!(await portalConfirm("Remove this person?", { danger: true }))) return;
     setOccupantMessage("");
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
@@ -785,7 +786,7 @@ export default function ResidentDashboard() {
   }
 
   async function deleteVehicle(vehicleId: string) {
-    const confirmed = confirm("Remove this vehicle?");
+    const confirmed = await portalConfirm("Remove this vehicle?");
     if (!confirmed) return;
     setVehicleMessage("");
 

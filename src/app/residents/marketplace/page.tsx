@@ -1,4 +1,5 @@
 "use client";
+import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -158,7 +159,7 @@ export default function MarketplacePage() {
 
   async function saveListing() {
     if (!title.trim() || !residentId || !companyId) {
-      alert("Please enter a title.");
+      void portalAlert("Please enter a title.");
       return;
     }
     setSaving(true);
@@ -178,7 +179,7 @@ export default function MarketplacePage() {
     const result = await res.json();
 
     if (!res.ok) {
-      alert("Could not save listing: " + (result.error || ""));
+      void portalAlert("Could not save listing: " + (result.error || ""));
       setSaving(false);
       return;
     }
@@ -222,7 +223,7 @@ export default function MarketplacePage() {
   }
 
   async function deleteListing(listingId: string) {
-    if (!confirm("Delete this listing?")) return;
+    if (!(await portalConfirm("Delete this listing?", { danger: true }))) return;
     if (!residentId) return;
     await fetch("/api/portal/marketplace-delete-listing", {
       method: "POST",
@@ -457,7 +458,7 @@ export default function MarketplacePage() {
                 onChange={(e) => {
                   const files = Array.from(e.target.files || []);
                   if (files.length > 10) {
-                    alert("You can upload up to 10 photos. Only the first 10 will be used.");
+                    void portalAlert("You can upload up to 10 photos. Only the first 10 will be used.");
                   }
                   setPhotoFiles(files.slice(0, 10));
                 }}
