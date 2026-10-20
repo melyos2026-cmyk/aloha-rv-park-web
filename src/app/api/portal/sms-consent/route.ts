@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
-import { hasSmsConsent, recordSmsConsent, revokeSmsConsent, requestIp, normalizeSmsPhone } from "@/lib/smsConsent";
+import { hasSmsConsent, recordSmsConsentAndConfirm as recordSmsConsent, revokeSmsConsent, requestIp, normalizeSmsPhone } from "@/lib/smsConsent";
 
 async function loadResident(residentId: string) {
   const { data } = await supabase

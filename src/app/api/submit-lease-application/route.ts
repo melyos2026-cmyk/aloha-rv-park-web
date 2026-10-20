@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { recordSmsConsent, requestIp } from "@/lib/smsConsent";
+import { recordSmsConsentAndConfirm as recordSmsConsent, requestIp } from "@/lib/smsConsent";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

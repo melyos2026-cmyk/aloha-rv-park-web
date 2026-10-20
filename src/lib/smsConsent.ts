@@ -68,3 +68,40 @@ export async function hasSmsConsent(companyId: string, rawPhone: string | null |
     .limit(1);
   return !!data?.length;
 }
+
+// Oct 19 (per Mely — matches the "opt-in message" registered with the
+// carriers for the A2P campaign): one confirmation text right after someone
+// newly agrees. Uses Twilio's REST API directly (no extra package). Silently
+// skipped when the TWILIO_* env vars aren't set on this site, and never
+// blocks the consent itself. Texts only deliver once the campaign is approved.
+export async function sendSmsOptInConfirmation(rawPhone: string, parkName: string) {
+  const to = normalizeSmsPhone(rawPhone);
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const keySid = process.env.TWILIO_API_KEY_SID;
+  const keySecret = process.env.TWILIO_API_KEY_SECRET;
+  const from = process.env.TWILIO_PHONE_NUMBER;
+  if (!to || !sid || !keySid || !keySecret || !from) return;
+  const body =
+    `${parkName}: You're signed up for account text alerts (invoices, payment notices, application and ` +
+    `reservation messages). Msg frequency varies. Msg&data rates may apply. Reply HELP for help, STOP to opt out.`;
+  try {
+    await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + Buffer.from(`${keySid}:${keySecret}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
+    });
+  } catch (e: any) {
+    console.error("sms opt-in confirmation failed:", e?.message);
+  }
+}
+
+/** Records consent and, only if this phone wasn't already opted in, sends the confirmation text. */
+export async function recordSmsConsentAndConfirm(opts: Parameters<typeof recordSmsConsent>[0]) {
+  const already = await hasSmsConsent(opts.companyId, opts.phone);
+  const result = await recordSmsConsent(opts);
+  if (result.ok && !already) await sendSmsOptInConfirmation(opts.phone, opts.parkName);
+  return result;
+}

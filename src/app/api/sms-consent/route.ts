@@ -4,7 +4,7 @@
 // reviewer.
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { recordSmsConsent, requestIp } from "@/lib/smsConsent";
+import { recordSmsConsentAndConfirm as recordSmsConsent, requestIp } from "@/lib/smsConsent";
 
 export async function POST(req: Request) {
   let body: any = {};
