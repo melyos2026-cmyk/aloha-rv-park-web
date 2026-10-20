@@ -1313,6 +1313,22 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
       ? session.payment_intent
       : session.payment_intent?.id ?? null;
 
+  // Oct 20 (security review): only mark the order paid if what was
+  // actually paid covers the saved reservation amount.
+  {
+    const { data: order } = await supabase.from("lot_orders").select("amount_total, status").eq("id", lotOrderId).maybeSingle();
+    const dueCents = Math.round(Number((order as any)?.amount_total || 0) * 100);
+    if (!order) {
+      console.log("Manual reservation webhook: lot_order not found", lotOrderId);
+      return;
+    }
+    if ((order as any).status === "paid") return; // retried delivery
+    if (Number(session.amount_total || 0) + 1 < dueCents) {
+      console.error("Manual reservation webhook: paid less than the reservation amount", { lotOrderId, paid: session.amount_total, dueCents });
+      return;
+    }
+  }
+
   const { data: updatedOrder, error } = await supabase
     .from("lot_orders")
     .update({
