@@ -151,8 +151,13 @@ export default function ElectricHistoryPage() {
 
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 8, fontSize: 12, borderTop: "1.5px solid var(--border)", paddingTop: 8 }}>
                     <div>
-                      <p style={{ color: "var(--gray)" }}>Reading</p>
-                      <p style={{ fontWeight: 600 }}>{reading.previous_reading} → {reading.current_reading}</p>
+                      <p style={{ color: "var(--gray)" }}>{reading.meter_reading != null && reading.previous_meter_reading != null ? "Meter" : "Reading"}</p>
+                      <p style={{ fontWeight: 600 }}>
+                        {/* Oct 20: show the real meter numbers when the park entered them */}
+                        {reading.meter_reading != null && reading.previous_meter_reading != null
+                          ? `${reading.previous_meter_reading} → ${reading.meter_reading}`
+                          : `${reading.previous_reading} → ${reading.current_reading}`}
+                      </p>
                     </div>
                     <div>
                       <p style={{ color: "var(--gray)" }}>Included</p>

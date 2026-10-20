@@ -33,5 +33,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ readings: readings || [] });
+  // Oct 20: starting readings (not charged) are internal; residents only see real charges.
+  return NextResponse.json({ readings: (readings || []).filter((r: any) => !r.is_baseline) });
 }
