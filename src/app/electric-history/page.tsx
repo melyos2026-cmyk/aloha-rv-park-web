@@ -187,9 +187,17 @@ export default function ElectricHistoryPage() {
                           {reading.meter_number ? cell("Meter #", reading.meter_number) : null}
                         </div>
                         <p style={{ marginTop: 10, color: "#374151" }}>
-                          {included > 0
-                            ? `${fmt(used)} kWh used − ${fmt(included)} kWh included = ${fmt(billable)} kWh × $${rate.toFixed(2)} = $${charge.toFixed(2)}`
-                            : `${fmt(billable)} kWh × $${rate.toFixed(2)} = $${charge.toFixed(2)}`}
+                          {(() => {
+                            // Oct 20: parks that round electric to the dollar show the rounding.
+                            const exact = Math.round(billable * rate * 100) / 100;
+                            const total =
+                              Math.abs(exact - charge) >= 0.01
+                                ? `$${exact.toFixed(2)}, rounded to $${charge.toFixed(2)}`
+                                : `$${charge.toFixed(2)}`;
+                            return included > 0
+                              ? `${fmt(used)} kWh used − ${fmt(included)} kWh included = ${fmt(billable)} kWh × $${rate.toFixed(2)} = ${total}`
+                              : `${fmt(billable)} kWh × $${rate.toFixed(2)} = ${total}`;
+                          })()}
                         </p>
                       </div>
                     );
