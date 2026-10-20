@@ -149,33 +149,51 @@ export default function ElectricHistoryPage() {
                     </div>
                   </summary>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginTop: 8, fontSize: 12, borderTop: "1.5px solid var(--border)", paddingTop: 8 }}>
-                    <div>
-                      <p style={{ color: "var(--gray)" }}>{reading.meter_reading != null && reading.previous_meter_reading != null ? "Meter" : "Reading"}</p>
-                      <p style={{ fontWeight: 600 }}>
-                        {/* Oct 20: show the real meter numbers when the park entered them */}
-                        {reading.meter_reading != null && reading.previous_meter_reading != null
-                          ? `${reading.previous_meter_reading} → ${reading.meter_reading}`
-                          : `${reading.previous_reading} → ${reading.current_reading}`}
-                      </p>
-                    </div>
-                    <div>
-                      <p style={{ color: "var(--gray)" }}>Included</p>
-                      <p style={{ fontWeight: 600 }}>{reading.included_kwh || 0} kWh</p>
-                    </div>
-                    <div>
-                      <p style={{ color: "var(--gray)" }}>Billable</p>
-                      <p style={{ fontWeight: 600 }}>{reading.billable_kwh || 0} kWh</p>
-                    </div>
-                    <div>
-                      <p style={{ color: "var(--gray)" }}>Rate</p>
-                      <p style={{ fontWeight: 600 }}>${Number(reading.rate_per_kwh || 0).toFixed(2)}</p>
-                    </div>
-                    <div>
-                      <p style={{ color: "var(--gray)" }}>Meter</p>
-                      <p style={{ fontWeight: 600 }}>{reading.meter_number || "N/A"}</p>
-                    </div>
-                  </div>
+                  {(() => {
+                    // Oct 20 (per Mely): residents always see the meter going UP
+                    // and the kWh they used, whatever kind of meter it is — a
+                    // meter that counts down (4500 → 3471) shows as 3471 → 4500,
+                    // and a meter that resets to 0000 shows as 0 → its reading.
+                    const used = Number(reading.usage_kwh ?? reading.current_reading ?? 0);
+                    const included = Number(reading.included_kwh || 0);
+                    const billable = Number(reading.billable_kwh || 0);
+                    const rate = Number(reading.rate_per_kwh || 0);
+                    const charge = Number(reading.charge_amount || 0);
+                    const prevM = reading.previous_meter_reading;
+                    const curM = reading.meter_reading;
+                    let meterPair: string | null = null;
+                    if (reading.meter_mode === "resets" && curM != null) meterPair = `0 → ${curM}`;
+                    else if (curM != null && prevM != null) {
+                      const lo = Math.min(Number(prevM), Number(curM));
+                      const hi = Math.max(Number(prevM), Number(curM));
+                      // Only when the difference matches the usage (not a 9999 → 0000 rollover).
+                      if (Math.abs(hi - lo - used) < 0.01) meterPair = `${lo} → ${hi}`;
+                    }
+                    const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+                    const cell = (label: string, value: string) => (
+                      <div>
+                        <p style={{ color: "var(--gray)" }}>{label}</p>
+                        <p style={{ fontWeight: 600 }}>{value}</p>
+                      </div>
+                    );
+                    return (
+                      <div style={{ marginTop: 8, borderTop: "1.5px solid var(--border)", paddingTop: 8, fontSize: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
+                          {meterPair && cell("Meter reading", meterPair)}
+                          {cell("Used", `${fmt(used)} kWh`)}
+                          {cell("Included", `${fmt(included)} kWh`)}
+                          {cell("Billable", `${fmt(billable)} kWh`)}
+                          {cell("Rate", `$${rate.toFixed(2)} per kWh`)}
+                          {cell("Meter #", reading.meter_number || "N/A")}
+                        </div>
+                        <p style={{ marginTop: 10, color: "#374151" }}>
+                          {included > 0
+                            ? `${fmt(used)} kWh used − ${fmt(included)} kWh included = ${fmt(billable)} kWh × $${rate.toFixed(2)} = $${charge.toFixed(2)}`
+                            : `${fmt(billable)} kWh × $${rate.toFixed(2)} = $${charge.toFixed(2)}`}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </details>
               ))}
             </div>
