@@ -57,11 +57,19 @@ export default function RvHome() {
 
   const currentHeroImage = allHeroImages[heroIndex % allHeroImages.length];
 
+  // Oct 19 (per Mely — Aloha dropped seasons, every new resident pays
+  // $850): when the Off-Peak and Peak monthly rates are the same, show a
+  // single "Monthly" box instead of two identical ones. Different values
+  // (any company with seasons) still show both.
+  const offPeak = company?.rate_monthly_offpeak || "$750/mo";
+  const peak = company?.rate_monthly_peak || "$850/mo";
+  const sameMonthly = offPeak.replace(/\s/g, "").toLowerCase() === peak.replace(/\s/g, "").toLowerCase();
   const rates: [string, string][] = [
     ["Daily", company?.rate_daily || "$40/night"],
     ["Weekly", company?.rate_weekly || "$225/week"],
-    ["Monthly (Off-Peak)", company?.rate_monthly_offpeak || "$750/mo"],
-    ["Monthly (Peak)", company?.rate_monthly_peak || "$850/mo"],
+    ...(sameMonthly
+      ? ([["Monthly", peak]] as [string, string][])
+      : ([["Monthly (Off-Peak)", offPeak], ["Monthly (Peak)", peak]] as [string, string][])),
   ];
   return (
     <>
