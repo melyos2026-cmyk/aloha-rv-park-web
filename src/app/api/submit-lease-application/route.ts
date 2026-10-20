@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { createClient } from "@supabase/supabase-js";
 import { recordSmsConsentAndConfirm as recordSmsConsent, requestIp } from "@/lib/smsConsent";
 import { hostnameFromRequest } from "@/lib/marina/host";
@@ -361,6 +362,11 @@ export async function POST(req: NextRequest) {
     if (legacyTerms.security_deposit != null) depositAllowed.push(Number(legacyTerms.security_deposit) || 0);
   }
 
+  // Oct 20 (per Mely — never block a real applicant): if the rent/deposit
+  // sent by the browser doesn't match what the server calculates, the
+  // application is still saved, but with the SERVER's numbers, and the
+  // admin gets a System Health note to double-check it before approving.
+  // (What is actually charged at checkout is always computed server-side.)
   if (!matchesAny(sentRent, rentAllowed) || !matchesAny(sentDeposit, depositAllowed)) {
     console.warn("submit-lease-application: rent/deposit mismatch", {
       applicationId: invitationId || applicationId,
@@ -369,13 +375,14 @@ export async function POST(req: NextRequest) {
       sentDeposit,
       depositAllowed,
     });
-    return NextResponse.json(
-      {
-        error:
-          "The price for the selected lot or dates was updated. Please re-select your lot and dates (or refresh the page) and submit again. If this keeps happening, please contact the park office.",
-      },
-      { status: 400 }
-    );
+    if (!matchesAny(sentRent, rentAllowed) && rentAllowed.length) clean.monthly_rent = rentAllowed[0];
+    if (!matchesAny(sentDeposit, depositAllowed) && depositAllowed.length) clean.security_deposit = depositAllowed[0];
+    await logSystemHealthIssue({
+      companyId,
+      issueType: "application_price_check",
+      message: `An application for ${clean.full_name || clean.email || "an applicant"} sent rent $${sentRent} / deposit $${sentDeposit}, but the park's prices give rent $${rentAllowed[0] ?? "?"} / deposit $${depositAllowed[0] ?? "?"}. The park's prices were saved — please double-check the rent and deposit before approving.`,
+      source: "submit-lease-application",
+    });
   }
 
   // ---- Background check + fees (server-computed) ------------------------
