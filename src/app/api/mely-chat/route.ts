@@ -207,11 +207,20 @@ export async function POST(req: NextRequest) {
       if (company?.id) {
         const { data: propane } = await supabaseAdmin
           .from("propane_pricing")
-          .select("label, price, unit")
-          .eq("company_id", company.id);
+          .select("label, price, unit, taxable, tax_mode")
+          .eq("company_id", company.id)
+          .order("product_id");
+        // Oct 19 (per Mely — new propane prices): read live every time, with
+        // the same sales-tax rule the checkout uses.
+        const taxNote = (r: any) =>
+          r.tax_mode === "excluded" || (!r.tax_mode && r.taxable)
+            ? " plus sales tax"
+            : r.tax_mode === "included"
+            ? " (tax included)"
+            : "";
         propaneLines = (propane || [])
           .filter((r: any) => r?.label && r.price != null)
-          .map((r: any) => `- ${r.label}: $${r.price}${r.unit ? ` per ${r.unit}` : ""}`)
+          .map((r: any) => `- ${r.label}: $${Number(r.price).toFixed(2)}${r.unit ? ` per ${r.unit}` : ""}${taxNote(r)}`)
           .join("\n");
       }
 
@@ -436,7 +445,7 @@ export async function POST(req: NextRequest) {
     const isAloha = company?.park_id === "aloha";
     const officeHoursContext = !isAloha ? "" : `\n\nOffice hours (Eastern Time): Monday to Friday 10:00 AM to 5:00 PM, Saturday 10:00 AM to 3:00 PM, Sunday closed. Anything that needs the office (propane refills, storage, questions) happens during these hours. If someone asks when they can come, call, or get something done, give these hours and use the current date and time above to say whether the office is open right now.`;
 
-    const propaneRulesContext = !isAloha ? "" : `\n\nPropane: the park only REFILLS propane tanks that people bring themselves. It does not sell tanks and it does not have a self-serve propane station. Refills are done during office hours. When someone asks about propane, give the refill price for their tank size from the data above, say they bring their own tank to be refilled, and give the office hours. Never say the park sells tanks or that they can pick one up.`;
+    const propaneRulesContext = !isAloha ? "" : `\n\nPropane: the park only REFILLS propane tanks that people bring themselves. It does not sell tanks and it does not have a self-serve propane station. Refills are done during office hours. When someone asks about propane, give the refill price for their tank size from the data above, say they bring their own tank to be refilled, and give the office hours. Never say the park sells tanks or that they can pick one up. If a propane price written in a map icon differs from the "Propane prices" list, always use the "Propane prices" list (it is the official, current price the checkout charges).`;
 
     const laundryContext = !isAloha ? "" : `\n\nLaundry: a wash costs $2.00 and a dry costs $1.50. The machines accept quarters only (no bills, cards or other coins). Anyone who needs change for quarters can get it at the office during office hours.`;
 
