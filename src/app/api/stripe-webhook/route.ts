@@ -373,6 +373,60 @@ export async function POST(req: Request) {
     }
   }
 
+  // Oct 20 (per Mely — "solo se cobra por un charge back y van a MelyOS"):
+  // when a customer disputes a card payment, Stripe charges MelyOS (the
+  // platform) a $15 dispute fee. Record it as a charge the park owes MelyOS
+  // (Settings → Billing → Charges / MelyOS Fees Owed) and alert in System
+  // Health with the details. Requires the event "charge.dispute.created" to
+  // be enabled on this webhook endpoint in the Stripe dashboard.
+  if (event.type === "charge.dispute.created") {
+    const dispute = event.data.object as Stripe.Dispute;
+    const disputeFee = 15;
+    try {
+      const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+      const charge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
+      let companyId: string | null = null;
+      const destination = charge?.transfer_data?.destination;
+      const destId = typeof destination === "string" ? destination : destination?.id;
+      if (destId) {
+        const { data } = await supabase.from("park_settings").select("company_id").eq("stripe_connect_account_id", destId).maybeSingle();
+        companyId = data?.company_id || null;
+      }
+      if (!companyId && charge?.payment_intent) {
+        const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
+        const sessions = await stripe.checkout.sessions.list({ payment_intent: piId, limit: 1 });
+        companyId = await resolveCompanyIdFromMetadata(sessions.data[0]?.metadata || charge.metadata);
+      }
+      const amount = (Number(dispute.amount || 0) / 100).toFixed(2);
+      const who = charge?.billing_details?.name || charge?.billing_details?.email || "a customer";
+      if (companyId) {
+        const source = `Stripe dispute ${dispute.id}`;
+        const { data: existing } = await supabase.from("melyos_billing_charges").select("id").eq("source", source).limit(1);
+        if (!existing || existing.length === 0) {
+          await recordMelyOSBillingCharge({
+            companyId,
+            chargeType: "Chargeback fee",
+            source,
+            description: `Card dispute (chargeback) by ${who} on a $${amount} payment. Stripe charges a $${disputeFee.toFixed(2)} fee for every dispute.`,
+            amount: disputeFee,
+            markup: 0,
+          });
+          await logSystemHealthIssue({
+            companyId,
+            issueType: "chargeback",
+            source: "stripe_webhook",
+            message: `${who} disputed a $${amount} card payment with their bank (reason: ${dispute.reason || "not given"}). A $${disputeFee} chargeback fee was added to MelyOS Fees Owed. Respond in Stripe before ${dispute.evidence_details?.due_by ? new Date(dispute.evidence_details.due_by * 1000).toLocaleDateString("en-US") : "the deadline"} to try to win it.`,
+          });
+        }
+      } else {
+        console.error("charge.dispute.created: could not find the company for dispute", dispute.id);
+      }
+    } catch (err: any) {
+      console.error("charge.dispute.created handling failed:", err?.message);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "checkout.session.expired") {
     const session = event.data.object as Stripe.Checkout.Session;
     const email = session.customer_details?.email || session.customer_email || "unknown";
