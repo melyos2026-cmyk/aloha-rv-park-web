@@ -184,7 +184,7 @@ export default function ElectricHistoryPage() {
                           {cell("Included", `${fmt(included)} kWh`)}
                           {cell("Billable", `${fmt(billable)} kWh`)}
                           {cell("Rate", `$${rate.toFixed(2)} per kWh`)}
-                          {cell("Meter #", reading.meter_number || "N/A")}
+                          {reading.meter_number ? cell("Meter #", reading.meter_number) : null}
                         </div>
                         <p style={{ marginTop: 10, color: "#374151" }}>
                           {included > 0

@@ -1452,7 +1452,10 @@ export default function ResidentDashboard() {
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div><p style={label}>Billing Month</p><p style={bigNumber}>{electricUsage[0]?.billing_month || "N/A"}</p></div>
-                <div><p style={label}>Meter Number</p><p style={bigNumber}>{electricUsage[0]?.meter_number || "N/A"}</p></div>
+                {/* Oct 20: parks that don't use meter numbers (the lot identifies the meter) don't show this */}
+                {electricUsage[0]?.meter_number && (
+                  <div><p style={label}>Meter Number</p><p style={bigNumber}>{electricUsage[0].meter_number}</p></div>
+                )}
                 <div><p style={label}>This Month's Usage</p><p style={bigNumber}>{electricUsage[0]?.current_reading || 0} kWh</p></div>
                 <div><p style={label}>Last Month's Usage</p><p style={bigNumber}>{electricUsage[0]?.previous_reading || 0} kWh</p></div>
                 <div><p style={label}>Days of Service</p><p style={bigNumber}>{electricUsage[0]?.days_of_service ?? "N/A"}</p></div>
