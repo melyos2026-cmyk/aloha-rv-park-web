@@ -427,6 +427,101 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true });
   }
 
+  // Oct 20 (per Mely — "eso son sus clientes, no los de MelyOS"): when a
+  // dispute is LOST, the customer's bank keeps the whole payment and Stripe
+  // takes it from MelyOS (the platform). So:
+  //  - the park's share is taken back from the park's transfer (like a refund);
+  //  - everything MelyOS had kept from that payment (card processing fee,
+  //    its part of an application fee, background check cost — Stripe's
+  //    application_fee_amount) is added to the park's MelyOS Fees Owed.
+  // The $15 dispute fee was already charged when the dispute opened.
+  // If the dispute is WON, Stripe returns the money and nothing else happens.
+  // Requires the event "charge.dispute.closed" on this webhook endpoint.
+  if (event.type === "charge.dispute.closed") {
+    const dispute = event.data.object as Stripe.Dispute;
+    if (dispute.status !== "lost") return NextResponse.json({ received: true });
+    try {
+      const chargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+      const charge = chargeId ? await stripe.charges.retrieve(chargeId) : null;
+      const destination = charge?.transfer_data?.destination;
+      const destId = typeof destination === "string" ? destination : destination?.id;
+      let companyId: string | null = null;
+      if (destId) {
+        const { data } = await supabase.from("park_settings").select("company_id").eq("stripe_connect_account_id", destId).maybeSingle();
+        companyId = data?.company_id || null;
+      }
+      if (!companyId && charge?.payment_intent) {
+        const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
+        const sessions = await stripe.checkout.sessions.list({ payment_intent: piId, limit: 1 });
+        companyId = await resolveCompanyIdFromMetadata(sessions.data[0]?.metadata || charge.metadata);
+      }
+      if (!companyId || !charge) {
+        console.error("charge.dispute.closed: could not find the company for dispute", dispute.id);
+        return NextResponse.json({ received: true });
+      }
+      const source = `Stripe lost dispute ${dispute.id}`;
+      const { data: done } = await supabase.from("melyos_billing_charges").select("id").eq("source", source).limit(1);
+      if (done && done.length) return NextResponse.json({ received: true });
+
+      const who = charge.billing_details?.name || charge.billing_details?.email || "a customer";
+      const totalCents = Number(dispute.amount || 0);
+      const melyosCents = Math.min(Number(charge.application_fee_amount || 0), totalCents);
+      const parkCents = Math.max(totalCents - melyosCents, 0);
+
+      // 1) MelyOS's own part of the payment → owed by the park.
+      if (melyosCents > 0) {
+        await recordMelyOSBillingCharge({
+          companyId,
+          chargeType: "Lost chargeback (MelyOS fees)",
+          source,
+          description: `Lost card dispute by ${who} on a $${(totalCents / 100).toFixed(2)} payment. The bank kept the whole payment, including the fees MelyOS had kept from it (card processing fee and, if any, application / background check fees): $${(melyosCents / 100).toFixed(2)}.`,
+          amount: melyosCents / 100,
+          markup: 0,
+        });
+      }
+
+      // 2) The park's own share → taken back from the park's transfer.
+      let reversalNote = "";
+      const transferId = typeof charge.transfer === "string" ? charge.transfer : charge.transfer?.id;
+      if (parkCents > 0) {
+        if (transferId) {
+          try {
+            await stripe.transfers.createReversal(
+              transferId,
+              { amount: parkCents, metadata: { reason: "lost_dispute", dispute_id: dispute.id } },
+              { idempotencyKey: `dispute-rev-${dispute.id}` }
+            );
+          } catch (e: any) {
+            reversalNote = e?.message || "reversal failed";
+          }
+        } else {
+          reversalNote = "no transfer found on this payment";
+        }
+        if (reversalNote) {
+          // Couldn't take it back automatically → record it as owed instead.
+          await recordMelyOSBillingCharge({
+            companyId,
+            chargeType: "Lost chargeback (park share)",
+            source: `${source} (park share)`,
+            description: `Lost card dispute by ${who}: the park's share of $${(parkCents / 100).toFixed(2)} could not be taken back from the payout automatically (${reversalNote}).`,
+            amount: parkCents / 100,
+            markup: 0,
+          });
+        }
+      }
+
+      await logSystemHealthIssue({
+        companyId,
+        issueType: "chargeback",
+        source: "stripe_webhook",
+        message: `The card dispute by ${who} on a $${(totalCents / 100).toFixed(2)} payment was LOST. ${parkCents > 0 ? (reversalNote ? `The park's share ($${(parkCents / 100).toFixed(2)}) was added to MelyOS Fees Owed.` : `The park's share ($${(parkCents / 100).toFixed(2)}) was taken back from the park's payout.`) : ""} ${melyosCents > 0 ? `MelyOS's fees on that payment ($${(melyosCents / 100).toFixed(2)}) were added to MelyOS Fees Owed.` : ""}`.trim(),
+      });
+    } catch (err: any) {
+      console.error("charge.dispute.closed handling failed:", err?.message);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "checkout.session.expired") {
     const session = event.data.object as Stripe.Checkout.Session;
     const email = session.customer_details?.email || session.customer_email || "unknown";
