@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
+import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
 
 const CONTRACTS = ["annual", "seasonal", "monthly", "transient"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -44,14 +45,19 @@ export async function POST(req: Request) {
   }
 
   // Already waiting under this email: confirm without creating a duplicate.
-  const { data: existing } = await supabaseAdmin
+  // Oct 20 (security review): exact (case-insensitive) email match only —
+  // previously "%" in the email matched someone else's entry, so the new
+  // sign-up was silently dropped.
+  if (hasWildcardChars(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+  const { data: existingCandidates } = await supabaseAdmin
     .from("marina_waitlist")
-    .select("id")
+    .select("id, email")
     .eq("company_id", company.id)
     .eq("status", "waiting")
-    .ilike("email", email)
-    .limit(1);
-  if (existing && existing.length) return NextResponse.json({ ok: true });
+    .ilike("email", escapeLikePattern(email))
+    .limit(10);
+  const existing = (existingCandidates || []).filter((w) => sameEmail(w.email, email));
+  if (existing.length) return NextResponse.json({ ok: true });
 
   const contract = CONTRACTS.includes(body.desired_contract_type) ? body.desired_contract_type : null;
   const { error } = await supabaseAdmin.from("marina_waitlist").insert({

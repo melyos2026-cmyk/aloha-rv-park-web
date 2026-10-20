@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { requireMatchingSession } from "@/lib/portalSession";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -14,6 +15,14 @@ export async function POST(req: Request) {
     if (!residentId) {
       return NextResponse.json({ error: "Missing resident ID" }, { status: 400 });
     }
+
+    // Oct 20 (security review): anyone could start a checkout for ANY
+    // resident's pending invoices just by knowing their id. Only the
+    // signed-in resident's own portal session may do this now. (The
+    // no-login guest invoice link uses create-guest-invoice-checkout,
+    // which is unaffected.)
+    const authError = requireMatchingSession(req, residentId);
+    if (authError) return authError;
 
     const { data: resident } = await supabase
       .from("resident_accounts")

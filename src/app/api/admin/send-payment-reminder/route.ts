@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendPaymentReminderEmail } from "@/lib/send-payment-reminder-email";
+import {
+  adminCorsHeaders,
+  adminSessionSecretConfigured,
+  rejectForeignOrigin,
+  requireAdminSessionForCompany,
+} from "@/lib/adminNotifyAuth";
 
 // Aug 5 (per Mely — real bug she caught: clicking "Remind" in
 // melyos-builder failed with "Could not send reminder (unexpected
@@ -9,14 +15,14 @@ import { sendPaymentReminderEmail } from "@/lib/send-payment-reminder-email";
 // before the frontend ever sees success/failure — it just looks like a
 // generic network error. Every response (including the browser's OPTIONS
 // preflight) needs Access-Control-Allow-Origin.
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: CORS_HEADERS });
+// Oct 20 (security review): CORS was "*" with no auth — any website could
+// make the park send payment-reminder emails to any resident. CORS is now
+// limited to the two admin origins (admin.melyos.io, admin.aloharvparkfl.com)
+// and, once ADMIN_SESSION_SECRET is set on this site, a valid admin
+// session (x-admin-session header) for the invoice's company is required.
+// Until then: only an existing, NOT-yet-paid invoice can be reminded about.
+export async function OPTIONS(req: NextRequest) {
+  return NextResponse.json({}, { headers: adminCorsHeaders(req) });
 }
 
 // POST body: { invoiceId }
@@ -24,6 +30,10 @@ export async function OPTIONS() {
 // both for the single "Send Reminder" button and for "Send Reminder to
 // All Late" (which just calls this once per late invoice).
 export async function POST(req: NextRequest) {
+  const CORS_HEADERS = adminCorsHeaders(req);
+  const foreign = rejectForeignOrigin(req);
+  if (foreign) return foreign;
+
   const { invoiceId } = await req.json();
 
   if (!invoiceId) {
@@ -32,7 +42,7 @@ export async function POST(req: NextRequest) {
 
   const { data: invoice, error: invoiceError } = await supabaseAdmin
     .from("resident_invoices")
-    .select("id, resident_id, invoice_month, total_amount, due_date")
+    .select("id, resident_id, invoice_month, total_amount, due_date, status")
     .eq("id", invoiceId)
     .maybeSingle();
 
@@ -40,14 +50,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invoice not found." }, { status: 404, headers: CORS_HEADERS });
   }
 
+  // Oct 20 (security review): never "remind" about an invoice that's paid.
+  if (invoice.status === "Paid") {
+    return NextResponse.json({ error: "This invoice is already paid." }, { status: 409, headers: CORS_HEADERS });
+  }
+
   const { data: resident, error: residentError } = await supabaseAdmin
     .from("resident_accounts")
-    .select("full_name, email")
+    .select("full_name, email, company_id")
     .eq("id", invoice.resident_id)
     .maybeSingle();
 
   if (residentError || !resident?.email) {
     return NextResponse.json({ error: "Resident email not found." }, { status: 404, headers: CORS_HEADERS });
+  }
+
+  // Oct 20 (security review): see comment at the top.
+  if (adminSessionSecretConfigured()) {
+    const denied = requireAdminSessionForCompany(req, resident.company_id);
+    if (denied) return denied;
   }
 
   const dueDateStr = String(invoice.due_date).split("T")[0];

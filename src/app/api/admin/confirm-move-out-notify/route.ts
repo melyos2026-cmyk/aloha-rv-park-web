@@ -2,23 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMoveOutConfirmedEmail } from "@/lib/send-move-out-confirmed-email";
 import { generateMoveOutConfirmationPdf } from "@/lib/generate-move-out-confirmation-pdf";
+import {
+  adminCorsHeaders,
+  adminSessionSecretConfigured,
+  rejectForeignOrigin,
+  requireAdminSessionForCompany,
+} from "@/lib/adminNotifyAuth";
 
 // Aug 6 (per Mely: "cómo el residente sabe que fue aprobado?"): called
 // cross-domain from admin.aloharvparkfl.com right after admin confirms a
 // move-out date — same CORS pattern as send-payment-reminder, since a
 // browser silently blocks the response without these headers.
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: CORS_HEADERS });
+// Oct 20 (security review): CORS was "*" and there was no auth — anyone
+// could make the park email any resident a move-out confirmation PDF.
+// CORS is now limited to the two admin origins, and the request must carry
+// a valid admin session (x-admin-session) when ADMIN_SESSION_SECRET is set
+// on this site; until then, it must match a REAL confirmed move-out in the
+// DB (a lease for this resident whose lease_end is exactly moveOutDate —
+// which melyos-builder's confirm-move-out sets right before calling here).
+export async function OPTIONS(req: NextRequest) {
+  return NextResponse.json({}, { headers: adminCorsHeaders(req) });
 }
 
-// POST body: { residentId, moveOutDate }
+// POST body: { residentId, moveOutDate }  (+ header x-admin-session)
 export async function POST(req: NextRequest) {
+  const CORS_HEADERS = adminCorsHeaders(req);
+  const foreign = rejectForeignOrigin(req);
+  if (foreign) return foreign;
+
   const { residentId, moveOutDate } = await req.json();
 
   if (!residentId || !moveOutDate) {
@@ -36,6 +47,25 @@ export async function POST(req: NextRequest) {
 
   if (residentError || !resident || !resident.email) {
     return NextResponse.json({ error: "Resident not found." }, { status: 404, headers: CORS_HEADERS });
+  }
+
+  // Oct 20 (security review): see comment above.
+  if (adminSessionSecretConfigured()) {
+    const denied = requireAdminSessionForCompany(req, resident.company_id);
+    if (denied) return denied;
+  }
+  const { data: leases } = await supabaseAdmin
+    .from("resident_leases")
+    .select("id, lease_end")
+    .eq("resident_id", residentId);
+  const hasConfirmedMoveOut = (leases || []).some(
+    (l: any) => l.lease_end && String(l.lease_end).slice(0, 10) === String(moveOutDate).slice(0, 10)
+  );
+  if (!hasConfirmedMoveOut) {
+    return NextResponse.json(
+      { error: "No confirmed move-out found for this resident and date." },
+      { status: 409, headers: CORS_HEADERS }
+    );
   }
 
   const { data: company } = await supabaseAdmin

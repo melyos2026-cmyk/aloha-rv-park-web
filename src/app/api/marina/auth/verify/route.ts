@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { hashLoginCode, setMarinaSession } from "@/lib/marina/session";
+import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
 
 // POST /api/marina/auth/verify  { email, code }
 export async function POST(req: Request) {
@@ -19,13 +20,16 @@ export async function POST(req: Request) {
   const bad = NextResponse.json({ error: "That code is not valid. Request a new one." }, { status: 401 });
   if (!email || code.length !== 6) return bad;
 
-  const { data: member } = await supabaseAdmin
+  // Oct 20 (security review): exact (case-insensitive) email match only —
+  // wildcards in the typed email are escaped and the result re-checked.
+  if (hasWildcardChars(email)) return bad;
+  const { data: candidates } = await supabaseAdmin
     .from("marina_members")
-    .select("id")
+    .select("id, email")
     .eq("company_id", company.id)
-    .ilike("email", email)
-    .limit(1)
-    .maybeSingle();
+    .ilike("email", escapeLikePattern(email))
+    .limit(10);
+  const member = (candidates || []).find((m) => sameEmail(m.email, email)) || null;
   if (!member) return bad;
 
   const { data: row } = await supabaseAdmin

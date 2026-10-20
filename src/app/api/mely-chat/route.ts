@@ -9,7 +9,30 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, sessionId } = await req.json();
+    const body = await req.json();
+    const sessionId = body?.sessionId;
+    // Oct 20 (security review): the browser sends the whole conversation
+    // on every turn, so it was unbounded (cost/abuse) and could include
+    // made-up "assistant" turns of any size. Keep only well-formed
+    // user/assistant turns, only the most recent MAX_HISTORY of them, cap
+    // each one's length, and make sure the conversation ends with the
+    // visitor's own message. The widget's real history is far smaller
+    // than these limits, so normal chats are unaffected.
+    const MAX_HISTORY = 20;
+    const MAX_USER_CHARS = 2000;
+    const MAX_ASSISTANT_CHARS = 4000;
+    const rawMessages: any[] = Array.isArray(body?.messages) ? body.messages : [];
+    let messages: { role: "user" | "assistant"; text: string }[] = rawMessages
+      .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.text === "string")
+      .slice(-MAX_HISTORY)
+      .map((m) => ({
+        role: m.role,
+        text: m.text.slice(0, m.role === "user" ? MAX_USER_CHARS : MAX_ASSISTANT_CHARS),
+      }));
+    while (messages.length && messages[messages.length - 1].role !== "user") messages = messages.slice(0, -1);
+    if (!messages.length || !messages[messages.length - 1].text.trim()) {
+      return NextResponse.json({ error: "Message is required." }, { status: 400 });
+    }
 
     // SECURITY: never trust a `company` object sent by the client for DB
     // scoping — that would let anyone POST an arbitrary company.id/park_id
@@ -565,9 +588,10 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
               from: `${companyName} <noreply@aloharvparkfl.com>`,
               to: admin.email,
               subject: `🚨 Emergency reported via Mely chat — ${companyName}`,
+              // Oct 20 (security review): visitor text is escaped before going into the HTML email.
               html: `<p><strong>Someone reported a park-equipment emergency</strong> through the Mely chat widget on your website.</p>
-                     <p><strong>Summary:</strong> ${emergencyMatch[1]}</p>
-                     <p><strong>What they said:</strong> ${lastUserMessage}</p>
+                     <p><strong>Summary:</strong> ${escapeHtml(emergencyMatch[1])}</p>
+                     <p><strong>What they said:</strong> ${escapeHtml(lastUserMessage)}</p>
                      <p style="color:#666;font-size:13px;">Mely already gave them the emergency contact number. This is just so you know right away too.</p>`,
             }),
           }).catch((e) => console.error("Emergency-report email failed:", e));
@@ -580,4 +604,14 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
     console.error("mely-chat error:", err);
     return NextResponse.json({ error: "Something went wrong." }, { status: 500 });
   }
+}
+
+// Oct 20 (security review): used for visitor text placed in staff emails.
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

@@ -674,6 +674,9 @@ function ApplyPageInner() {
         body: JSON.stringify({
           applicationId: invitationId ? undefined : applicationId,
           invitationId: invitationId || undefined,
+          // Oct 20 (security review): the server now requires the invite
+          // link's token to fill in a not-yet-submitted invitation.
+          inviteToken: inviteToken || undefined,
           row,
           ssnRecords,
         }),

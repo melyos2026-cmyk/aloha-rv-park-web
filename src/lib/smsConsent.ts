@@ -17,6 +17,36 @@ export function normalizeSmsPhone(raw: string | null | undefined): string | null
   return null;
 }
 
+// Oct 20 (security review): US/NANP numbers only (+1 and 10 digits, area
+// code can't start with 0/1). Used for the PUBLIC opt-in form and for the
+// confirmation text itself, so the open form can't be used to make this
+// account send texts to premium/international numbers (toll fraud).
+// normalizeSmsPhone above is left as-is for the existing lookups.
+export function normalizeUsSmsPhone(raw: string | null | undefined): string | null {
+  const v = String(raw || "").trim();
+  if (!v) return null;
+  let d = v.replace(/\D/g, "");
+  if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
+  if (d.length !== 10) return null;
+  if (d[0] === "0" || d[0] === "1") return null;
+  if (v.startsWith("+") && !v.replace(/\s/g, "").startsWith("+1")) return null;
+  return `+1${d}`;
+}
+
+// Oct 20 (security review): true if ANY consent row for this phone (any
+// park) was created in the last 24 hours — used so the public form can't
+// be used to text the same number over and over.
+async function consentRecordedRecently(phone: string): Promise<boolean> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabaseAdmin
+    .from("sms_consents")
+    .select("id")
+    .eq("phone", phone)
+    .gte("created_at", since)
+    .limit(1);
+  return !!data?.length;
+}
+
 export function requestIp(req: Request) {
   return (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
 }
@@ -75,7 +105,8 @@ export async function hasSmsConsent(companyId: string, rawPhone: string | null |
 // skipped when the TWILIO_* env vars aren't set on this site, and never
 // blocks the consent itself. Texts only deliver once the campaign is approved.
 export async function sendSmsOptInConfirmation(rawPhone: string, parkName: string) {
-  const to = normalizeSmsPhone(rawPhone);
+  // Oct 20 (security review): confirmation texts only ever go to US numbers.
+  const to = normalizeUsSmsPhone(rawPhone);
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const keySid = process.env.TWILIO_API_KEY_SID;
   const keySecret = process.env.TWILIO_API_KEY_SECRET;
@@ -101,7 +132,13 @@ export async function sendSmsOptInConfirmation(rawPhone: string, parkName: strin
 /** Records consent and, only if this phone wasn't already opted in, sends the confirmation text. */
 export async function recordSmsConsentAndConfirm(opts: Parameters<typeof recordSmsConsent>[0]) {
   const already = await hasSmsConsent(opts.companyId, opts.phone);
+  // Oct 20 (security review): also skip the confirmation text if this
+  // phone already had a consent recorded in the last 24h (any park) — e.g.
+  // opt in, opt out, opt in again in a loop. Checked BEFORE the new row is
+  // inserted below, so a genuine first-time sign-up still gets its text.
+  const normalized = normalizeSmsPhone(opts.phone);
+  const recent = normalized ? await consentRecordedRecently(normalized) : false;
   const result = await recordSmsConsent(opts);
-  if (result.ok && !already) await sendSmsOptInConfirmation(opts.phone, opts.parkName);
+  if (result.ok && !already && !recent) await sendSmsOptInConfirmation(opts.phone, opts.parkName);
   return result;
 }

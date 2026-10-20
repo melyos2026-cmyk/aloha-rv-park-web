@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { isDemoDomain } from "@/lib/marina/host";
 import { hashLoginCode, newLoginCode } from "@/lib/marina/session";
+import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -26,13 +27,16 @@ export async function POST(req: Request) {
   const demo = isDemoDomain(company.domain);
   const generic = { ok: true };
 
-  const { data: member } = await supabaseAdmin
+  // Oct 20 (security review): exact (case-insensitive) email match only —
+  // wildcards in the typed email are escaped and the result re-checked.
+  if (hasWildcardChars(email)) return NextResponse.json(generic);
+  const { data: candidates } = await supabaseAdmin
     .from("marina_members")
-    .select("id, full_name")
+    .select("id, full_name, email")
     .eq("company_id", company.id)
-    .ilike("email", email)
-    .limit(1)
-    .maybeSingle();
+    .ilike("email", escapeLikePattern(email))
+    .limit(10);
+  const member = (candidates || []).find((m) => sameEmail(m.email, email)) || null;
   if (!member) return NextResponse.json(generic);
 
   // At most 3 codes per boater per 10 minutes.

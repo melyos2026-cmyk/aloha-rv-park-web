@@ -22,7 +22,6 @@ import { requireMatchingSession } from "@/lib/portalSession";
 // server-side instead so that policy can be narrowed/dropped.
 export async function GET(req: NextRequest) {
   const residentId = req.nextUrl.searchParams.get("residentId");
-  let companyId = req.nextUrl.searchParams.get("companyId");
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
@@ -30,16 +29,18 @@ export async function GET(req: NextRequest) {
   const authError = requireMatchingSession(req, residentId);
   if (authError) return authError;
 
+  // Oct 20 (security review): a ?companyId= in the URL used to be trusted
+  // as-is, so a signed-in resident could read ANOTHER park's marketplace.
+  // The company is now always the signed-in resident's own (from the DB);
+  // any companyId in the URL is ignored.
+  const { data: resident } = await supabase
+    .from("resident_accounts")
+    .select("company_id")
+    .eq("id", residentId)
+    .maybeSingle();
+  const companyId: string | null = resident?.company_id || null;
   if (!companyId) {
-    const { data: resident } = await supabase
-      .from("resident_accounts")
-      .select("company_id")
-      .eq("id", residentId)
-      .maybeSingle();
-    companyId = resident?.company_id || null;
-    if (!companyId) {
-      return NextResponse.json({ error: "Could not resolve company for this resident." }, { status: 404 });
-    }
+    return NextResponse.json({ error: "Could not resolve company for this resident." }, { status: 404 });
   }
 
   const { data: listings, error: listingsError } = await supabase

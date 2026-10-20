@@ -41,10 +41,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid signature." }, { status: 401 });
     }
   } else {
-    // No secret configured yet — accept unverified so this can be
-    // wired up before the dashboard step is done, but this should be
-    // set as soon as possible (see comment above).
-    console.warn("RESEND_WEBHOOK_SECRET not set — accepting unverified Resend webhook payload.");
+    // Oct 20 (security review): without the secret anyone could post fake
+    // bounce/complaint events into System Health. Reject instead of
+    // accepting unverified payloads. RESEND_WEBHOOK_SECRET must be set in
+    // Vercel for this endpoint to work (Resend retries failed deliveries).
+    console.error("RESEND_WEBHOOK_SECRET not set — rejecting unverified Resend webhook payload.");
+    return NextResponse.json({ error: "Webhook not configured." }, { status: 503 });
   }
 
   const event = JSON.parse(payload);

@@ -98,6 +98,14 @@ export async function GET(request: Request) {
               ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
               }
             : {}),
+        }, {
+          // Oct 20 (security review): if this cron is ever invoked twice on
+          // the same day (Vercel retry, manual re-run, overlapping runs),
+          // Stripe returns the SAME PaymentIntent instead of charging the
+          // card a second time. Keyed by invoice + run date + amount, so a
+          // declined card is still retried normally on the next day's run,
+          // and a changed amount (e.g. a late fee added) is a new charge.
+          idempotencyKey: `autopay-${invoice.id}-${todayStr}-${Math.round(chargeAmount * 100)}`,
         });
 
         if (paymentIntent.status === "succeeded") {

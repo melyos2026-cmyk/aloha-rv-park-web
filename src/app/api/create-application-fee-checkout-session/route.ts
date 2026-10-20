@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { resolveConnectSplit, calculateProcessingFee } from "@/lib/platformFee";
+import { computeStayAndDeposit, leaseDefaultValue } from "@/lib/applicationPricing";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -56,8 +57,8 @@ export async function POST(req: Request) {
       applicationId,
       stayAmount,
       depositAmount,
-      stayStartDate,
-      stayEndDate,
+      // stayStartDate / stayEndDate are still sent by the browser but no
+      // longer used (Oct 20 security review: taken from the saved application).
       requiresBackgroundCheck,
       isWalkIn,
     } = await req.json();
@@ -72,7 +73,9 @@ export async function POST(req: Request) {
     const { data: application, error } = await supabase
       .from("resident_applications")
       .select(
-        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total, space_id, application_fee_primary, application_fee_per_additional, application_fee_additional_count"
+        // Oct 20 (security review): + monthly_rent, security_deposit, lease_start, lease_end,
+        // background_check_required — needed to compute what's due server-side.
+        "id, full_name, email, application_fee_total, application_fee_paid, sms_fee_amount, company_id, park_share_total, space_id, application_fee_primary, application_fee_per_additional, application_fee_additional_count, monthly_rent, security_deposit, lease_start, lease_end, background_check_required"
       )
       .eq("id", applicationId)
       .single();
@@ -106,12 +109,14 @@ export async function POST(req: Request) {
     // lot — the same underlying fact every other part of this flow
     // today (the locked Move-In date, the conflict-check bypass) already
     // relies on to know this occupied-but-being-sold case is legitimate.
+    let lotDailyRate: number | null = null;
     if (application.space_id) {
       const { data: lot } = await supabase
         .from("rv_lots")
-        .select("status, lot_name, company_id")
+        .select("status, lot_name, company_id, daily_rate")
         .eq("id", application.space_id)
         .maybeSingle();
+      lotDailyRate = lot?.daily_rate ?? null;
 
       let hasActiveSaleListing = false;
       if (lot?.lot_name && lot.company_id) {
@@ -147,10 +152,53 @@ export async function POST(req: Request) {
       }
     }
 
+    // Oct 20 (security review — HIGH): stayAmount, depositAmount and
+    // requiresBackgroundCheck used to be taken straight from the request
+    // body, so anyone could pay $0 for their stay/deposit or skip the
+    // background check fee. They're now computed here from the saved
+    // application (whose rent, deposit and background-check flag are
+    // themselves validated/computed server-side by submit-lease-application)
+    // with exactly the same math the apply form uses. The body values are
+    // only compared, for the logs.
+    const requiresBgCheck =
+      typeof application.background_check_required === "boolean"
+        ? application.background_check_required
+        : requiresBackgroundCheck !== false; // rows saved before Oct 20 without the flag
+    let prorationMethod = "prorate_monthly";
+    if (application.company_id) {
+      const { data: leaseSettings } = await supabase
+        .from("park_settings")
+        .select("lease_defaults")
+        .eq("company_id", application.company_id)
+        .maybeSingle();
+      prorationMethod =
+        leaseDefaultValue(leaseSettings?.lease_defaults as any, "first_month_proration_method") || "prorate_monthly";
+    }
+    const due = computeStayAndDeposit({
+      backgroundCheckRequired: requiresBgCheck,
+      monthlyRent: Number(application.monthly_rent) || 0,
+      securityDeposit: Number(application.security_deposit) || 0,
+      leaseStart: application.lease_start || null,
+      leaseEnd: application.lease_end || null,
+      prorationMethod,
+      lotDailyRate,
+    });
+    if (
+      Math.abs((Number(stayAmount) || 0) - due.stayAmount) > 1 ||
+      Math.abs((Number(depositAmount) || 0) - due.depositAmount) > 1 ||
+      (requiresBackgroundCheck === false) !== !requiresBgCheck
+    ) {
+      console.warn("create-application-fee-checkout-session: browser amounts differ from server", {
+        applicationId: application.id,
+        sent: { stayAmount, depositAmount, requiresBackgroundCheck },
+        server: { ...due, requiresBgCheck },
+      });
+    }
+
     const smsFee = Number(application.sms_fee_amount) || 0;
     const feeAmount = (Number(application.application_fee_total) || 0) + smsFee;
-    const stayAmountNum = Number(stayAmount) || 0;
-    const depositAmountNum = Number(depositAmount) || 0;
+    const stayAmountNum = due.stayAmount;
+    const depositAmountNum = due.depositAmount;
     if (feeAmount <= 0 && stayAmountNum <= 0 && depositAmountNum <= 0) {
       return NextResponse.json(
         { error: "Nothing to charge." },
@@ -163,8 +211,6 @@ export async function POST(req: Request) {
     const siteUrl = `${protocol}://${hostHeader}`;
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
-
-    const requiresBgCheck = requiresBackgroundCheck !== false;
 
     const applicationFeePrimary = requiresBgCheck ? (Number(application.application_fee_primary) || 0) : 0;
     const additionalCount = Number(application.application_fee_additional_count) || 0;
@@ -258,9 +304,10 @@ export async function POST(req: Request) {
           unit_amount: Math.round(stayAmountNum * 100),
           product_data: {
             name: "RV Lot Stay",
+            // Oct 20 (security review): dates from the saved application, not the request.
             description:
-              stayStartDate && stayEndDate
-                ? `Stay from ${stayStartDate} to ${stayEndDate}`
+              application.lease_start && application.lease_end
+                ? `Stay from ${application.lease_start} to ${application.lease_end}`
                 : `Stay charge for ${application.full_name || "applicant"}`,
           },
         },
@@ -352,8 +399,8 @@ export async function POST(req: Request) {
       metadata: {
         type: "application_fee",
         application_id: application.id,
-        requires_background_check:
-          requiresBackgroundCheck === false ? "false" : "true",
+        // Oct 20 (security review): server-derived (see requiresBgCheck above).
+        requires_background_check: requiresBgCheck ? "true" : "false",
         stay_amount: String(stayAmountNum || 0),
         deposit_amount: String(depositAmountNum || 0),
         card_processing_fee: String(cardProcessingFee || 0),

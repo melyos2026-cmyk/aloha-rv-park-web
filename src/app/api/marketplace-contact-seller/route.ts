@@ -5,11 +5,33 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 // Body: { listingId, buyerName, buyerEmail, buyerPhone, message }
 // Sends the buyer's contact info + message to the seller's own email —
 // keeps the seller's personal contact info off the public listing itself.
+// Oct 20 (security review): everything the buyer types is inserted into
+// an HTML email sent from the park's own address — escape it so nobody can
+// inject links/markup (phishing) into the seller's inbox.
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function POST(req: NextRequest) {
-  const { listingId, buyerName, buyerEmail, buyerPhone, message } = await req.json();
+  const body = await req.json();
+  const listingId = body?.listingId;
+  // Oct 20 (security review): trim + cap lengths on the free-text fields.
+  const buyerName = String(body?.buyerName ?? "").trim().slice(0, 120);
+  const buyerEmail = String(body?.buyerEmail ?? "").trim().slice(0, 160);
+  const buyerPhone = String(body?.buyerPhone ?? "").trim().slice(0, 40);
+  const message = String(body?.message ?? "").trim().slice(0, 3000);
 
   if (!listingId || !buyerName || !buyerEmail || !message) {
     return NextResponse.json({ error: "Please fill in your name, email, and a message." }, { status: 400 });
+  }
+  // Oct 20 (security review): reply_to must be a real-looking single address.
+  if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]{2,}$/.test(buyerEmail)) {
+    return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
   }
 
   const { data: listing } = await supabase
@@ -45,10 +67,10 @@ export async function POST(req: NextRequest) {
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
               <h2>🛍️ New Marketplace Inquiry</h2>
-              <p>Hi ${sellerName},</p>
-              <p><strong>${buyerName}</strong> is interested in your listing "<strong>${listing.title}</strong>":</p>
-              <blockquote style="border-left: 3px solid #16a34a; padding-left: 12px; color: #333;">${message}</blockquote>
-              <p><strong>Contact them back:</strong><br/>Email: ${buyerEmail}${buyerPhone ? `<br/>Phone: ${buyerPhone}` : ""}</p>
+              <p>Hi ${escapeHtml(sellerName)},</p>
+              <p><strong>${escapeHtml(buyerName)}</strong> is interested in your listing "<strong>${escapeHtml(listing.title)}</strong>":</p>
+              <blockquote style="border-left: 3px solid #16a34a; padding-left: 12px; color: #333; white-space: pre-wrap;">${escapeHtml(message)}</blockquote>
+              <p><strong>Contact them back:</strong><br/>Email: ${escapeHtml(buyerEmail)}${buyerPhone ? `<br/>Phone: ${escapeHtml(buyerPhone)}` : ""}</p>
               <p style="font-size:12px;color:#888;">You can also just reply directly to this email.</p>
             </div>
           `,

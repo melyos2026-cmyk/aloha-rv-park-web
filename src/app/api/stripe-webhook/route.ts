@@ -118,11 +118,30 @@ export async function POST(req: Request) {
 
     let chargesPaid: { label: string; amount: number }[] = [];
 
+    // Oct 20 (security review — webhook idempotency): Stripe can deliver
+    // the same event more than once (retries). There's no processed-events
+    // table yet, so each step checks the invoice's own state instead: an
+    // invoice that's already Paid never gets the tax/fee lines inserted
+    // again, and if EVERY invoice was already Paid before this delivery,
+    // the receipt email + admin notification are not sent a second time.
+    let allInvoicesAlreadyPaid = false;
+
     if (invoiceIds.length > 0) {
       const { data: paidInvoices } = await supabase
         .from("resident_invoices")
-        .select("id, total_amount, invoice_month")
+        .select("id, total_amount, invoice_month, status")
         .in("id", invoiceIds);
+
+      const alreadyPaidIds = new Set(
+        (paidInvoices || []).filter((inv) => inv.status === "Paid").map((inv) => inv.id)
+      );
+      allInvoicesAlreadyPaid =
+        (paidInvoices || []).length > 0 && invoiceIds.every((id) => alreadyPaidIds.has(id));
+      if (allInvoicesAlreadyPaid) {
+        console.warn(
+          `stripe-webhook: session ${session.id} — all invoices already Paid; treating as a duplicate delivery (no new line items, receipt or notification).`
+        );
+      }
 
       // Aug 20 (per Mely — "se puede mejor anadirles los dias por los que
       // se esta pagando los dias exactos... tal y como le muestra en la
@@ -173,7 +192,13 @@ export async function POST(req: Request) {
       // match what was truly collected — same safe "always recompute
       // from all items" pattern used everywhere else in this codebase.
       const primaryInvoiceId = invoiceIds[0];
-      if (primaryInvoiceId && (processingFeeCharged > 0 || taxCharged > 0)) {
+      // Oct 20 (security review): skip if this invoice is already Paid —
+      // a repeated delivery must not insert the tax/fee lines twice.
+      if (
+        primaryInvoiceId &&
+        !alreadyPaidIds.has(primaryInvoiceId) &&
+        (processingFeeCharged > 0 || taxCharged > 0)
+      ) {
         if (taxCharged > 0) {
           await supabase.from("resident_invoice_items").insert({
             invoice_id: primaryInvoiceId,
@@ -214,7 +239,7 @@ export async function POST(req: Request) {
         console.log("Error updating resident_invoices:", invoiceUpdateError.message);
       } else {
         console.log("resident_invoices updated successfully.");
-        if (residentId) {
+        if (residentId && !allInvoicesAlreadyPaid) {
           const { data: residentRow } = await supabase
             .from("resident_accounts")
             .select("company_id")
@@ -228,7 +253,9 @@ export async function POST(req: Request) {
     }
 
 
-    if (residentId) {
+    // Oct 20 (security review): no second receipt/notification for a
+    // duplicate delivery (see allInvoicesAlreadyPaid above).
+    if (residentId && !allInvoicesAlreadyPaid) {
       try {
         const { data: resident } = await supabase
           .from("resident_accounts")
@@ -406,6 +433,38 @@ async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
     typeof session.payment_intent === "string"
       ? session.payment_intent
       : session.payment_intent?.id ?? null;
+
+  // Oct 20 (security review — webhook idempotency): if this application is
+  // ALREADY marked paid, a second run would re-send the receipt, the admin
+  // emails and — worst — a second set of Checkr invitations (real cost).
+  // Skip it. Same payment intent = Stripe re-delivering the same event
+  // (normal, nothing to do). A different/absent one means the fee was
+  // already collected another way (e.g. Mark Fee Collected) and the
+  // applicant ALSO paid online — flag it in System Health for a refund
+  // review instead of silently ignoring real money.
+  {
+    const { data: existing } = await supabase
+      .from("resident_applications")
+      .select("application_fee_paid, application_fee_stripe_payment_intent_id, checkr_invitation_sent_at, company_id, full_name")
+      .eq("id", applicationId)
+      .maybeSingle();
+    if (existing?.application_fee_paid) {
+      const samePayment =
+        !!paymentIntentId && existing.application_fee_stripe_payment_intent_id === paymentIntentId;
+      console.warn(
+        `stripe-webhook: application ${applicationId} already marked paid — skipping (${samePayment ? "duplicate delivery" : "different payment"}).`
+      );
+      if (!samePayment && existing.company_id) {
+        await logSystemHealthIssue({
+          companyId: existing.company_id,
+          issueType: "refund_review",
+          source: "stripe_webhook",
+          message: `${existing.full_name || "An applicant"} paid the application fee online ($${((session.amount_total || 0) / 100).toFixed(2)}), but the application was already marked paid. Check for a double payment and refund if needed (Stripe ${paymentIntentId || session.id}).`,
+        });
+      }
+      return;
+    }
+  }
 
   const { data: application, error } = await supabase
     .from("resident_applications")
@@ -1138,13 +1197,24 @@ async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Sessio
     return;
   }
 
-  const { data: occupants, error } = await supabase
+  const { data: loadedOccupants, error } = await supabase
     .from("resident_occupants")
-    .select("id, full_name, email, resident_id, company_id")
+    .select("id, full_name, email, resident_id, company_id, background_check_fee_paid, checkr_candidate_id")
     .in("id", occupantIds);
 
-  if (error || !occupants || occupants.length === 0) {
+  if (error || !loadedOccupants || loadedOccupants.length === 0) {
     console.log("Occupant background check webhook: could not load occupants", error?.message);
+    return;
+  }
+
+  // Oct 20 (security review — webhook idempotency): an occupant that's
+  // already marked paid AND already has a Checkr candidate was handled by
+  // an earlier delivery of this same event — never invite them twice.
+  const occupants = loadedOccupants.filter(
+    (o: any) => !(o.background_check_fee_paid === true && o.checkr_candidate_id)
+  );
+  if (occupants.length === 0) {
+    console.warn("Occupant background check webhook: all occupants already invited — duplicate delivery, skipping.");
     return;
   }
 

@@ -14,6 +14,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "companyId is required." }, { status: 400 });
   }
 
+  // Oct 20 (security review): a request WITHOUT residentId used to skip
+  // every check below and insert an alert into any company's bell. The
+  // only caller (residents/maintenance/page.tsx) always sends the signed-in
+  // resident's id, so it's now required.
+  if (!residentId) {
+    return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
+  }
+
   // SECURITY: don't trust residentId + companyId as a matching pair from the
   // client — verify the resident actually belongs to this companyId before
   // using their name or inserting a notification tagged to it. Without this,
@@ -49,7 +57,8 @@ export async function POST(req: NextRequest) {
     company_id: companyId,
     resident_name: residentName,
     update_type: "maintenance_request",
-    message: `${residentName || "A resident"} submitted a maintenance request${priority ? ` (${priority} priority)` : ""}: "${subject}".`,
+    // Oct 20 (security review): cap free text so the bell can't be flooded with huge strings.
+    message: `${residentName || "A resident"} submitted a maintenance request${priority ? ` (${String(priority).slice(0, 20)} priority)` : ""}: "${String(subject ?? "").slice(0, 200)}".`,
   });
 
   if (error) {

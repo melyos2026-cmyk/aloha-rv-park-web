@@ -4,7 +4,7 @@
 // reviewer.
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { recordSmsConsentAndConfirm as recordSmsConsent, requestIp } from "@/lib/smsConsent";
+import { recordSmsConsentAndConfirm as recordSmsConsent, requestIp, normalizeUsSmsPhone } from "@/lib/smsConsent";
 
 export async function POST(req: Request) {
   let body: any = {};
@@ -24,6 +24,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Please enter your name." }, { status: 400 });
   }
 
+  // Oct 20 (security review): this public, no-login form only accepts US
+  // mobile numbers (+1 and 10 digits).
+  const usPhone = normalizeUsSmsPhone(String(phone || ""));
+  if (!usPhone) {
+    return NextResponse.json({ error: "Please enter a valid US mobile number (10 digits)." }, { status: 400 });
+  }
+
   const { data: company } = await supabaseAdmin
     .from("companies")
     .select("id, company_name")
@@ -33,7 +40,7 @@ export async function POST(req: Request) {
 
   const result = await recordSmsConsent({
     companyId: company.id,
-    phone: String(phone || ""),
+    phone: usPhone,
     name: String(name).trim().slice(0, 120),
     source: "public_form",
     parkName: company.company_name || "our park",
