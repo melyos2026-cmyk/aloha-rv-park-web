@@ -308,6 +308,7 @@ export async function POST(req: NextRequest) {
     // deposit, pet fee, how a partial first month is billed, and which day
     // rent is due — all read live from the park's own settings.
     let moveInCostContext = "";
+    let checkTimesContext = "";
     if (company?.id) {
       const { data: parkSettings } = await supabaseAdmin
         .from("park_settings")
@@ -317,6 +318,16 @@ export async function POST(req: NextRequest) {
 
       const defaults = parkSettings?.lease_defaults as Record<string, any> | undefined;
       if (defaults) {
+        // Oct 19 (per Mely): check-in / check-out times, live from Lease Defaults.
+        const fmt12 = (t: string) => {
+          const m = /^(\d{1,2}):(\d{2})/.exec(t);
+          if (!m) return t;
+          const h = Number(m[1]);
+          return `${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+        };
+        const ci = fmt12(String(defaults.check_in_time || "16:00"));
+        const co = fmt12(String(defaults.check_out_time || "11:00"));
+        checkTimesContext = `\n\nCheck-in and check-out (set by the park, always current): check-in time is ${ci} and check-out time is ${co}. Give these exact times when someone asks when they can arrive or must leave.`;
         const thresholdFromSettings = Number(defaults.background_check_threshold_days);
         if (thresholdFromSettings > 0) stayThresholdDays = thresholdFromSettings;
         const moveInLines: string[] = [];
@@ -451,7 +462,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${laundryContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${storageContext}
+${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${laundryContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${checkTimesContext}${storageContext}
 
 Style: be warm, kind and natural, and never cold or curt. Answer fully and helpfully: give the useful details the person needs (what it is, how it works, what to expect, and the next step), even for simple questions, in a few clear sentences or short paragraphs rather than a one-line reply. Do not pad: no small talk, no filler, no repeating what you already said, and ask at most one question at a time. When someone wants to become a resident, explain every step in order (see "How stays work"), because they need to know what to expect. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link.
 
