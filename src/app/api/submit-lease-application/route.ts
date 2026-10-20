@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { recordSmsConsent, requestIp } from "@/lib/smsConsent";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -98,6 +99,29 @@ export async function POST(req: NextRequest) {
         // from paying over this, but make it visible in the logs.
         console.error("applicant_ssn insert failed:", ssnError.message);
       }
+    }
+  }
+
+  // Oct 19 (per Mely — Twilio A2P 10DLC): the applicant checked the
+  // optional "I agree to receive text messages" box → keep proof (exact
+  // wording, date, IP). Never blocks the application if it fails.
+  if (row.form_draft_json?.sms_consent === true && row.phone && row.company_id) {
+    try {
+      const { data: company } = await supabaseAdmin
+        .from("companies")
+        .select("company_name")
+        .eq("id", row.company_id)
+        .maybeSingle();
+      await recordSmsConsent({
+        companyId: row.company_id,
+        phone: String(row.phone),
+        name: row.full_name || null,
+        source: "application",
+        parkName: company?.company_name || "our park",
+        ip: requestIp(req),
+      });
+    } catch (e: any) {
+      console.error("sms consent (application) failed:", e?.message);
     }
   }
 

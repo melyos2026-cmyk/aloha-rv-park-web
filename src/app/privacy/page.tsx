@@ -14,7 +14,7 @@ export default function PrivacyPage() {
     <LegalPage
       eyebrow="Legal"
       title="Privacy Policy"
-      updated="October 14, 2026"
+      updated="October 19, 2026"
       intro={
         <p>
           This Privacy Policy explains how {name} ("we," "us") collects, uses and protects personal
@@ -54,9 +54,12 @@ export default function PrivacyPage() {
           body: (
             <>
               <p style={p}>
-                If you give us your mobile number, we may send you text messages about your account,
-                such as invoice and payment notices, rental application invitations and reservation
-                confirmations. These messages are not marketing messages.
+                If you agree to receive text messages (by checking the optional box on our{" "}
+                <a href="/text-messages" style={{ color: "var(--red-dark)", textDecoration: "underline" }}>Text Message Alerts</a>{" "}
+                page, rental application or resident portal, or by telling our office staff), we send
+                you text messages about your account, such as invoice and payment notices, rental
+                application invitations and reservation confirmations. We keep a record of when you
+                agreed. These messages are not marketing messages.
               </p>
               <p style={p}>
                 <strong>We do not sell or share your SMS opt-in data or personal information with third parties for marketing purposes.</strong>{" "}

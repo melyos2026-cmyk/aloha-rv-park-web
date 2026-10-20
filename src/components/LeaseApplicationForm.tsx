@@ -1,4 +1,5 @@
 import { portalAlert } from "@/components/portalDialog";
+import SmsConsentCheckbox from "@/components/SmsConsentCheckbox";
 import { useState, useEffect, useRef } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -31,6 +32,8 @@ export interface LeaseApplicationData {
   tenant_names: string;
   tenant_email: string;
   tenant_phone: string;
+  // Oct 19 (per Mely): optional SMS opt-in checkbox next to the phone.
+  sms_consent?: boolean;
   primary_applicant_dob: string;
   primary_applicant_license: string;
   primary_applicant_license_photo_url: string;
@@ -451,6 +454,7 @@ const emptyForm: LeaseApplicationData = {
   tenant_names: "",
   tenant_email: "",
   tenant_phone: "",
+  sms_consent: false,
   primary_applicant_dob: "",
   primary_applicant_license: "",
   primary_applicant_license_photo_url: "",
@@ -1440,12 +1444,17 @@ export default function LeaseApplicationForm({
               value={data.tenant_phone}
               onChange={(e) => set("tenant_phone", formatPhoneAsTyped(e.target.value))}
             />
-            <div style={{ fontSize: 11, color: "#666", marginTop: 4, lineHeight: 1.4 }}>
-              By providing your phone number, you agree to receive account text messages (invoices,
-              application and reservation notices). Message and data rates may apply. Reply STOP to
-              opt out. See our <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> and{" "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer">Terms</a>.
-            </div>
+            {/* Oct 19 (per Mely — Twilio A2P 10DLC): explicit, optional,
+                unchecked opt-in replaces the old "by providing your phone
+                you agree" line, which carriers rejected (error 30909). */}
+            {mode === "applicant" && (
+              <SmsConsentCheckbox
+                parkName={company.name}
+                checked={!!data.sms_consent}
+                onChange={(v) => set("sms_consent", v)}
+                id="sms-consent-application"
+              />
+            )}
           </div>
         </div>
         <div style={styles.row}>

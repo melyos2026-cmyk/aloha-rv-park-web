@@ -14,7 +14,7 @@ export default function TermsPage() {
     <LegalPage
       eyebrow="Legal"
       title="Terms & Conditions"
-      updated="October 14, 2026"
+      updated="October 19, 2026"
       intro={
         <p>
           These Terms & Conditions apply when you use the {name} website and resident portal, or receive text
@@ -63,11 +63,17 @@ export default function TermsPage() {
                 <strong>Program:</strong> {name} account notifications, sent using the messaging platform of MelyOS LLC, the software provider for {name}.
               </p>
               <p style={p}>
-                <strong>Messages:</strong> By giving us your mobile number on a rental application,
-                reservation or resident account, you agree to receive text messages from {name}
-                about your account, such as invoice and payment notices, rental application
-                invitations and reservation confirmations. Consent to receive text messages is not
-                a condition of any purchase, rental or reservation.
+                <strong>How you sign up:</strong> We only text you if you agree. You can check the
+                optional &ldquo;I agree to receive text messages&rdquo; box on our{" "}
+                <a href="/text-messages" style={{ color: "var(--red-dark)", textDecoration: "underline" }}>Text Message Alerts</a>{" "}
+                page, on the rental application or in the resident portal, or ask our office staff
+                in person or by phone, who record your agreement and the date.
+              </p>
+              <p style={p}>
+                <strong>Messages:</strong> Account notices from {name}, such as invoice and payment
+                notices, rental application invitations and reservation confirmations. No marketing.
+                Consent to receive text messages is not a condition of any purchase, rental or
+                reservation.
               </p>
               <p style={p}>
                 <strong>Frequency:</strong> Message frequency varies with your account activity.

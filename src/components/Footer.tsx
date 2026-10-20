@@ -68,7 +68,8 @@ export default function Footer() {
           <p style={{ fontSize: 12, color: "#4b5563" }}>
             © 2026 {companyName}. All rights reserved. ·{" "}
             <Link href="/privacy" style={{ textDecoration: "underline" }}>Privacy</Link> ·{" "}
-            <Link href="/terms" style={{ textDecoration: "underline" }}>Terms</Link>
+            <Link href="/terms" style={{ textDecoration: "underline" }}>Terms</Link> ·{" "}
+            <Link href="/text-messages" style={{ textDecoration: "underline" }}>Text Alerts</Link>
           </p>
           <p style={{ fontSize: 11, color: "#4b5563", marginTop: 4 }}>
             Powered by{" "}

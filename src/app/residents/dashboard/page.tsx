@@ -1,4 +1,5 @@
 "use client";
+import SmsAlertsToggle from "@/components/SmsAlertsToggle";
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import GolfCartCard from "@/components/GolfCartCard";
 import { useState, useEffect } from "react";
@@ -1037,6 +1038,7 @@ export default function ResidentDashboard() {
                 </div>
                 <p><strong>Email:</strong> {resident.email || "No email"}</p>
                 <p style={{ marginTop: 8 }}><strong>Phone:</strong> {resident.phone || "No phone"}</p>
+                <SmsAlertsToggle residentId={resident.id} parkName={resident?.companies?.company_name || ""} phone={resident.phone} />
               </div>
             ) : (
               <div style={card}>
