@@ -8,6 +8,9 @@ type Account = AccountData & { demo: boolean; companyName: string };
 const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const day = (d: string) => new Date(d.length === 10 ? d + "T12:00:00" : d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
+// Earliest time the calendar allows (no launches in the past), as "YYYY-MM-DDTHH:MM" local.
+const nowLocal = () => { const d = new Date(Date.now() - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+
 export default function AccountClient() {
   const [acct, setAcct] = useState<Account | null>(null);
   const [checking, setChecking] = useState(true);
@@ -218,10 +221,10 @@ export default function AccountClient() {
                 ) : launchFor === b.id ? (
                   <form onSubmit={(e) => requestLaunch(e, b.id)} style={{ display: "grid", gap: 8 }}>
                     <label className="mr-note" style={{ margin: 0 }}>Put my boat in the water at
-                      <input type="datetime-local" required value={launchAt} onChange={(e) => setLaunchAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+                      <input type="datetime-local" required min={nowLocal()} value={launchAt} onChange={(e) => setLaunchAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
                     </label>
                     <label className="mr-note" style={{ margin: 0 }}>I&apos;ll be back by (optional)
-                      <input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+                      <input type="datetime-local" min={launchAt || nowLocal()} value={returnAt} onChange={(e) => setReturnAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
                     </label>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button className="mr-btn" disabled={busy === "l" + b.id}>{busy === "l" + b.id ? "Sending…" : "Send request"}</button>
