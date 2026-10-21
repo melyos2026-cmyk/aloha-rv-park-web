@@ -65,12 +65,13 @@ export async function POST(req: Request) {
   const { data: member } = await supabaseAdmin.from("marina_members").select("full_name, email").eq("id", w.memberId).eq("company_id", w.company.id).maybeSingle();
   if (!member) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const name = String(b.name || "").trim().replace(/\s+/g, " ").slice(0, 120);
-  if (!b.agree) return NextResponse.json({ error: "Check \"I agree to sign electronically\" to sign." }, { status: 400 });
+  if (!b.agree) return NextResponse.json({ error: "Check \"I adopt this signature and agree to sign electronically\" to sign." }, { status: 400 });
   if (!name || norm(name) !== norm(member.full_name)) {
     return NextResponse.json({ error: `Type your full name exactly as it is on file: ${member.full_name}` }, { status: 400 });
   }
   const sig = typeof b.signature === "string" && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(b.signature) && b.signature.length < 400_000 ? b.signature : null;
 
+  const sigStyle = sig ? (b.signature_style === "drawn" ? "drawn by hand" : `adopted in the "${String(b.signature_style || "script").replace(/[^A-Za-z ]/g, "").slice(0, 40)}" style`) : null;
   const signedAt = new Date();
   const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || req.headers.get("x-real-ip") || "";
   const agent = (req.headers.get("user-agent") || "").slice(0, 300);
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     const bytes = await buildSignedContractPdf({
       marinaName: company.company_name, marinaAddress: company.address || "", domain: company.domain,
       contractId: k.id, title: k.title, body: k.body, bodyHash: k.body_hash,
-      signerName: name, signerEmail: member.email || "", signedAt, ip, userAgent: agent, signatureImage: sig,
+      signerName: name, signerEmail: member.email || "", signedAt, ip, userAgent: agent, signatureImage: sig, signatureStyle: sigStyle,
       sentAt: k.sent_at, sentByName: k.sent_by_name, viewedAt: k.viewed_at || signedAt.toISOString(),
     });
     const path = `${w.company.id}/contracts/${k.id}.pdf`;

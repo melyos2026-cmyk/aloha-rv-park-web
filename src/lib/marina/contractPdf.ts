@@ -20,6 +20,7 @@ export type SignedContractInfo = {
   ip: string;
   userAgent: string;
   signatureImage?: string | null; // PNG data URL
+  signatureStyle?: string | null; // e.g. 'adopted in the "Great Vibes" style' or 'drawn by hand'
   sentAt?: string | null;
   sentByName?: string | null;
   viewedAt?: string | null;
@@ -154,7 +155,7 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
     ["Opened by signer", info.viewedAt ? fmtET(new Date(info.viewedAt)) : "-"],
     ["Signed by", `${info.signerName} (${info.signerEmail || "no email"})`],
     ["Date and time signed", `${fmtET(info.signedAt)}  (UTC ${info.signedAt.toISOString()})`],
-    ["Method", `Signer was signed in to their boater account at ${info.domain} with a one-time code sent to their email, typed their full name, and checked "I agree to sign electronically"${info.signatureImage ? "; a drawn signature was also captured" : ""}.`],
+    ["Method", `Signer was signed in to their boater account at ${info.domain} with a one-time code sent to their email, typed their full name, and checked "I adopt this signature and agree to sign electronically"${info.signatureImage ? `; signature image ${info.signatureStyle || "captured"}` : ""}.`],
     ["IP address", info.ip || "-"],
     ["Device / browser", info.userAgent || "-"],
     ["Document fingerprint (SHA-256 of the contract text)", info.bodyHash],

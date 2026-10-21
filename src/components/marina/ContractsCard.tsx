@@ -33,12 +33,35 @@ function SignaturePad({ onChange }: { onChange: (png: string | null) => void }) 
   );
 }
 
+// Oct 21 (per Mely): "adopt your signature" like Adobe Sign / DocuSign — the boater
+// picks a handwriting style made from their name, or draws it.
+const STYLES = [
+  { font: "Great Vibes", size: 62 },
+  { font: "Dancing Script", size: 54 },
+  { font: "Allura", size: 60 },
+  { font: "Homemade Apple", size: 40 },
+];
+async function styledSignature(name: string, font: string, size: number): Promise<string | null> {
+  try { await (document as any).fonts?.load(`${size}px "${font}"`); } catch {}
+  const c = document.createElement("canvas");
+  const g = c.getContext("2d")!;
+  g.font = `${size}px "${font}"`;
+  const w = Math.ceil(g.measureText(name).width) + 40;
+  c.width = Math.min(Math.max(w, 200), 1200); c.height = Math.round(size * 1.9);
+  const g2 = c.getContext("2d")!;
+  g2.font = `${size}px "${font}"`; g2.fillStyle = "#0f2540"; g2.textBaseline = "middle";
+  g2.fillText(name, 20, c.height / 2);
+  return c.toDataURL("image/png");
+}
+
 export default function ContractsCard({ fullName, marinaName }: { fullName: string; marinaName: string }) {
   const [list, setList] = useState<K[]>([]);
   const [open, setOpen] = useState<K | null>(null);
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [sig, setSig] = useState<string | null>(null);
+  const [mode, setMode] = useState<"style" | "draw">("style");
+  const [style, setStyle] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
@@ -50,13 +73,14 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
   useEffect(() => { load(); }, []);
 
   function show(k: K) {
-    setOpen(k); setName(""); setAgree(false); setSig(null); setErr("");
+    setOpen(k); setName(""); setAgree(false); setSig(null); setErr(""); setMode("style"); setStyle(0);
     if (k.status === "sent") fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: k.id, action: "view" }) }).catch(() => {});
   }
   async function sign() {
     if (!open) return;
     setBusy(true); setErr("");
-    const res = await fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: open.id, action: "sign", name, agree, signature: sig }) });
+    const adopted = mode === "style" ? await styledSignature(name.trim(), STYLES[style].font, STYLES[style].size) : sig;
+    const res = await fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: open.id, action: "sign", name, agree, signature: adopted, signature_style: mode === "style" ? STYLES[style].font : "drawn" }) });
     const r = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { setErr(r.error || "Could not sign. Please try again."); return; }
@@ -98,16 +122,37 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={fullName} autoComplete="name"
                   style={{ display: "block", width: "100%", padding: "10px 12px", marginTop: 4, border: "1px solid #b8c7d1", borderRadius: 8, fontSize: 16, fontFamily: "Georgia, serif" }} />
               </label>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>Draw your signature (optional)</div>
-              <SignaturePad onChange={setSig} />
+              <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Dancing+Script:wght@600&family=Great+Vibes&family=Homemade+Apple&display=swap" />
+              <div style={{ display: "flex", gap: 6 }}>
+                {(["style", "draw"] as const).map((m) => (
+                  <button key={m} type="button" onClick={() => setMode(m)} className={mode === m ? "mr-btn dark" : "mr-btn ghost"} style={{ minHeight: 34, padding: "0 14px" }}>
+                    {m === "style" ? "Choose a style" : "Draw"}
+                  </button>
+                ))}
+              </div>
+              {mode === "style" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+                  {STYLES.map((st, i) => (
+                    <button key={st.font} type="button" onClick={() => setStyle(i)} aria-pressed={style === i}
+                      style={{ textAlign: "left", background: "#fff", border: style === i ? "2px solid #0f2540" : "1px solid #c9d5dd", borderRadius: 8, padding: "6px 12px", cursor: "pointer", minHeight: 72, overflow: "hidden" }}>
+                      <span style={{ fontFamily: `"${st.font}", cursive`, fontSize: st.size * 0.55, color: "#0f2540", whiteSpace: "nowrap" }}>{name.trim() || fullName}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <SignaturePad onChange={setSig} />
+              )}
               <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14 }}>
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3 }} />
-                <span>I agree to sign this contract electronically. My typed name is my signature and has the same effect as signing on paper.</span>
+                <span><b>I adopt this signature and agree to sign electronically.</b></span>
               </label>
+              <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#5b6b78", margin: 0 }}>
+                By checking the box and pressing <b>Sign contract</b>, I agree that the signature shown above, together with my typed name, is the electronic representation of my signature for all purposes on this contract, just the same as a pen-and-paper signature. I consent to do business electronically with {marinaName} and to receive this contract and related notices electronically, and I understand I can download a copy of the signed contract. My name, the date and time, my IP address and device are recorded with my signature. Electronic signatures are valid under the U.S. ESIGN Act and the Florida Uniform Electronic Transaction Act.
+              </p>
               {err && <div className="mr-error" role="alert">{err}</div>}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button type="button" className="mr-btn ghost" onClick={() => setOpen(null)}>Not now</button>
-                <button type="button" className="mr-btn dark" disabled={busy || !agree || !name.trim()} onClick={sign}>{busy ? "Signing…" : "Sign contract"}</button>
+                <button type="button" className="mr-btn dark" disabled={busy || !agree || !name.trim() || (mode === "draw" && !sig)} onClick={sign}>{busy ? "Signing…" : "Sign contract"}</button>
               </div>
             </div>
           </div>
