@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
-import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES, loadFuelPrices } from "@/lib/marina/data";
+import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES, loadFuelPrices, loadStoreItems } from "@/lib/marina/data";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -16,7 +16,8 @@ const CAPABILITIES: [string, string][] = [
 ];
 
 export default async function MarinaHome({ company }: { company: MarinaCompany }) {
-  const [slips, fuel] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id)]);
+  const [slips, fuel, store] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id)]);
+  const storeGroups = store.reduce<Record<string, typeof store>>((g, i) => { (g[i.category] ||= []).push(i); return g; }, {});
   const open = slips.filter((s) => s.status === "available").length;
   const rates = summarizeRates(slips);
   const rateRows = RATE_TYPES.filter((t) => rates[t]);
@@ -101,6 +102,31 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {/* Oct 21 (per Mely — Ship Store): what the store sells, straight from the admin. */}
+      {store.length > 0 && (
+        <section className="mr-section" id="store">
+          <div className="mr-wrap">
+            <h2 className="mr-h2">Ship store</h2>
+            <p className="mr-lede">Ice, bait, drinks and boat supplies at the dock. Members can charge purchases to their account. Prices before sales tax.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24 }}>
+              {Object.entries(storeGroups).map(([cat, items]) => (
+                <table className="mr-table" key={cat}>
+                  <thead><tr><th>{cat}</th><th>Price</th></tr></thead>
+                  <tbody>
+                    {items.map((i) => (
+                      <tr key={i.name}>
+                        <td>{i.name}</td>
+                        <td className="num">{i.soldOut ? "Sold out" : `$${i.price.toFixed(2)}`}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
+            </div>
           </div>
         </section>
       )}

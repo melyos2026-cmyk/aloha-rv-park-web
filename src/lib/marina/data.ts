@@ -285,3 +285,19 @@ export async function loadFuelPrices(companyId: string): Promise<{ label: string
   if (error || !data) return [];
   return data.map((f) => ({ label: f.label, price_per_gallon: Number(f.price_per_gallon), tax_included: !!f.tax_included }));
 }
+
+// Oct 21 (per Mely): ship store items shown on the marina's website (active items only;
+// shows "sold out" instead of stock counts). Empty if the marina has no store yet.
+export async function loadStoreItems(companyId: string): Promise<{ name: string; category: string; price: number; soldOut: boolean }[]> {
+  const { data, error } = await supabaseAdmin
+    .from("marina_store_items")
+    .select("name, category, price, stock")
+    .eq("company_id", companyId)
+    .eq("active", true)
+    .order("category")
+    .order("sort")
+    .order("name")
+    .limit(200);
+  if (error || !data) return [];
+  return data.map((i) => ({ name: i.name, category: i.category || "Other", price: Number(i.price), soldOut: i.stock !== null && Number(i.stock) <= 0 }));
+}
