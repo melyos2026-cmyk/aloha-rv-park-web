@@ -78,6 +78,8 @@ const SHOTS: Record<string, string> = {
   invoices: "/marina/tour/invoices.jpg",
   renewals: "/marina/tour/renewals.jpg",
   events: "/marina/tour/events.jpg",
+  contracts: "/marina/tour/contracts.jpg",
+  messages: "/marina/tour/messages.jpg",
 };
 
 export default function TourScreens({ marinaName }: { marinaName: string }) {
