@@ -188,6 +188,19 @@ export async function POST(req: Request) {
     console.error("contract pdf failed:", e?.message);
   }
 
+  // Demo only (Oct 21, per Mely): keep just the latest signed copy, so signed
+  // contracts don't pile up in the demo boater's account.
+  if (demo) {
+    const { data: old } = await supabaseAdmin.from("marina_contracts").select("id, document_id, pdf_path")
+      .eq("company_id", w.company.id).eq("member_id", w.memberId).eq("status", "signed").neq("id", k.id);
+    for (const o of old || []) {
+      await supabaseAdmin.from("marina_invoices").update({ contract_id: null }).eq("company_id", w.company.id).eq("contract_id", o.id);
+      if (o.document_id) await supabaseAdmin.from("marina_boat_documents").delete().eq("company_id", w.company.id).eq("id", o.document_id);
+      if (o.pdf_path) await supabaseAdmin.storage.from("marina-documents").remove([o.pdf_path]).then(() => {}, () => {});
+      await supabaseAdmin.from("marina_contracts").delete().eq("company_id", w.company.id).eq("id", o.id).eq("status", "signed");
+    }
+  }
+
   // …and a fresh copy of the contract is waiting, so the next visitor can sign too.
   if (demo) {
     const { count: pending } = await supabaseAdmin.from("marina_contracts").select("id", { count: "exact", head: true })
