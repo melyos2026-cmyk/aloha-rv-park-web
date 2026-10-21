@@ -45,7 +45,12 @@ const STEPS: Step[] = [
 ];
 
 // Screenshots added to /public/marina/tour (key → file).
-const SHOTS: Record<string, string> = {};
+const SHOTS: Record<string, string> = {
+  fuel: "/marina/tour/fuel.jpg",
+  drystack: "/marina/tour/drystack.jpg",
+  billing: "/marina/tour/billing.jpg",
+  renewals: "/marina/tour/waitlist.jpg",
+};
 
 export default function TourScreens({ marinaName }: { marinaName: string }) {
   return (
