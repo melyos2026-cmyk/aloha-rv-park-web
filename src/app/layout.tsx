@@ -74,9 +74,12 @@ export async function generateMetadata(): Promise<Metadata> {
       : company?.logo_url
       ? { icons: { icon: [{ url: company.logo_url }], apple: [{ url: company.logo_url }] } }
       : {}),
+    // Oct 21 (per Mely): a marina without its own SEO text must never show Aloha's address.
     description:
       company?.seo_description ||
-      "Your home away from home near Orlando, Disney World, Universal Studios & SeaWorld. 4648 S. Orange Blossom Trl, Kissimmee FL 34746",
+      (company?.business_type === "marina"
+        ? `${company.company_name}: open slips, rates, fuel dock and online boater accounts.`
+        : "Your home away from home near Orlando, Disney World, Universal Studios & SeaWorld. 4648 S. Orange Blossom Trl, Kissimmee FL 34746"),
   };
 }
 
