@@ -23,22 +23,37 @@ const STEPS: Step[] = [
     points: ["Sell by gallons or by dollar amount", "Cash, card, check or charge it to the boat owner's account", "Tank levels drop with every sale; low-fuel alerts and delivery log", "Pumps listed in the system, built to connect a compatible pump controller (today staff enter the gallons)"],
   },
   {
-    key: "drystack", kicker: "4 · Dry stack", title: "The launch board for your forklift team",
+    key: "store", kicker: "4 · Ship store", title: "A point of sale for the counter",
+    text: "Ice, bait, drinks and boat supplies, rung up in seconds.",
+    points: ["Scan barcodes with a USB or Bluetooth scanner, or the phone camera", "Stock goes down with every sale, with low-stock alerts", "Upload your whole product list from Excel or Google Sheets", "Sales tax on taxable items; charge to the boat owner's account"],
+  },
+  {
+    key: "drystack", kicker: "5 · Dry stack", title: "The launch board for your forklift team",
     text: "Boaters ask from their phone; your team sees the day's launches in order.",
     points: ["“Put my boat in the water” from the boater account", "New request → confirmed → in the water → back on the rack", "Phone requests added by staff in seconds"],
   },
   {
-    key: "billing", kicker: "5 · Billing & daily close", title: "Every dollar tied to a person and a shift",
+    key: "billing", kicker: "6 · Shifts & daily close", title: "Every dollar tied to a person and a shift",
     text: "Built for audits, including city and county marinas.",
-    points: ["Invoices for slip fees, utilities, fuel, events and late fees", "Boaters pay online 24/7 from their account", "Each employee opens and closes a shift; the system counts what the drawer should have"],
+    points: ["Each employee opens and closes a shift", "The system counts what the drawer should have", "Fuel, store and invoice payments all land in the close"],
   },
   {
-    key: "renewals", kicker: "6 · Renewals, waitlist & events", title: "The busy work, handled",
-    text: "The yearly and seasonal tasks that usually live in spreadsheets.",
-    points: ["Annual renewals invoiced in one click", "Waitlist ranked first come, first served, with slip offers", "Event rooms with hourly, daily or flat pricing"],
+    key: "invoices", kicker: "7 · Invoices & accounting", title: "Billing that runs itself",
+    text: "Slip fees, utilities, fuel, store and late fees in one place.",
+    points: ["Boaters pay online 24/7 from their account", "Overdue invoices and late fees in one click", "Export for QuickBooks Online and print any report as a PDF with your logo"],
   },
   {
-    key: "mely", kicker: "7 · Mely, your AI assistant", title: "Answers boaters 24/7, in their language",
+    key: "renewals", kicker: "8 · Annual renewals & waitlist", title: "The yearly busy work, handled",
+    text: "The tasks that usually live in spreadsheets.",
+    points: ["Generate and invoice every annual renewal in one click", "Mark renewed or release the slip to the waitlist", "Waitlist ranked first come, first served, with slip offers"],
+  },
+  {
+    key: "events", kicker: "9 · Event rooms", title: "Rent your meeting room or clubhouse",
+    text: "Your office books the room, reviews requests and confirms them.",
+    points: ["Hourly, daily or flat pricing per room", "Requests to review, confirmed bookings and totals", "Bill any booking with an invoice in Invoices"],
+  },
+  {
+    key: "mely", kicker: "10 · Mely, your AI assistant", title: "Answers boaters 24/7, in their language",
     text: "Try her now: the chat bubble on this page is the real Mely.",
     points: ["Knows your slips, prices, hours and rules", "Answers in English, Spanish and other languages", "Helps your staff in the office too"],
   },
@@ -49,7 +64,10 @@ const SHOTS: Record<string, string> = {
   fuel: "/marina/tour/fuel.jpg",
   drystack: "/marina/tour/drystack.jpg",
   billing: "/marina/tour/billing.jpg",
-  renewals: "/marina/tour/waitlist.jpg",
+  store: "/marina/tour/store.jpg",
+  invoices: "/marina/tour/invoices.jpg",
+  renewals: "/marina/tour/renewals.jpg",
+  events: "/marina/tour/events.jpg",
 };
 
 export default function TourScreens({ marinaName }: { marinaName: string }) {
