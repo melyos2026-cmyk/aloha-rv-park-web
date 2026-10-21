@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { createHash } from "crypto";
 import "./globals.css";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -30,7 +31,7 @@ async function getHostCompany() {
 
   const { data } = await supabase
     .from("public_company_profile")
-    .select("company_name, address, contact_phone, seo_description, business_type, logo_url, primary_color, secondary_color")
+    .select("id, company_name, address, contact_phone, seo_description, business_type, logo_url, primary_color, secondary_color")
     .eq("domain", hostname)
     .maybeSingle();
 
@@ -43,6 +44,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
   // Link previews (iMessage, WhatsApp, Facebook, LinkedIn) for marina sites.
   const host = ((await headers()).get("host") || "").replace(/^www\./, "");
+  let shareImage: string | null = null;
+  const logoSrc = company?.logo_url || (isAloha ? `https://${host}/aloha-logo.png` : null);
+  if (logoSrc && company?.id) {
+    const key = createHash("sha1").update(logoSrc).digest("hex").slice(0, 12);
+    const stored = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-assets/${company.id}/share/og-${key}.jpg`;
+    const ok = await fetch(stored, { method: "HEAD", next: { revalidate: 3600 } }).then((r) => r.ok).catch(() => false);
+    shareImage = ok ? stored : `https://${host}/api/share-image`;
+  } else if (logoSrc) {
+    shareImage = `https://${host}/api/share-image`;
+  }
   const isMarina = company?.business_type === "marina";
   const marinaShare = isMarina
     ? (() => {
@@ -58,8 +69,9 @@ export async function generateMetadata(): Promise<Metadata> {
     : (() => {
         // Oct 21 (per Mely): link previews (WhatsApp, iMessage, Facebook) for RV parks
         // show the company's own logo; Aloha uses its logo file.
-        // Small JPEG made from the logo (WhatsApp skips big images).
-        const image = company?.logo_url || isAloha ? `https://${host}/api/share-image` : null;
+        // Small JPEG made from the logo (WhatsApp skips big images). When it was already
+        // made, point straight at the stored .jpg file (fastest for WhatsApp).
+        const image = shareImage;
         if (!company && !isAloha) return {};
         const title = company?.company_name || "Aloha RV Park – Kissimmee, Florida";
         const description = company?.seo_description || `${title}: RV sites, rates and online reservations.`;
