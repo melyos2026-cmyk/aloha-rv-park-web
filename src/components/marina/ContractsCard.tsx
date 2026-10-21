@@ -1,48 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import ContractText from "./ContractText";
 
 // Oct 21 (per Mely): contracts the marina sent to this boater, read and signed online.
 type K = { id: string; title: string; body: string; status: string; sent_at: string; sent_by_name: string | null; signed_at: string | null; signer_name: string | null; start_date: string | null; end_date: string | null; hasPdf: boolean };
 const day = (d: string | null) => (d ? new Date(d.length === 10 ? d + "T12:00:00" : d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
-function SignaturePad({ onChange }: { onChange: (png: string | null) => void }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-  const used = useRef(false);
-  useEffect(() => {
-    const c = ref.current!; const r = window.devicePixelRatio || 1;
-    c.width = c.offsetWidth * r; c.height = c.offsetHeight * r;
-    const g = c.getContext("2d")!; g.scale(r, r); g.lineWidth = 2.2; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = "#0f2540";
-  }, []);
-  const pos = (e: React.PointerEvent) => { const b = ref.current!.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
-  return (
-    <div>
-      <canvas
-        ref={ref}
-        style={{ width: "100%", height: 120, border: "1.5px dashed #9fb3c0", borderRadius: 8, background: "#fff", touchAction: "none", cursor: "crosshair" }}
-        onPointerDown={(e) => { drawing.current = true; ref.current!.setPointerCapture(e.pointerId); const p = pos(e); const g = ref.current!.getContext("2d")!; g.beginPath(); g.moveTo(p.x, p.y); }}
-        onPointerMove={(e) => { if (!drawing.current) return; const p = pos(e); const g = ref.current!.getContext("2d")!; g.lineTo(p.x, p.y); g.stroke(); used.current = true; }}
-        onPointerUp={() => { drawing.current = false; if (used.current) onChange(ref.current!.toDataURL("image/png")); }}
-      />
-      <button type="button" className="mr-btn ghost" style={{ marginTop: 6, minHeight: 32, padding: "0 12px" }} onClick={() => {
-        const c = ref.current!; c.getContext("2d")!.clearRect(0, 0, c.width, c.height); used.current = false; onChange(null);
-      }}>Clear</button>
-    </div>
-  );
-}
-
 // Oct 21 (per Mely): "adopt your signature" like Adobe Sign / DocuSign — the boater
-// picks a handwriting style made from their name, or draws it.
-const STYLES = [
-  { font: "Great Vibes", size: 62 },
-  { font: "Dancing Script", size: 54 },
-  { font: "Allura", size: 60 },
-  { font: "Homemade Apple", size: 40 },
-];
+// gets an elegant handwriting signature made from their typed name.
+const STYLES = [{ font: "Great Vibes", size: 62 }]; // Oct 21 (per Mely): one elegant style only
 async function styledSignature(name: string, font: string, size: number): Promise<string | null> {
-  try { await (document as any).fonts?.load(`${size}px "${font}"`); } catch {}
+  try { await document.fonts?.load(`${size}px "${font}"`); } catch {}
   const c = document.createElement("canvas");
   const g = c.getContext("2d")!;
   g.font = `${size}px "${font}"`;
@@ -59,9 +28,6 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
   const [open, setOpen] = useState<K | null>(null);
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
-  const [sig, setSig] = useState<string | null>(null);
-  const [mode, setMode] = useState<"style" | "draw">("style");
-  const [style, setStyle] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [done, setDone] = useState("");
@@ -73,14 +39,14 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
   useEffect(() => { load(); }, []);
 
   function show(k: K) {
-    setOpen(k); setName(""); setAgree(false); setSig(null); setErr(""); setMode("style"); setStyle(0);
+    setOpen(k); setName(""); setAgree(false); setErr("");
     if (k.status === "sent") fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: k.id, action: "view" }) }).catch(() => {});
   }
   async function sign() {
     if (!open) return;
     setBusy(true); setErr("");
-    const adopted = mode === "style" ? await styledSignature(name.trim(), STYLES[style].font, STYLES[style].size) : sig;
-    const res = await fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: open.id, action: "sign", name, agree, signature: adopted, signature_style: mode === "style" ? STYLES[style].font : "drawn" }) });
+    const adopted = await styledSignature(name.trim(), STYLES[0].font, STYLES[0].size);
+    const res = await fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: open.id, action: "sign", name, agree, signature: adopted, signature_style: STYLES[0].font }) });
     const r = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { setErr(r.error || "Could not sign. Please try again."); return; }
@@ -122,26 +88,11 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={fullName} autoComplete="name"
                   style={{ display: "block", width: "100%", padding: "10px 12px", marginTop: 4, border: "1px solid #b8c7d1", borderRadius: 8, fontSize: 16, fontFamily: "Georgia, serif" }} />
               </label>
-              <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Dancing+Script:wght@600&family=Great+Vibes&family=Homemade+Apple&display=swap" />
-              <div style={{ display: "flex", gap: 6 }}>
-                {(["style", "draw"] as const).map((m) => (
-                  <button key={m} type="button" onClick={() => setMode(m)} className={mode === m ? "mr-btn dark" : "mr-btn ghost"} style={{ minHeight: 34, padding: "0 14px" }}>
-                    {m === "style" ? "Choose a style" : "Draw"}
-                  </button>
-                ))}
+              <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" />
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Your signature</div>
+              <div style={{ background: "#fff", border: "1px solid #c9d5dd", borderRadius: 8, padding: "8px 16px", minHeight: 78, display: "flex", alignItems: "center", overflow: "hidden" }}>
+                <span style={{ fontFamily: `"${STYLES[0].font}", cursive`, fontSize: 40, color: "#0f2540", whiteSpace: "nowrap" }}>{name.trim() || fullName}</span>
               </div>
-              {mode === "style" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
-                  {STYLES.map((st, i) => (
-                    <button key={st.font} type="button" onClick={() => setStyle(i)} aria-pressed={style === i}
-                      style={{ textAlign: "left", background: "#fff", border: style === i ? "2px solid #0f2540" : "1px solid #c9d5dd", borderRadius: 8, padding: "6px 12px", cursor: "pointer", minHeight: 72, overflow: "hidden" }}>
-                      <span style={{ fontFamily: `"${st.font}", cursive`, fontSize: st.size * 0.55, color: "#0f2540", whiteSpace: "nowrap" }}>{name.trim() || fullName}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <SignaturePad onChange={setSig} />
-              )}
               <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14 }}>
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3 }} />
                 <span><b>I adopt this signature and agree to sign electronically.</b></span>
@@ -152,7 +103,7 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
               {err && <div className="mr-error" role="alert">{err}</div>}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button type="button" className="mr-btn ghost" onClick={() => setOpen(null)}>Not now</button>
-                <button type="button" className="mr-btn dark" disabled={busy || !agree || !name.trim() || (mode === "draw" && !sig)} onClick={sign}>{busy ? "Signing…" : "Sign contract"}</button>
+                <button type="button" className="mr-btn dark" disabled={busy || !agree || !name.trim()} onClick={sign}>{busy ? "Signing…" : "Sign contract"}</button>
               </div>
             </div>
           </div>
