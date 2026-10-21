@@ -7,6 +7,9 @@ import WaitlistForm from "./WaitlistForm";
 // Whole dollars show as $280; anything with cents always shows two decimals ($2,553.60).
 const money = (n: number | null | undefined) => (n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`);
 
+// Price per foot always shows cents so a column lines up: $14.00, $16.50.
+const ft = (n: number | null | undefined) => (n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
 const CAPABILITIES: [string, string][] = [
   ["Pay online, any hour", "Boaters see every open invoice and pay by card without calling the office."],
   ["One account per boater", "Boats, slip, balance and payment history in one place."],
@@ -81,11 +84,11 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
                       <td>{RATE_LABEL[r.type]}<span className="mr-rate-sub">{STAY_NOTE[r.type]}</span></td>
                       {rates.types.map((t) => {
                         const c = r.cells[t];
-                        if (!c || c.visitor == null) return <td key={t} className="num mr-rate-none">—</td>;
+                        if (!c || c.visitor == null) return <td key={t} className="num mr-rate-none" title="Not offered">—</td>;
                         return (
                           <td key={t} className="num">
-                            {c.perFoot ? <>{money(c.visitor)}<small> /ft</small></> : <><small>from </small>{money(c.visitor)}</>}
-                            {c.member != null && c.member !== c.visitor && <span className="mr-rate-sub">Members {money(c.member)}{c.perFoot ? " /ft" : ""}</span>}
+                            {c.perFoot ? <>{ft(c.visitor)}<small> /ft</small></> : <><small>from </small>{money(c.visitor)}</>}
+                            {c.member != null && c.member !== c.visitor && <span className="mr-rate-sub">Members {c.perFoot ? `${ft(c.member)} /ft` : money(c.member)}</span>}
                           </td>
                         );
                       })}
@@ -97,7 +100,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
           ) : (
             <p className="mr-note">Rates are posted at the marina office.</p>
           )}
-          {ex && <p className="mr-note">Example: a 30 ft boat in {TYPE_LABEL[ex.t].toLowerCase()} at {money(ex.pf)} /ft {STAY_NOTE[ex.r]} pays {money(Math.round(ex.pf * 30 * 100) / 100)} {STAY_NOTE[ex.r]}. Tap a slip above to see its exact price.</p>}
+          {ex && <p className="mr-note">Example: a 30 ft boat in {TYPE_LABEL[ex.t].toLowerCase()} at {ft(ex.pf)} /ft {STAY_NOTE[ex.r]} pays {money(Math.round(ex.pf * 30 * 100) / 100)} {STAY_NOTE[ex.r]}. Tap a slip above to see its exact price.</p>}
           <p className="mr-note">Card payments include a small processing fee shown before you pay.</p>
         </div>
       </section>
