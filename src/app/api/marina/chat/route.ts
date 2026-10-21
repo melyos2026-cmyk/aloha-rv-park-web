@@ -110,25 +110,26 @@ async function handle(req: Request) {
   const now = new Date().toLocaleString("en-US", { timeZone: "America/New_York", weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 
   let marinaFacts = "";
+  // Fuel and ship store prices: also on the demo, as sample prices to show boaters' answers.
+  // Oct 21 (per Mely): fuel prices the marina shows on its website.
+  const { data: fuelRows } = await supabaseAdmin.from("marina_fuel_prices").select("label, price_per_gallon, tax_included")
+    .eq("company_id", marina.id).eq("active", true).eq("show_on_website", true).order("sort");
+  const fuelLine = fuelRows && fuelRows.length
+    ? `\nFuel dock prices per gallon: ${fuelRows.map((f: any) => `${f.label} $${Number(f.price_per_gallon).toFixed(3)}${f.tax_included ? " tax included" : " plus tax"}`).join("; ")}.`
+    : "";
+  // Oct 21 (per Mely): what the ship store sells (price and whether it is in stock; never stock counts).
+  const { data: storeRows } = await supabaseAdmin.from("marina_store_items").select("name, price, stock")
+    .eq("company_id", marina.id).eq("active", true).order("sort").limit(60);
+  const storeLine = storeRows && storeRows.length
+    ? `\nShip store items: ${storeRows.map((i: any) => `${i.name} $${Number(i.price).toFixed(2)}${i.stock !== null && Number(i.stock) <= 0 ? " (sold out right now)" : ""}`).join("; ")}. Prices before sales tax where it applies. Bought at the ship store counter.${demo ? " These are this demo marina's sample store prices: you may quote them as an example of what a real marina's Mely answers (they are not MelyOS prices)." : ""}`
+    : "";
   if (!demo) {
     const slips = await loadPublicSlips(marina.id);
     const lines = slips.slice(0, 80).map((s) => {
       const r = s.rates.monthly ? s.rates.monthly.non_resident ?? s.rates.monthly.resident : null;
       return `${s.slip_name} (${s.slip_type}${s.dock ? `, ${s.dock}` : ""}${s.length_ft ? `, ${s.length_ft} ft` : ""}): ${s.status}${s.available_from && s.status === "occupied" ? ` until ${s.available_from}` : ""}${r ? `, monthly $${r}` : ""}`;
     });
-    // Oct 21 (per Mely): fuel prices the marina shows on its website.
-    const { data: fuelRows } = await supabaseAdmin.from("marina_fuel_prices").select("label, price_per_gallon, tax_included")
-      .eq("company_id", marina.id).eq("active", true).eq("show_on_website", true).order("sort");
-    const fuelLine = fuelRows && fuelRows.length
-      ? `\nFuel dock prices per gallon: ${fuelRows.map((f: any) => `${f.label} $${Number(f.price_per_gallon).toFixed(3)}${f.tax_included ? " tax included" : " plus tax"}`).join("; ")}.`
-      : "";
-    // Oct 21 (per Mely): what the ship store sells (price and whether it is in stock; never stock counts).
-    const { data: storeRows } = await supabaseAdmin.from("marina_store_items").select("name, price, stock")
-      .eq("company_id", marina.id).eq("active", true).order("sort").limit(60);
-    const storeLine = storeRows && storeRows.length
-      ? `\nShip store items: ${storeRows.map((i: any) => `${i.name} $${Number(i.price).toFixed(2)}${i.stock !== null && Number(i.stock) <= 0 ? " (sold out right now)" : ""}`).join("; ")}. Prices before sales tax where it applies. Bought at the ship store counter.${demo ? " These are this demo marina's sample store prices: you may quote them as an example of what a real marina's Mely answers (they are not MelyOS prices)." : ""}`
-      : "";
-    marinaFacts = `${fuelLine}${storeLine}\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can reserve an open slip online with the Reserve online button on the slip map, or join the waitlist for full ones. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
+    marinaFacts = `\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can reserve an open slip online with the Reserve online button on the slip map, or join the waitlist for full ones. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
   }
 
   const identity = demo
@@ -138,7 +139,7 @@ async function handle(req: Request) {
   const system = `${identity}
 Right now it is ${now} (Eastern Time).
 
-${demo ? MELYOS_PITCH : "Answer questions from boaters and visitors about the marina: slips, availability, rates, reservations, the waitlist, boater accounts and payments, fuel prices, the ship store (what it sells and prices), and dry stack launches (boat owners with a rack ask for a launch from their online account, Boater login)."}${marinaFacts}${notes}
+${demo ? MELYOS_PITCH + (fuelLine || storeLine ? "\n\nDemo marina sample prices (quote them only as the demo's examples):" : "") : "Answer questions from boaters and visitors about the marina: slips, availability, rates, reservations, the waitlist, boater accounts and payments, fuel prices, the ship store (what it sells and prices), and dry stack launches (boat owners with a rack ask for a launch from their online account, Boater login)."}${fuelLine}${storeLine}${marinaFacts}${notes}
 
 Style: warm, kind and professional, with a nautical-elegant tone. Answer fully but briefly, in short paragraphs. Ask at most one question at a time. Reply in the same language the person just wrote in.
 Formatting: this chat shows plain text only. Never use markdown (no asterisks, no dashes as bullets, no headers). For a list, put each item on its own line as "1. ", "2. " with a blank line between items.
