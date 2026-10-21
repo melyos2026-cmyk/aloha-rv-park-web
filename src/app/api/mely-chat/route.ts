@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const { data: company } = await supabaseAdmin
       .from("companies")
       .select(
-        "id, company_name, address, contact_email, contact_phone, emergency_phone, ai_assistant_info, park_id"
+        "id, company_name, address, contact_email, contact_phone, emergency_phone, ai_assistant_info, park_id, is_demo, domain"
       )
       .eq("domain", host)
       .maybeSingle();
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       const { data: lots } = await supabaseAdmin
         .from("rv_lots")
         .select(
-          "lot_name, status, max_length_ft, max_width_ft, amp_service, base_price, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing, online_booking_disabled"
+          "id, lot_name, status, reserved_until, max_length_ft, max_width_ft, amp_service, base_price, high_season_price, low_season_price, daily_rate, weekly_rate, use_seasonal_pricing, online_booking_disabled"
         )
         .eq("company_id", company.id)
         .order("lot_name", { ascending: true });
@@ -161,7 +161,29 @@ export async function POST(req: NextRequest) {
           })
           .join("\n");
 
-        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. The monthly price shown is the one that applies today: quote it as simply "the monthly rent right now", and NEVER use the words season, high season, low season, snowbird, off-peak or peak. If someone asks about the rent on a future date, use the "monthly rent by move-in date" schedule shown for that lot: the rent depends on the move-in date, so quote the figure for their date and say the application shows the exact amount for their lot and move-in date. If a lot shows no schedule, the monthly rent is the same all year; never guess that it will change. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
+        // Oct 21 (per Mely — "ella sabe el calendario de reservaciones"): the real
+        // booked date ranges of every stay lot for the next 6 months (the same
+        // ranges the map blocks), so Mely can say which lots are open for given
+        // dates. Only dates, never who booked.
+        const todayISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const horizon = new Date(Date.now() + 183 * 86400000).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const calendarLines = await Promise.all(
+          stayLots.map(async (l: any) => {
+            if (l.status === "occupied") {
+              return `- Lot ${l.lot_name}: occupied by a resident${l.reserved_until ? `, expected to open on ${l.reserved_until}` : ", no open dates known"}`;
+            }
+            if (l.status !== "available" && l.status !== "reserved") return `- Lot ${l.lot_name}: not available (${String(l.status || "").replace(/_/g, " ")})`;
+            const { data: ranges } = await supabaseAdmin.rpc("get_lot_blocked_ranges", { p_lot_id: l.id });
+            const booked = (ranges || [])
+              .map((r: any) => ({ a: String(r.range_start).slice(0, 10), b: String(r.range_end).slice(0, 10) }))
+              .filter((r: any) => r.b >= todayISO && r.a <= horizon)
+              .sort((x: any, y: any) => x.a.localeCompare(y.a));
+            return `- Lot ${l.lot_name}: ${booked.length ? `booked ${booked.map((r: any) => `${r.a} to ${r.b}`).join("; ")}; every other date is open` : "no bookings, every date is open"}`;
+          })
+        );
+        const calendarContext = `\n\nBooking calendar for the next 6 months (today is ${todayISO}; dates are YYYY-MM-DD; a booking from A to B means arrival on A and departure on B, so B is free again for a new arrival):\n${calendarLines.join("\n")}\n\nUse this calendar to answer which lots are open for the dates someone asks about: a lot is open for a stay if none of its booked ranges overlap the stay. Name the open lots with their prices. Say the dates are confirmed when they pick them on the interactive map. Never say who booked a lot or anything about another guest.`;
+
+        lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}${calendarContext}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. The monthly price shown is the one that applies today: quote it as simply "the monthly rent right now", and NEVER use the words season, high season, low season, snowbird, off-peak or peak. If someone asks about the rent on a future date, use the "monthly rent by move-in date" schedule shown for that lot: the rent depends on the move-in date, so quote the figure for their date and say the application shows the exact amount for their lot and move-in date. If a lot shows no schedule, the monthly rent is the same all year; never guess that it will change. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
       }
     }
 
@@ -468,7 +490,14 @@ export async function POST(req: NextRequest) {
 - Costs when moving in: use the "Move-in costs" section. If the person gives an arrival date, explain what they pay at the start: the application fee when applying, then once approved the partial first month (calculate it with the park's method using the lot's rates and say it is an estimate, with the exact amount shown in their application), the security deposit if the park requires one, and then the full monthly rent from the next rent due day. If you do not have the exact figures for their lot, say the application shows the exact total before they pay. Never invent a fee that is not listed.
 - When someone wants to live here (or is staying longer than ${stayThresholdDays} nights), always explain the whole process in order, as a short numbered list, with the Apply link: 1. Complete the lease application online and pay the application fee at the end. 2. Each adult on the application gets an email to complete a background check (check spam or junk if it does not arrive). 3. The background check can take a few days to come back. 4. After the background check is done, the park's office reviews the application and approves it, and the person is notified. 5. Once approved, they complete the move-in steps and pay the first charges (partial first month, plus the security deposit if the park requires one, see "Move-in costs"), and then the monthly rent (state the current monthly rate). Make clear that approval depends on passing the background check and the office's approval, and that Mely cannot approve, deny, or predict the outcome. Keep each step to one short sentence.
 - If someone is not sure how long they will stay, treat it as a long stay and point them to the Apply page.
-- You do NOT have a day-by-day booking calendar. Never promise that a lot is free on a specific date, and never say there is "a lot of availability" for a date. You can say which lots show as available right now, and that the map shows the real open dates once they pick their dates, or they can call the office.`;
+- Dates: use the "Booking calendar" above to say which lots are open for the dates the person gives (short stays), and for long stays which lots are available now or when an occupied lot is expected to open. Always add that the exact dates are confirmed when they pick them on the interactive map (short stays) or in the application (long stays). Never say there is "a lot of availability" in general; name the open lots.`;
+
+    // Oct 21 (per Mely): on a demo website Mely knows it is a demo of the MelyOS
+    // platform and sends people who want this for their own park to MelyOS.
+    const isDemoSite = !!company && ((company as any).is_demo === true || /(^|\.)melyos\.io$/i.test(String((company as any).domain || "")));
+    const demoContext = !isDemoSite ? "" : `\n\nThis website is a LIVE DEMO of the MelyOS platform. ${companyName} is a sample park created to show what MelyOS does; it is not a real park, nobody can actually stay here, and online payments are turned off. Answer questions about the demo park normally (lots, prices, the booking calendar, how applications work) so visitors see how you would help their own guests, and mention once, naturally, that this is a demo.
+What MelyOS is: a software platform, built in Florida by MelyOS LLC, that runs RV parks, campgrounds and marinas from one place: the park's own website with an interactive map where guests pick their exact lot and dates and pay online, online lease applications with background checks, a resident portal (invoices, autopay, documents, electric usage), the office admin (lots and pricing, reservations, applications, invoices, payments, reports), propane and storage sales, and an AI assistant like you that knows the park and answers in any language. MelyOS sets everything up for each park and adapts to whatever the park needs.
+If someone asks how to get this for their own park, about the platform, or about prices: say MelyOS gives each business a custom estimate based on its size and needs (never state, estimate or hint at a price), and that they can learn more at https://melyos.io or write to info@melyos.io for pricing, an estimate or a live walkthrough. Always include info@melyos.io in that answer.`;
 
     const storageContext = `\n\nRV storage: the S lots (S1 through S6, and any lot whose name starts with S) are RV storage spaces only, never a place to stay or camp. Never list them as lots to stay in and never quote, estimate, or hint at a storage price or availability: the price is agreed directly with the office case by case. Storage is arranged through the office${phone ? ` at ${phone}` : ""}: the office confirms there is a space free and that it fits the person's RV or trailer, and agrees the price with them. After that the office sets up the payment: for a current resident, the storage rent is added to their existing resident account and monthly invoice, and they pay it in the resident portal with their other charges; for someone who is not a resident, the office creates a portal account for them so they can pay their monthly storage rent through the portal. Do not tell people they can reserve or pay for these spaces on the website or map by themselves, and do not tell them they can create their own account.`;
 
@@ -486,7 +515,7 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = `You are Mely, the friendly, professional AI assistant for ${companyName}${address ? ` located at ${address}` : ""}.${phone ? ` Phone: ${phone}.` : ""}${email ? ` Email: ${email}.` : ""}${nowContext}
 
-${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${laundryContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${checkTimesContext}${storageContext}
+${demoContext}${extraInfo}${lotsContext}${amenitiesContext}${pagesContext}${listingsContext}${officeHoursContext}${propaneRulesContext}${laundryContext}${rulesContext}${moveInCostContext}${applicationContext}${stayRulesContext}${checkTimesContext}${storageContext}
 
 Style: be warm, kind and natural, and never cold or curt. Answer fully and helpfully: give the useful details the person needs (what it is, how it works, what to expect, and the next step), even for simple questions, in a few clear sentences or short paragraphs rather than a one-line reply. Do not pad: no small talk, no filler, no repeating what you already said, and ask at most one question at a time. When someone wants to become a resident, explain every step in order (see "How stays work"), because they need to know what to expect. Do not end with filler offers such as "would you like me to tell you how to get to the page?": just give the link.
 
