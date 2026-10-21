@@ -392,3 +392,18 @@
 .mr-slips-table .mr-btn.link { min-height: 0; padding: 4px 6px; }
 .mr-detail { margin-bottom: 16px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Oct 21 (per Mely): drop-down top menu */
+.mr-dd { position: relative; }
+.mr-dd-btn { background: none; border: 0; color: #cfe3e6; font: inherit; font-weight: 500; cursor: pointer; padding: 8px 2px; display: inline-flex; align-items: center; gap: 6px; }
+.mr-dd-btn:hover, .mr-dd-btn[aria-expanded="true"] { color: #fff; }
+.mr-caret { font-size: .75em; opacity: .8; }
+.mr-dd-menu { position: absolute; top: calc(100% + 10px); left: -14px; min-width: 250px; background: #fff; color: var(--mr-ink); border-radius: 10px; box-shadow: 0 14px 40px rgba(6, 30, 50, .28); padding: 8px; z-index: 60; border-top: 3px solid var(--mr-buoy); }
+.mr-dd-menu.mr-dd-right { left: auto; right: 0; }
+.mr-nav .mr-dd-menu a { display: block; color: var(--mr-ink); padding: 10px 12px; border-radius: 7px; }
+.mr-nav .mr-dd-menu a:hover { background: #eef5f8; color: var(--mr-ink); }
+.mr-dd-menu b { display: block; font-weight: 700; }
+.mr-dd-menu small { display: block; color: #5b6b78; font-size: .82rem; margin-top: 2px; }
+.mr-dd-head { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: #7a8a96; font-weight: 700; padding: 10px 12px 2px; }
+.mr-mob { display: none; }
+@media (max-width: 760px) { .mr-desk { display: none !important; } .mr-mob { display: block; margin-right: 12px; } }

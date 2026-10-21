@@ -301,3 +301,14 @@ export async function loadStoreItems(companyId: string): Promise<{ name: string;
   if (error || !data) return [];
   return data.map((i) => ({ name: i.name, category: i.category || "Other", price: Number(i.price), soldOut: i.stock !== null && Number(i.stock) <= 0 }));
 }
+
+// Oct 21 (per Mely): which services the marina really has, for the top menu.
+export async function loadMarinaServices(companyId: string): Promise<{ fuel: boolean; store: boolean; dry: boolean }> {
+  const head = { count: "exact" as const, head: true };
+  const [f, s, d] = await Promise.all([
+    supabaseAdmin.from("marina_fuel_prices").select("id", head).eq("company_id", companyId).eq("active", true).eq("show_on_website", true),
+    supabaseAdmin.from("marina_store_items").select("id", head).eq("company_id", companyId).eq("active", true),
+    supabaseAdmin.from("marina_slips").select("id", head).eq("company_id", companyId).eq("slip_type", "dry"),
+  ]);
+  return { fuel: !f.error && (f.count || 0) > 0, store: !s.error && (s.count || 0) > 0, dry: !d.error && (d.count || 0) > 0 };
+}

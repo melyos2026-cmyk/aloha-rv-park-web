@@ -3,6 +3,8 @@ import Link from "next/link";
 import "./marina.css";
 import type { MarinaCompany } from "@/lib/marina/company";
 import { isDemoDomain } from "@/lib/marina/host";
+import MarinaNav from "./MarinaNav";
+import { loadMarinaServices } from "@/lib/marina/data";
 
 // Used until the marina uploads its own logo in the admin (Company settings).
 function Emblem() {
@@ -15,8 +17,9 @@ function Emblem() {
   );
 }
 
-export function MarinaShell({ company, children }: { company: MarinaCompany; children: React.ReactNode }) {
+export async function MarinaShell({ company, children }: { company: MarinaCompany; children: React.ReactNode }) {
   const demo = isDemoDomain(company.domain);
+  const services = await loadMarinaServices(company.id);
   const style = {
   } as React.CSSProperties;
   return (
@@ -33,14 +36,7 @@ export function MarinaShell({ company, children }: { company: MarinaCompany; chi
             {company.logo_url ? <img src={company.logo_url} alt="" /> : <Emblem />}
             <span className="mr-name">{company.company_name}<small>Marina</small></span>
           </Link>
-          <nav className="mr-nav" aria-label="Main">
-            <a className="mr-link" href="/#slips">Slips</a>
-            <a className="mr-link" href="/#rates">Rates</a>
-            <a className="mr-link" href="/#waitlist">Waitlist</a>
-            <a className="mr-link" href="/#contact">Contact</a>
-            {demo && <Link className="mr-link" href="/marina/tour">Office tour</Link>}
-            <Link className="mr-btn" href="/marina/account">Boater login</Link>
-          </nav>
+          <MarinaNav services={services} demo={demo} />
         </div>
       </header>
       <main>{children}</main>
@@ -69,7 +65,10 @@ export function MarinaShell({ company, children }: { company: MarinaCompany; chi
               <p><Link href="/marina/account">Pay an invoice</Link></p>
             </div>
             <div>
-              <h4>Fuel dock and office</h4>
+              <h4>{services.fuel || services.store ? "At the dock" : "Fuel dock and office"}</h4>
+              {services.fuel && <p><a href="/#fuel">Fuel dock prices</a></p>}
+              {services.store && <p><a href="/#store">Ship store</a></p>}
+              {services.dry && <p><Link href="/marina/account">Dry stack launch</Link></p>}
               <p>Office hours, fuel and pump-out times are posted at the dock office. Call ahead for transient stays.</p>
             </div>
           </div>
