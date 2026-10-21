@@ -133,6 +133,10 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
         <div className="mr-wrap">
           <h2 className="mr-h2">Everything a marina office needs, online</h2>
           <p className="mr-lede">Built for private marinas and public ones: city, county and port authority.</p>
+          {/* Oct 21 (per Mely): link to the office tour on demo marinas */}
+          {/melyos\.io$/i.test(company.domain || "") && (
+            <p style={{ marginTop: 14 }}><Link className="mr-btn dark" href="/marina/tour">Take the office tour</Link></p>
+          )}
           <div className="mr-caps">
             {CAPABILITIES.map(([t, d]) => (
               <div className="mr-cap" key={t}><h4>{t}</h4><p>{d}</p></div>

@@ -23,7 +23,8 @@ export function MarinaShell({ company, children }: { company: MarinaCompany; chi
     <div className="mr-root" style={style}>
       {demo && (
         <div className="mr-demobar">
-          Live demo of a MelyOS marina website. Payments here are simulated, no card is ever charged.
+          Live demo of a MelyOS marina website. Payments here are simulated, no card is ever charged.{" "}
+          <Link href="/marina/tour" style={{ color: "inherit", textDecoration: "underline", fontWeight: 700 }}>Take the office tour →</Link>
         </div>
       )}
       <header className="mr-header">
@@ -37,6 +38,7 @@ export function MarinaShell({ company, children }: { company: MarinaCompany; chi
             <a className="mr-link" href="/#rates">Rates</a>
             <a className="mr-link" href="/#waitlist">Waitlist</a>
             <a className="mr-link" href="/#contact">Contact</a>
+            {demo && <Link className="mr-link" href="/marina/tour">Office tour</Link>}
             <Link className="mr-btn" href="/marina/account">Boater login</Link>
           </nav>
         </div>
