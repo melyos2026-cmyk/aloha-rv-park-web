@@ -6,7 +6,9 @@ const SITE_PASS = process.env.SITE_PASSWORD || "changeme";
 export function middleware(req: NextRequest) {
   // Public marina demo site: open to buyers without the shared staging password.
   const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
-  if (host === "marinademo.melyos.io" || host === "tohodemo.melyos.io") return NextResponse.next();
+  // Oct 21 (per Mely): the RV park demo (demo.melyos.io) is public too, so anyone she sends the link
+  // to can see it and WhatsApp can show the preview. Aloha's own site keeps the password until launch.
+  if (host === "marinademo.melyos.io" || host === "tohodemo.melyos.io" || host === "demo.melyos.io") return NextResponse.next();
 
   const authHeader = req.headers.get("authorization");
 
