@@ -154,7 +154,7 @@ export default function AccountClient() {
         {acct.demo && <div style={{ maxWidth: 260, color: "#bcd5da" }}>Demo: paying here records a test payment. No card is charged.</div>}
       </div>
 
-      <ContractsCard fullName={acct.member.full_name} />
+      <ContractsCard fullName={acct.member.full_name} marinaName={acct.companyName || "the Marina"} />
 
       <div className="mr-card">
         <h3>Invoices</h3>

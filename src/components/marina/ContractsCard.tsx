@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ContractText from "./ContractText";
 
 // Oct 21 (per Mely): contracts the marina sent to this boater, read and signed online.
-type K = { id: string; title: string; body: string; status: string; sent_at: string; signed_at: string | null; signer_name: string | null; start_date: string | null; end_date: string | null; hasPdf: boolean };
+type K = { id: string; title: string; body: string; status: string; sent_at: string; sent_by_name: string | null; signed_at: string | null; signer_name: string | null; start_date: string | null; end_date: string | null; hasPdf: boolean };
 const day = (d: string | null) => (d ? new Date(d.length === 10 ? d + "T12:00:00" : d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
 function SignaturePad({ onChange }: { onChange: (png: string | null) => void }) {
@@ -32,7 +33,7 @@ function SignaturePad({ onChange }: { onChange: (png: string | null) => void }) 
   );
 }
 
-export default function ContractsCard({ fullName }: { fullName: string }) {
+export default function ContractsCard({ fullName, marinaName }: { fullName: string; marinaName: string }) {
   const [list, setList] = useState<K[]>([]);
   const [open, setOpen] = useState<K | null>(null);
   const [name, setName] = useState("");
@@ -89,7 +90,9 @@ export default function ContractsCard({ fullName }: { fullName: string }) {
               <h3 style={{ margin: 0, fontSize: "1.25rem" }}>{open.title}</h3>
               <button type="button" aria-label="Close" onClick={() => setOpen(null)} style={{ background: "none", border: 0, fontSize: 26, lineHeight: 1, cursor: "pointer", color: "#5b6b78" }}>×</button>
             </div>
-            <div style={{ overflowY: "auto", flex: 1, minHeight: 160, border: "1px solid #dbe3e8", borderRadius: 8, padding: "14px 16px", whiteSpace: "pre-wrap", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 15, lineHeight: 1.6 }}>{open.body}</div>
+            <div style={{ overflowY: "auto", flex: 1, minHeight: 160, border: "1px solid #dbe3e8", borderRadius: 8, padding: "20px 22px", background: "#fff" }}>
+              <ContractText body={open.body} owner={fullName} marina={marinaName} sentBy={open.sent_by_name} sentAt={open.sent_at} />
+            </div>
             <div style={{ display: "grid", gap: 10 }}>
               <label style={{ fontSize: 14, fontWeight: 600 }}>Type your full name to sign
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={fullName} autoComplete="name"
