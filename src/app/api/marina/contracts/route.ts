@@ -10,6 +10,30 @@ import { buildSignedContractPdf } from "@/lib/marina/contractPdf";
 // marina's own domain.
 
 const norm = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const todayET = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+function addMonthsISO(d: string, n: number): string {
+  const [y, m, day] = d.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  const x = new Date(Date.UTC(y, m - 1 + n, Math.min(day, last)));
+  return x.toISOString().slice(0, 10);
+}
+
+// Same numbering as the admin's Invoices (INV-YYYY-0001…).
+async function insertInvoice(fields: Record<string, unknown>) {
+  const prefix = `INV-${String(fields.issue_date).slice(0, 4)}-`;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: last } = await supabaseAdmin.from("marina_invoices").select("invoice_number")
+      .eq("company_id", fields.company_id as string).like("invoice_number", `${prefix}%`).order("invoice_number", { ascending: false }).limit(1);
+    const n = last?.[0] ? parseInt(last[0].invoice_number.slice(prefix.length), 10) + 1 : 1;
+    const { data, error } = await supabaseAdmin.from("marina_invoices").insert({ ...fields, invoice_number: prefix + String(n).padStart(4, "0") }).select("id").single();
+    if (!error) return data.id as string;
+    if (error.code === "23505" && error.message.includes("invoice_number")) continue;
+    throw error;
+  }
+  throw new Error("Could not allocate an invoice number.");
+}
+
 const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest("hex");
 
 async function who(req: Request) {
@@ -82,6 +106,33 @@ export async function POST(req: Request) {
     signature_image: sig, viewed_at: k.viewed_at || signedAt.toISOString(),
   }).eq("id", k.id).in("status", ["sent", "viewed"]).select("id").maybeSingle();
   if (!claimed) return NextResponse.json({ error: "This contract is already signed." }, { status: 400 });
+
+  // Oct 21 (per Mely): the contract price becomes the boater's invoice(s), so the
+  // contract, the invoices and the boater's account always show the same amount.
+  if (Number(k.amount) > 0) {
+    try {
+      const { data: slip } = k.slip_id ? await supabaseAdmin.from("marina_slips").select("slip_name").eq("id", k.slip_id).maybeSingle() : { data: null };
+      const n = k.billing === "monthly" ? Math.max(1, Number(k.installments) || 1) : 1;
+      const total = r2(Number(k.amount));
+      const each = Math.floor((total / n) * 100) / 100;
+      const today = todayET();
+      const first = k.start_date && k.start_date > today ? k.start_date : today;
+      const ids: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const amt = i === n - 1 ? r2(total - each * (n - 1)) : each;
+        const due = i === 0 ? first : addMonthsISO(k.start_date || first, i);
+        ids.push(await insertInvoice({
+          company_id: w.company.id, category: "slip_fee", member_id: w.memberId, boat_id: k.boat_id, slip_id: k.slip_id, contract_id: k.id,
+          customer_name: member.full_name, customer_email: member.email,
+          description: `${slip ? `Slip ${slip.slip_name} — ` : ""}${k.title.replace(/\s+—\s+Slip.*$/, "")}${n > 1 ? ` (payment ${i + 1} of ${n})` : ""}`,
+          amount: amt, issue_date: today, due_date: due < today ? today : due,
+        }));
+      }
+      await supabaseAdmin.from("marina_contracts").update({ invoice_ids: ids }).eq("id", k.id);
+    } catch (e: any) {
+      console.error("contract invoices failed:", e?.message);
+    }
+  }
 
   // Signed PDF → private bucket → the boat's Documents.
   const company: any = w.company;
