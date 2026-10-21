@@ -1,3 +1,4 @@
+import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
@@ -103,6 +104,8 @@ export async function POST(req: Request) {
     const totalChargeAmount = feeAmount * validOccupants.length;
     const connectSplit = await resolveConnectSplit(resident.company_id, totalChargeAmount, alohaShare);
 
+    // Oct 21 (per Mely): no real payments on demo companies.
+    { const demoBlocked = await demoPaymentBlock(resident.company_id); if (demoBlocked) return demoBlocked; }
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
