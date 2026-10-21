@@ -19,6 +19,22 @@ export async function POST(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
 
+  // Oct 21 (per Mely — security hardening): one IP trying many different accounts
+  // (password spraying) is paused after 30 failed sign-ins in 15 minutes.
+  // High enough that a shared office or RV-park Wi-Fi never trips it.
+  if (ip) {
+    const ipSince = new Date(Date.now() - 1000 * 60 * 15).toISOString();
+    const { count: ipFails } = await supabaseAdmin
+      .from("resident_login_attempts")
+      .select("id", { count: "exact", head: true })
+      .eq("ip", ip)
+      .eq("success", false)
+      .gte("created_at", ipSince);
+    if ((ipFails || 0) >= 30) {
+      return NextResponse.json({ error: "Too many sign-in attempts from this network. Please wait 15 minutes and try again." }, { status: 429 });
+    }
+  }
+
   const { data: resident, error } = await supabaseAdmin
     .from("resident_accounts")
     .select("id, full_name, company_id, portal_password, portal_enabled, portal_access_ends_at")

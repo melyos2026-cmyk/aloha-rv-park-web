@@ -71,6 +71,16 @@ export async function POST(req: NextRequest) {
     if (denied) return denied;
   }
 
+  // Oct 21 (per Mely — security hardening): at most one reminder per invoice per hour,
+  // so a resident is never flooded (double clicks, "Remind all late" run twice).
+  // Skipped quietly if the column doesn't exist yet.
+  const { data: last } = await supabaseAdmin.from("resident_invoices").select("last_reminder_sent_at").eq("id", invoice.id).maybeSingle();
+  const lastAt = (last as any)?.last_reminder_sent_at ? new Date((last as any).last_reminder_sent_at).getTime() : 0;
+  if (lastAt && Date.now() - lastAt < 60 * 60 * 1000) {
+    const mins = Math.max(1, Math.round((Date.now() - lastAt) / 60000));
+    return NextResponse.json({ error: `A reminder for this invoice was already sent ${mins} minute${mins === 1 ? "" : "s"} ago. You can send another one in an hour.` }, { status: 429, headers: CORS_HEADERS });
+  }
+
   const dueDateStr = String(invoice.due_date).split("T")[0];
   const daysLate = Math.max(
     0,
@@ -86,6 +96,7 @@ export async function POST(req: NextRequest) {
       daysLate,
       dueDate: dueDateStr,
     });
+    await supabaseAdmin.from("resident_invoices").update({ last_reminder_sent_at: new Date().toISOString() }).eq("id", invoice.id).then(() => {}, () => {});
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (err: any) {
     console.error("send-payment-reminder error:", err);

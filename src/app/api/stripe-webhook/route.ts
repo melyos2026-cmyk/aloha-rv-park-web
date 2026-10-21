@@ -10,6 +10,7 @@ import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { recordMarinaOnlinePayment } from "@/lib/marina/payments";
+import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -25,7 +26,32 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
 // so real production payments are never at risk from this change.
 const sandboxWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET_SANDBOX as string | undefined;
 
+// Oct 21 (per Mely — security hardening): every event is claimed once before it is
+// processed, so a retried or replayed Stripe event never records a payment twice.
 export async function POST(req: Request) {
+  const copy = req.clone();
+  const raw = await req.text();
+  const sig = req.headers.get("stripe-signature") as string;
+  let ev: Stripe.Event | null = null;
+  for (const secret of [webhookSecret, sandboxWebhookSecret]) {
+    if (!secret || ev) continue;
+    try { ev = stripe.webhooks.constructEvent(raw, sig, secret); } catch { /* try the next secret */ }
+  }
+  if (!ev) return handleWebhook(copy); // invalid signature: the handler answers 400 as before
+  if ((await claimStripeEvent(ev.id, "web")) === "duplicate") {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+  try {
+    const res = await handleWebhook(copy);
+    await finishStripeEvent(ev.id, "web", res.status < 500);
+    return res;
+  } catch (e) {
+    await finishStripeEvent(ev.id, "web", false);
+    throw e;
+  }
+}
+
+async function handleWebhook(req: Request) {
   const body = await req.text();
   const signature = req.headers.get("stripe-signature") as string;
 
