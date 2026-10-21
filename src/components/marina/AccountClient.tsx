@@ -198,7 +198,7 @@ export default function AccountClient() {
         {fromLaunch && acct.boats.length > 0 && !acct.boats.some((b) => b.dry) && (
           <p className="mr-note" style={{ marginTop: 0 }}>Dry stack launch is for boats kept on a rack in dry storage. Your boat stays in the water, so there is nothing to request. Ask the office if you would like dry storage.</p>
         )}
-        {acct.boats.some((b) => b.dry) && <p className="mr-note" style={{ marginTop: 0 }}>Boats in dry storage: tap &quot;Put my boat in the water&quot; and the dock team will have it ready at your time.</p>}
+        {acct.boats.some((b) => b.dry) && <p className="mr-note" style={{ marginTop: 0 }}>Boats in dry storage: tap the button under the boat you want and the dock team will have it in the water at your time.</p>}
         {acct.boats.length === 0 ? <p className="mr-note">No boats on file.</p> : acct.boats.map((b) => (
           <div key={b.id}>
             <div className="mr-inv">
@@ -210,7 +210,7 @@ export default function AccountClient() {
                 {b.launch ? (
                   <div className="mr-ok" role="status" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                     <span>
-                      {b.launch.status === "in_water" ? "Your boat is in the water." : b.launch.status === "confirmed" ? "Launch confirmed" : "Launch requested"}
+                      {b.launch.status === "in_water" ? `${b.boat_name} is in the water.` : b.launch.status === "confirmed" ? `${b.boat_name}: launch confirmed` : `${b.boat_name}: launch requested`}
                       {b.launch.status !== "in_water" && ` for ${new Date(b.launch.launch_at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`}
                       {b.launch.return_at && ` · back by ${new Date(b.launch.return_at).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" })}`}
                     </span>
@@ -220,7 +220,7 @@ export default function AccountClient() {
                   </div>
                 ) : launchFor === b.id ? (
                   <form onSubmit={(e) => requestLaunch(e, b.id)} style={{ display: "grid", gap: 8 }}>
-                    <label className="mr-note" style={{ margin: 0 }}>Put my boat in the water at
+                    <label className="mr-note" style={{ margin: 0 }}>Put <b>{b.boat_name}</b> in the water at
                       <input type="datetime-local" required min={nowLocal()} value={launchAt} onChange={(e) => setLaunchAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
                     </label>
                     <label className="mr-note" style={{ margin: 0 }}>I&apos;ll be back by (optional)
@@ -232,7 +232,7 @@ export default function AccountClient() {
                     </div>
                   </form>
                 ) : (
-                  <button className="mr-btn" onClick={() => { setLaunchFor(b.id); setLaunchAt(""); setReturnAt(""); }}>Put my boat in the water</button>
+                  <button className="mr-btn" onClick={() => { setLaunchFor(b.id); setLaunchAt(""); setReturnAt(""); }}>Put {b.boat_name} in the water</button>
                 )}
               </div>
             )}
