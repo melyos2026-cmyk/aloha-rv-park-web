@@ -123,6 +123,7 @@ export async function POST(req: Request) {
       const today = todayET();
       const first = k.start_date && k.start_date > today ? k.start_date : today;
       const base = { company_id: w.company.id, member_id: w.memberId, boat_id: k.boat_id, slip_id: k.slip_id, contract_id: k.id, customer_name: member.full_name, customer_email: member.email, issue_date: today };
+      const renewalTag = k.renewal_id ? { renewal_id: k.renewal_id } : {};
       const label = `${slip ? `Slip ${slip.slip_name} — ` : ""}${k.title.replace(/\s+—\s+Slip.*$/, "")}`;
       const ids: string[] = [];
       for (let i = 0; i < n; i++) {
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
         if (n > 1 && i === 0) for (const x of oneTime) { amt += Number(x.amount); parts.push(x.name); }
         const due = i === 0 ? first : addMonthsISO(k.start_date || first, i);
         ids.push(await insertInvoice({
-          ...base, category: "slip_fee", amount: r2(amt), due_date: due < today ? today : due,
+          ...base, ...(i === 0 ? renewalTag : {}), category: "slip_fee", amount: r2(amt), due_date: due < today ? today : due,
           description: `${label}${n > 1 ? ` (payment ${i + 1} of ${n})` : ""}${parts.length ? ` · includes ${parts.join(", ")}` : ""}`,
         }));
       }
@@ -141,6 +142,8 @@ export async function POST(req: Request) {
         ids.push(await insertInvoice({ ...base, category: "security_deposit", amount: r2(Number(k.deposit)), due_date: first, description: `Security deposit — ${label}` }));
       }
       await supabaseAdmin.from("marina_contracts").update({ invoice_ids: ids }).eq("id", k.id);
+      // A signed renewal contract = the owner renewed.
+      if (k.renewal_id) await supabaseAdmin.from("marina_renewals").update({ status: "renewed", renewed_at: new Date().toISOString() }).eq("id", k.renewal_id).eq("company_id", w.company.id);
     } catch (e: any) {
       console.error("contract invoices failed:", e?.message);
     }
