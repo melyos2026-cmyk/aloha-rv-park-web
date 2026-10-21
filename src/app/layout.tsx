@@ -58,13 +58,14 @@ export async function generateMetadata(): Promise<Metadata> {
     : (() => {
         // Oct 21 (per Mely): link previews (WhatsApp, iMessage, Facebook) for RV parks
         // show the company's own logo; Aloha uses its logo file.
-        const image = company?.logo_url || (isAloha ? `https://${host}/aloha-logo.png` : null);
+        // Small JPEG made from the logo (WhatsApp skips big images).
+        const image = company?.logo_url || isAloha ? `https://${host}/api/share-image` : null;
         if (!company && !isAloha) return {};
         const title = company?.company_name || "Aloha RV Park – Kissimmee, Florida";
         const description = company?.seo_description || `${title}: RV sites, rates and online reservations.`;
         return {
           metadataBase: new URL(`https://${host}`),
-          openGraph: { title, description, url: `https://${host}`, siteName: title, type: "website" as const, ...(image ? { images: [{ url: image, alt: title }] } : {}) },
+          openGraph: { title, description, url: `https://${host}`, siteName: title, type: "website" as const, ...(image ? { images: [{ url: image, width: 1200, height: 630, alt: title, type: "image/jpeg" }] } : {}) },
           twitter: { card: (image ? "summary" : "summary") as "summary", title, description, ...(image ? { images: [image] } : {}) },
         };
       })();
