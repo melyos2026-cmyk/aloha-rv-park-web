@@ -126,7 +126,7 @@ async function handle(req: Request) {
     const { data: storeRows } = await supabaseAdmin.from("marina_store_items").select("name, price, stock")
       .eq("company_id", marina.id).eq("active", true).order("sort").limit(60);
     const storeLine = storeRows && storeRows.length
-      ? `\nShip store items: ${storeRows.map((i: any) => `${i.name} $${Number(i.price).toFixed(2)}${i.stock !== null && Number(i.stock) <= 0 ? " (sold out right now)" : ""}`).join("; ")}. Prices before sales tax where it applies. Bought at the ship store counter.`
+      ? `\nShip store items: ${storeRows.map((i: any) => `${i.name} $${Number(i.price).toFixed(2)}${i.stock !== null && Number(i.stock) <= 0 ? " (sold out right now)" : ""}`).join("; ")}. Prices before sales tax where it applies. Bought at the ship store counter.${demo ? " These are this demo marina's sample store prices: you may quote them as an example of what a real marina's Mely answers (they are not MelyOS prices)." : ""}`
       : "";
     marinaFacts = `${fuelLine}${storeLine}\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can reserve an open slip online with the Reserve online button on the slip map, or join the waitlist for full ones. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
   }
