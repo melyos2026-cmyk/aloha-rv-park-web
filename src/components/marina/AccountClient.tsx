@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import ContractsCard from "./ContractsCard";
 import type { AccountData } from "@/lib/marina/data";
 
 type Account = AccountData & { demo: boolean; companyName: string };
@@ -152,6 +153,8 @@ export default function AccountClient() {
         <div><div>Balance due</div><div className="big">{money(acct.totalDue)}</div></div>
         {acct.demo && <div style={{ maxWidth: 260, color: "#bcd5da" }}>Demo: paying here records a test payment. No card is charged.</div>}
       </div>
+
+      <ContractsCard fullName={acct.member.full_name} />
 
       <div className="mr-card">
         <h3>Invoices</h3>
