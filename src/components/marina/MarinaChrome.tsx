@@ -73,8 +73,8 @@ export async function MarinaShell({ company, children }: { company: MarinaCompan
             </div>
           </div>
           <small>
-            © {new Date().getFullYear()} {company.company_name}. Website and boater accounts by{" "}
-            <a href="https://melyos.io">MelyOS</a>.
+            © {new Date().getFullYear()} {company.company_name}. All rights reserved.
+            <span className="mr-powered">Powered by <a href="https://melyos.io" target="_blank" rel="noopener">MelyOS.io</a></span>
           </small>
         </div>
       </footer>

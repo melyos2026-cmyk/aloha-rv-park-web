@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
-import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES, loadFuelPrices, loadStoreItems } from "@/lib/marina/data";
+import { loadPublicSlips, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems } from "@/lib/marina/data";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -20,8 +20,13 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
   const [slips, fuel, store] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id)]);
   const storeGroups = store.reduce<Record<string, typeof store>>((g, i) => { (g[i.category] ||= []).push(i); return g; }, {});
   const open = slips.filter((s) => s.status === "available").length;
-  const rates = summarizeRates(slips);
-  const rateRows = RATE_TYPES.filter((t) => rates[t]);
+  const rates = ratesBySlipType(slips);
+  const TYPE_LABEL = { wet: "Wet slips", lift: "Boat lifts", dry: "Dry storage" } as const;
+  const STAY_NOTE: Record<string, string> = { annual: "per year", seasonal: "per season", monthly: "per month", transient_weekly: "per week", transient_daily: "per night" };
+  const anyPerFoot = rates.rows.some((r) => Object.values(r.cells).some((c) => c?.perFoot));
+  const exRow = rates.rows.find((r) => r.type === "monthly") || rates.rows[0];
+  const exType = exRow ? rates.types.find((t) => exRow.cells[t]?.perFoot && exRow.cells[t]?.visitor != null) : undefined;
+  const ex = exRow && exType ? { r: exRow.type, t: exType, pf: exRow.cells[exType]!.visitor as number } : null;
   const longest = Math.max(0, ...slips.map((s) => s.length_ft || 0));
   const headline = company.hero_headline || `Your boat's home on the water.`;
   const sub =
@@ -65,23 +70,34 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
       <section className="mr-section alt" id="rates">
         <div className="mr-wrap">
           <h2 className="mr-h2">Rates</h2>
-          <p className="mr-lede">Starting prices by stay length. Final price depends on slip size.</p>
-          {rateRows.length ? (
-            <table className="mr-table">
-              <thead><tr><th>Stay</th><th>Members</th><th>Visitors</th></tr></thead>
-              <tbody>
-                {rateRows.map((t) => (
-                  <tr key={t}>
-                    <td>{RATE_LABEL[t]}</td>
-                    <td className="num">{money(rates[t]!.resident)}</td>
-                    <td className="num">{money(rates[t]!.non_resident)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <p className="mr-lede">{anyPerFoot ? "Priced per foot of boat length, by type of space. Members pay the lower rate." : "Starting prices by stay length and type of space."}</p>
+          {rates.rows.length ? (
+            <div className="mr-table-scroll">
+              <table className="mr-table mr-rates">
+                <thead><tr><th>Stay</th>{rates.types.map((t) => <th key={t}>{TYPE_LABEL[t]}</th>)}</tr></thead>
+                <tbody>
+                  {rates.rows.map((r) => (
+                    <tr key={r.type}>
+                      <td>{RATE_LABEL[r.type]}<span className="mr-rate-sub">{STAY_NOTE[r.type]}</span></td>
+                      {rates.types.map((t) => {
+                        const c = r.cells[t];
+                        if (!c || c.visitor == null) return <td key={t} className="num mr-rate-none">—</td>;
+                        return (
+                          <td key={t} className="num">
+                            {c.perFoot ? <>{money(c.visitor)}<small> /ft</small></> : <><small>from </small>{money(c.visitor)}</>}
+                            {c.member != null && c.member !== c.visitor && <span className="mr-rate-sub">Members {money(c.member)}{c.perFoot ? " /ft" : ""}</span>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <p className="mr-note">Rates are posted at the marina office.</p>
           )}
+          {ex && <p className="mr-note">Example: a 30 ft boat in {TYPE_LABEL[ex.t].toLowerCase()} at {money(ex.pf)} /ft {STAY_NOTE[ex.r]} pays {money(Math.round(ex.pf * 30 * 100) / 100)} {STAY_NOTE[ex.r]}. Tap a slip above to see its exact price.</p>}
           <p className="mr-note">Card payments include a small processing fee shown before you pay.</p>
         </div>
       </section>

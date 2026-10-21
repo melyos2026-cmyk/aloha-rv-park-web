@@ -407,3 +407,12 @@
 .mr-dd-head { font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: #7a8a96; font-weight: 700; padding: 10px 12px 2px; }
 .mr-mob { display: none; }
 @media (max-width: 760px) { .mr-desk { display: none !important; } .mr-mob { display: block; margin-right: 12px; } }
+
+/* Oct 21: rates by slip type, price per foot */
+.mr-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mr-rates td small { font-size: .78em; color: var(--mr-muted, #64748b); font-weight: 500; }
+.mr-rate-sub { display: block; font-size: .8rem; color: var(--mr-muted, #64748b); font-weight: 500; margin-top: 2px; }
+.mr-rate-none { color: #94a3b8; }
+@media (max-width: 640px) { .mr-rates th, .mr-rates td { padding: 12px 10px; font-size: .92rem; } }
+.mr-powered { display: block; margin-top: 6px; letter-spacing: .02em; }
+.mr-powered a { font-weight: 700; color: #39d5ee; text-decoration: none; }

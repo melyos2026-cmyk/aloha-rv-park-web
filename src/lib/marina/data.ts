@@ -312,3 +312,34 @@ export async function loadMarinaServices(companyId: string): Promise<{ fuel: boo
   ]);
   return { fuel: !f.error && (f.count || 0) > 0, store: !s.error && (s.count || 0) > 0, dry: !d.error && (d.count || 0) > 0 };
 }
+
+// Oct 21 (per Mely): the Rates table shows the price per foot for each slip type, straight
+// from Slips & Rates in the admin (the same numbers the slips and contracts use).
+// When every slip of a type has the same price per foot it shows "$14.00 /ft";
+// if the marina priced slips individually, it shows the lowest total as "from $308".
+export type RateCell = { perFoot: boolean; visitor: number | null; member: number | null };
+export type RatesByType = { types: SlipType[]; rows: { type: RateType; cells: Partial<Record<SlipType, RateCell>> }[] };
+
+export function ratesBySlipType(slips: PublicSlip[]): RatesByType {
+  const order: SlipType[] = ["wet", "lift", "dry"];
+  const types = order.filter((t) => slips.some((s) => s.slip_type === t && Object.keys(s.rates).length));
+  const rows: RatesByType["rows"] = [];
+  for (const type of RATE_TYPES) {
+    const cells: Partial<Record<SlipType, RateCell>> = {};
+    for (const st of types) {
+      const list = slips.filter((s) => s.slip_type === st && s.rates[type]);
+      if (!list.length) continue;
+      const pick = (k: "non_resident" | "resident") => {
+        const tot = list.map((s) => s.rates[type]![k]).filter((v): v is number => v !== null);
+        const pf = list.filter((s) => s.length_ft && s.rates[type]![k] !== null).map((s) => s.rates[type]![k]! / s.length_ft!);
+        const same = pf.length === list.length && pf.length > 0 && Math.max(...pf) - Math.min(...pf) < 0.011;
+        return { same, perFoot: same ? Math.round(pf[0] * 100) / 100 : null, from: tot.length ? Math.min(...tot) : null };
+      };
+      const v = pick("non_resident"), m = pick("resident");
+      const perFoot = v.same && (m.same || m.from === null);
+      cells[st] = perFoot ? { perFoot, visitor: v.perFoot, member: m.perFoot } : { perFoot: false, visitor: v.from, member: m.from };
+    }
+    if (Object.keys(cells).length) rows.push({ type, cells });
+  }
+  return { types, rows };
+}
