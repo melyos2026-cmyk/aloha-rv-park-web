@@ -150,7 +150,12 @@ export type AccountInvoice = {
 
 export type AccountData = {
   member: { id: string; full_name: string; email: string | null };
-  boats: { id: string; boat_name: string; make_model: string | null; length_ft: number | null; slip_name: string | null; dock: string | null }[];
+  boats: {
+    id: string; boat_name: string; make_model: string | null; length_ft: number | null; slip_name: string | null; dock: string | null;
+    // Oct 21 (per Mely — Dry Stack): rack-stored boats can be requested into the water from the portal.
+    dry: boolean;
+    launch: { id: string; launch_at: string; return_at: string | null; status: string } | null;
+  }[];
   invoices: AccountInvoice[];
   payments: { id: string; invoice_number: string; amount: number; method: string; received_at: string }[];
   totalDue: number;
@@ -181,8 +186,8 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
 
   const slipIds = [...new Set((boats || []).map((b) => b.slip_id).filter(Boolean))] as string[];
   const { data: slips } = slipIds.length
-    ? await supabaseAdmin.from("marina_slips").select("id, slip_name, dock").eq("company_id", companyId).in("id", slipIds)
-    : { data: [] as { id: string; slip_name: string; dock: string | null }[] };
+    ? await supabaseAdmin.from("marina_slips").select("id, slip_name, dock, slip_type").eq("company_id", companyId).in("id", slipIds)
+    : { data: [] as { id: string; slip_name: string; dock: string | null; slip_type: string | null }[] };
   const slipById = new Map((slips || []).map((s) => [s.id, s]));
 
   const invoiceIds = (invoices || []).map((i) => i.id);
@@ -223,6 +228,20 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
 
   const numberById = new Map(list.map((i) => [i.id, i.invoice_number]));
 
+  // Open dry-stack trips for this boater's boats (table may not exist yet on older databases).
+  const launchByBoat = new Map<string, { id: string; launch_at: string; return_at: string | null; status: string }>();
+  const boatIds = (boats || []).map((b) => b.id);
+  if (boatIds.length) {
+    const { data: trips, error: tripErr } = await supabaseAdmin
+      .from("marina_launch_requests")
+      .select("id, boat_id, launch_at, return_at, status")
+      .eq("company_id", companyId)
+      .in("boat_id", boatIds)
+      .in("status", ["requested", "confirmed", "in_water"])
+      .order("launch_at");
+    if (!tripErr) for (const t of trips || []) if (!launchByBoat.has(t.boat_id)) launchByBoat.set(t.boat_id, { id: t.id, launch_at: t.launch_at, return_at: t.return_at, status: t.status });
+  }
+
   return {
     member: { id: member.id, full_name: member.full_name, email: member.email },
     boats: (boats || []).map((b) => {
@@ -234,6 +253,8 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
         length_ft: num(b.length_ft),
         slip_name: s?.slip_name || null,
         dock: s?.dock || null,
+        dry: (s as any)?.slip_type === "dry",
+        launch: launchByBoat.get(b.id) || null,
       };
     }),
     invoices: list.filter((i) => i.status === "open"),
@@ -248,4 +269,19 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
       })),
     totalDue: round2(list.reduce((s, i) => s + i.balance, 0)),
   };
+}
+
+
+// Oct 21 (per Mely — Fuel Dock): fuel prices the marina chose to show on its website.
+// Returns [] if the marina has none (or the table does not exist yet).
+export async function loadFuelPrices(companyId: string): Promise<{ label: string; price_per_gallon: number; tax_included: boolean }[]> {
+  const { data, error } = await supabaseAdmin
+    .from("marina_fuel_prices")
+    .select("label, price_per_gallon, tax_included")
+    .eq("company_id", companyId)
+    .eq("active", true)
+    .eq("show_on_website", true)
+    .order("sort");
+  if (error || !data) return [];
+  return data.map((f) => ({ label: f.label, price_per_gallon: Number(f.price_per_gallon), tax_included: !!f.tax_included }));
 }

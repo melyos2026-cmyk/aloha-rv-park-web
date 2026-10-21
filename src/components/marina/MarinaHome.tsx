@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
-import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES } from "@/lib/marina/data";
+import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES, loadFuelPrices } from "@/lib/marina/data";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -16,7 +16,7 @@ const CAPABILITIES: [string, string][] = [
 ];
 
 export default async function MarinaHome({ company }: { company: MarinaCompany }) {
-  const slips = await loadPublicSlips(company.id);
+  const [slips, fuel] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id)]);
   const open = slips.filter((s) => s.status === "available").length;
   const rates = summarizeRates(slips);
   const rateRows = RATE_TYPES.filter((t) => rates[t]);
@@ -84,6 +84,27 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
         </div>
       </section>
 
+      {/* Oct 21 (per Mely — Fuel Dock): today's fuel prices, straight from the admin. */}
+      {fuel.length > 0 && (
+        <section className="mr-section" id="fuel">
+          <div className="mr-wrap">
+            <h2 className="mr-h2">Fuel dock</h2>
+            <p className="mr-lede">Today&apos;s prices per gallon. Members can charge fuel to their account.</p>
+            <table className="mr-table">
+              <thead><tr><th>Fuel</th><th>Price per gallon</th></tr></thead>
+              <tbody>
+                {fuel.map((f) => (
+                  <tr key={f.label}>
+                    <td>{f.label}</td>
+                    <td className="num">${f.price_per_gallon.toFixed(3)}{f.tax_included ? " (tax incl.)" : " + tax"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section className="mr-section">
         <div className="mr-wrap mr-split">
           <div>
@@ -93,6 +114,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
               <li>See what you owe and what you have paid</li>
               <li>Pay a dockage or membership invoice in a few taps</li>
               <li>Keep your boats and slip on file</li>
+              <li>Dry stack: ask for your boat to be put in the water</li>
             </ul>
             <p style={{ marginTop: 24 }}><Link className="mr-btn dark" href="/marina/account">Open my account</Link></p>
           </div>

@@ -16,6 +16,10 @@ export default function AccountClient() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Oct 21 (per Mely — Dry Stack): "put my boat in the water" request form.
+  const [launchFor, setLaunchFor] = useState<string | null>(null);
+  const [launchAt, setLaunchAt] = useState("");
+  const [returnAt, setReturnAt] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/marina/account", { cache: "no-store" });
@@ -45,6 +49,31 @@ export default function AccountClient() {
       setDemoCode(d.demoCode || "");
       setStage("code");
     } catch (err: any) { setError(err.message); }
+    setBusy("");
+  }
+
+  async function requestLaunch(e: React.FormEvent, boatId: string) {
+    e.preventDefault();
+    setError(""); setNotice(""); setBusy("l" + boatId);
+    try {
+      await post("/api/marina/launch", {
+        boat_id: boatId,
+        launch_at: new Date(launchAt).toISOString(),
+        return_at: returnAt ? new Date(returnAt).toISOString() : null,
+      });
+      setLaunchFor(null);
+      setNotice("Request sent. The dock team will have your boat ready.");
+      await load();
+    } catch (err: any) { setError(err.message); }
+    setBusy("");
+  }
+
+  async function cancelLaunch(id: string, boatId: string) {
+    setError(""); setBusy("l" + boatId);
+    const res = await fetch("/api/marina/launch", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) setError(d.error || "Could not cancel.");
+    else { setNotice("Launch request cancelled."); await load(); }
     setBusy("");
   }
 
@@ -143,9 +172,42 @@ export default function AccountClient() {
       <div className="mr-card">
         <h3>My boats</h3>
         {acct.boats.length === 0 ? <p className="mr-note">No boats on file.</p> : acct.boats.map((b) => (
-          <div className="mr-inv" key={b.id}>
-            <div>{b.boat_name}<small>{[b.make_model, b.length_ft ? `${b.length_ft} ft` : ""].filter(Boolean).join(" · ")}</small></div>
-            <span>{b.slip_name ? `${b.dock ? b.dock + " " : ""}Slip ${b.slip_name}` : "No slip assigned"}</span>
+          <div key={b.id}>
+            <div className="mr-inv">
+              <div>{b.boat_name}<small>{[b.make_model, b.length_ft ? `${b.length_ft} ft` : ""].filter(Boolean).join(" · ")}</small></div>
+              <span>{b.slip_name ? `${b.dock ? b.dock + " " : ""}${b.dry ? "Rack" : "Slip"} ${b.slip_name}` : "No slip assigned"}</span>
+            </div>
+            {b.dry && (
+              <div style={{ padding: "4px 0 12px" }}>
+                {b.launch ? (
+                  <div className="mr-ok" role="status" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <span>
+                      {b.launch.status === "in_water" ? "Your boat is in the water." : b.launch.status === "confirmed" ? "Launch confirmed" : "Launch requested"}
+                      {b.launch.status !== "in_water" && ` for ${new Date(b.launch.launch_at).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`}
+                      {b.launch.return_at && ` · back by ${new Date(b.launch.return_at).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" })}`}
+                    </span>
+                    {b.launch.status !== "in_water" && (
+                      <button className="mr-btn ghost" disabled={busy === "l" + b.id} onClick={() => cancelLaunch(b.launch!.id, b.id)}>Cancel request</button>
+                    )}
+                  </div>
+                ) : launchFor === b.id ? (
+                  <form onSubmit={(e) => requestLaunch(e, b.id)} style={{ display: "grid", gap: 8 }}>
+                    <label className="mr-note" style={{ margin: 0 }}>Put my boat in the water at
+                      <input type="datetime-local" required value={launchAt} onChange={(e) => setLaunchAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+                    </label>
+                    <label className="mr-note" style={{ margin: 0 }}>I&apos;ll be back by (optional)
+                      <input type="datetime-local" value={returnAt} onChange={(e) => setReturnAt(e.target.value)} style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }} />
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="mr-btn" disabled={busy === "l" + b.id}>{busy === "l" + b.id ? "Sending…" : "Send request"}</button>
+                      <button type="button" className="mr-btn ghost" onClick={() => setLaunchFor(null)}>Cancel</button>
+                    </div>
+                  </form>
+                ) : (
+                  <button className="mr-btn" onClick={() => { setLaunchFor(b.id); setLaunchAt(""); setReturnAt(""); }}>Put my boat in the water</button>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>
