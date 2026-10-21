@@ -68,7 +68,7 @@ export async function MarinaShell({ company, children }: { company: MarinaCompan
               <h4>{services.fuel || services.store ? "At the dock" : "Fuel dock and office"}</h4>
               {services.fuel && <p><a href="/#fuel">Fuel dock prices</a></p>}
               {services.store && <p><a href="/#store">Ship store</a></p>}
-              {services.dry && <p><Link href="/marina/account">Dry stack launch</Link></p>}
+              {services.dry && <p><Link href="/marina/account#launch">Dry stack launch</Link></p>}
               <p>Office hours, fuel and pump-out times are posted at the dock office. Call ahead for transient stays.</p>
             </div>
           </div>

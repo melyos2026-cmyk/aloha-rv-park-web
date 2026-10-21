@@ -29,6 +29,21 @@ export default function AccountClient() {
     setChecking(false);
   }, []);
 
+  // Oct 21 (per Mely): "Dry stack launch" in the menu opens /marina/account#launch,
+  // so jump straight to the boats card once the account has loaded.
+  const [fromLaunch, setFromLaunch] = useState(false);
+  useEffect(() => {
+    if (!acct || typeof window === "undefined") return;
+    const go = () => {
+      if (window.location.hash !== "#launch") return;
+      setFromLaunch(true);
+      setTimeout(() => document.getElementById("launch")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    };
+    go();
+    window.addEventListener("hashchange", go);
+    return () => window.removeEventListener("hashchange", go);
+  }, [acct]);
+
   useEffect(() => {
     load();
     const p = new URLSearchParams(window.location.search).get("paid");
@@ -175,8 +190,12 @@ export default function AccountClient() {
         ))}
       </div>
 
-      <div className="mr-card">
+      <div className="mr-card" id="launch" style={{ scrollMarginTop: 110 }}>
         <h3>My boats</h3>
+        {fromLaunch && acct.boats.length > 0 && !acct.boats.some((b) => b.dry) && (
+          <p className="mr-note" style={{ marginTop: 0 }}>Dry stack launch is for boats kept on a rack in dry storage. Your boat stays in the water, so there is nothing to request. Ask the office if you would like dry storage.</p>
+        )}
+        {acct.boats.some((b) => b.dry) && <p className="mr-note" style={{ marginTop: 0 }}>Boats in dry storage: tap &quot;Put my boat in the water&quot; and the dock team will have it ready at your time.</p>}
         {acct.boats.length === 0 ? <p className="mr-note">No boats on file.</p> : acct.boats.map((b) => (
           <div key={b.id}>
             <div className="mr-inv">
