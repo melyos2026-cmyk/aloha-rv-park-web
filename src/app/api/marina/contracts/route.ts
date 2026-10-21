@@ -109,24 +109,36 @@ export async function POST(req: Request) {
 
   // Oct 21 (per Mely): the contract price becomes the boater's invoice(s), so the
   // contract, the invoices and the boater's account always show the same amount.
+  // Extras chosen on the contract (Fee Settings) go on the same invoices; the security
+  // deposit gets its own invoice so it can be refunded at the end of the term.
   if (Number(k.amount) > 0) {
     try {
       const { data: slip } = k.slip_id ? await supabaseAdmin.from("marina_slips").select("slip_name").eq("id", k.slip_id).maybeSingle() : { data: null };
+      const extras: { name: string; amount: number; per: string; total: number }[] = Array.isArray(k.extras) ? k.extras : [];
+      const monthlyExtras = extras.filter((x) => x.per === "month");
+      const oneTime = extras.filter((x) => x.per !== "month");
       const n = k.billing === "monthly" ? Math.max(1, Number(k.installments) || 1) : 1;
       const total = r2(Number(k.amount));
       const each = Math.floor((total / n) * 100) / 100;
       const today = todayET();
       const first = k.start_date && k.start_date > today ? k.start_date : today;
+      const base = { company_id: w.company.id, member_id: w.memberId, boat_id: k.boat_id, slip_id: k.slip_id, contract_id: k.id, customer_name: member.full_name, customer_email: member.email, issue_date: today };
+      const label = `${slip ? `Slip ${slip.slip_name} — ` : ""}${k.title.replace(/\s+—\s+Slip.*$/, "")}`;
       const ids: string[] = [];
       for (let i = 0; i < n; i++) {
-        const amt = i === n - 1 ? r2(total - each * (n - 1)) : each;
+        let amt = i === n - 1 ? r2(total - each * (n - 1)) : each;
+        const parts: string[] = [];
+        if (n > 1) { for (const x of monthlyExtras) { amt += Number(x.amount); parts.push(x.name); } }
+        else { for (const x of extras) { amt += Number(x.total); parts.push(x.name); } }
+        if (n > 1 && i === 0) for (const x of oneTime) { amt += Number(x.amount); parts.push(x.name); }
         const due = i === 0 ? first : addMonthsISO(k.start_date || first, i);
         ids.push(await insertInvoice({
-          company_id: w.company.id, category: "slip_fee", member_id: w.memberId, boat_id: k.boat_id, slip_id: k.slip_id, contract_id: k.id,
-          customer_name: member.full_name, customer_email: member.email,
-          description: `${slip ? `Slip ${slip.slip_name} — ` : ""}${k.title.replace(/\s+—\s+Slip.*$/, "")}${n > 1 ? ` (payment ${i + 1} of ${n})` : ""}`,
-          amount: amt, issue_date: today, due_date: due < today ? today : due,
+          ...base, category: "slip_fee", amount: r2(amt), due_date: due < today ? today : due,
+          description: `${label}${n > 1 ? ` (payment ${i + 1} of ${n})` : ""}${parts.length ? ` · includes ${parts.join(", ")}` : ""}`,
         }));
+      }
+      if (Number(k.deposit) > 0) {
+        ids.push(await insertInvoice({ ...base, category: "security_deposit", amount: r2(Number(k.deposit)), due_date: first, description: `Security deposit — ${label}` }));
       }
       await supabaseAdmin.from("marina_contracts").update({ invoice_ids: ids }).eq("id", k.id);
     } catch (e: any) {
