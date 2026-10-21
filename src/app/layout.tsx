@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import Mely from "@/components/Mely";
 import PageTracker from "@/components/PageTracker";
 import { CompanyProvider } from "@/lib/CompanyContext";
+import { COMPANY_COLUMNS } from "@/lib/companyColumns";
 import { supabase } from "@/lib/supabase";
 import { getMarinaForPage } from "@/lib/marina/company";
 import { MarinaShell } from "@/components/marina/MarinaChrome";
@@ -100,6 +101,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Marina domains get their own header, footer and styles; everything else
   // keeps the RV-park layout untouched.
   const marina = company?.business_type === "marina" ? await getMarinaForPage().catch(() => null) : null;
+  // Oct 21 (per Mely): load the full company on the server so the first paint already shows the right park.
+  let initialCompany: any = null;
+  if (!marina) {
+    const hostname = ((await headers()).get("host") || "").replace(/^www\./, "").split(":")[0];
+    const { data } = await supabase.from("public_company_profile").select(COMPANY_COLUMNS).eq("domain", hostname).maybeSingle();
+    initialCompany = data || null;
+  }
   const schemaType = SCHEMA_TYPE_BY_BUSINESS_TYPE[company?.business_type || "rv_park"] || "LocalBusiness";
 
   const jsonLd = {
@@ -134,7 +142,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {marina ? (
           <MarinaShell company={marina}>{children}</MarinaShell>
         ) : (
-        <CompanyProvider>
+        <CompanyProvider initialCompany={initialCompany}>
           <Header />
           <main>{children}</main>
           <Footer />

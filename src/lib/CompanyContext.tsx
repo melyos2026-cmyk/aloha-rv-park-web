@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { COMPANY_COLUMNS } from "@/lib/companyColumns";
 
 export interface Company {
   id: string;
@@ -36,12 +37,17 @@ const CompanyContext = createContext<CompanyContextValue>({
   error: null,
 });
 
-export function CompanyProvider({ children }: { children: ReactNode }) {
-  const [company, setCompany] = useState<Company | null>(null);
-  const [loading, setLoading] = useState(true);
+// Oct 21 (per Mely): the server already knows the company for this domain, so it
+// hands it over on the first paint — no flash of Aloha's logo/name/photo on
+// another company's site while the browser looks it up.
+
+export function CompanyProvider({ children, initialCompany = null }: { children: ReactNode; initialCompany?: Company | null }) {
+  const [company, setCompany] = useState<Company | null>(initialCompany);
+  const [loading, setLoading] = useState(!initialCompany);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialCompany) return;
     let hostname =
       typeof window !== "undefined" ? window.location.hostname : "";
     // Aug 12 (per Mely): Vercel preview deployments use random
@@ -60,7 +66,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     supabase
       .from("public_company_profile")
-      .select("id, company_name, address, logo_url, domain, contact_email, contact_phone, ai_assistant_info, park_id, hero_image_url, hero_location_label, hero_headline, hero_subtext, rate_daily, rate_weekly, rate_monthly_offpeak, rate_monthly_peak, events_calendar_pdf_url")
+      .select(COMPANY_COLUMNS)
       .eq("domain", hostname)
       .maybeSingle()
       .then(({ data, error: err }) => {
@@ -71,6 +77,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         }
         setLoading(false);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
