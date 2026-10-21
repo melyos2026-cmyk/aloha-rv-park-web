@@ -74,7 +74,10 @@ export async function generateMetadata(): Promise<Metadata> {
         const image = shareImage;
         if (!company && !isAloha) return {};
         const title = company?.company_name || "Aloha RV Park – Kissimmee, Florida";
-        const description = company?.seo_description || `${title}: RV sites, rates and online reservations.`;
+        // Oct 21 (per Mely): a more inviting preview text when the park hasn't written its own.
+        const description = company?.seo_description || (isAloha
+          ? "Your home away from home near Orlando, Disney World, Universal Studios & SeaWorld. Book your RV site online today!"
+          : "🌴 Pick your exact RV site on our live map, see what's open and book online in minutes. Daily, weekly & monthly stays. Reserve yours today!");
         return {
           metadataBase: new URL(`https://${host}`),
           openGraph: { title, description, url: `https://${host}`, siteName: title, type: "website" as const, ...(image ? { images: [{ url: image, width: 1200, height: 630, alt: title, type: "image/jpeg" }] } : {}) },
