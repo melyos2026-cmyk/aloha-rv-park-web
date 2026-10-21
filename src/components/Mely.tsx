@@ -45,8 +45,11 @@ export default function Mely() {
     setShowTyping(true);
     const timer = setTimeout(() => {
       setShowTyping(false);
-      setMessages([
+      // Oct 21 (per Mely): if the visitor already wrote before the greeting appeared,
+      // keep their message (and Mely's answer) — put the greeting first, never replace.
+      setMessages((prev) => [
         { role: "assistant", text: `Hi! I'm Mely${isAloha ? " 🌺" : "."} Your ${companyName} assistant. How can I help you today?` },
+        ...prev,
       ]);
     }, MIN_TYPING_MS);
     return () => clearTimeout(timer);
