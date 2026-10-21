@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { buildSignedContractPdf } from "@/lib/marina/contractPdf";
+import { isDemoDomain } from "@/lib/marina/host";
 
 // Oct 21 (per Mely): a boater's contracts (sent from the marina admin) and
 // electronic signing. Only the signed-in boater's own contracts, only on this
@@ -111,6 +112,18 @@ export async function POST(req: Request) {
   // contract, the invoices and the boater's account always show the same amount.
   // Extras chosen on the contract (Fee Settings) go on the same invoices; the security
   // deposit gets its own invoice so it can be refunded at the end of the term.
+  // Oct 21 (per Mely): on the DEMO marina every visitor shares one boater account, so
+  // the previous demo signing's unpaid invoices are voided (the balance never piles up)…
+  const demo = isDemoDomain((w.company as any).domain);
+  if (demo) {
+    const { data: old } = await supabaseAdmin.from("marina_invoices").select("id").eq("company_id", w.company.id)
+      .eq("member_id", w.memberId).eq("status", "open").not("contract_id", "is", null).neq("contract_id", k.id);
+    for (const inv of old || []) {
+      const { count } = await supabaseAdmin.from("marina_invoice_payments").select("id", { count: "exact", head: true }).eq("invoice_id", inv.id).is("returned_at", null);
+      if (!count) await supabaseAdmin.from("marina_invoices").update({ status: "void", voided_at: new Date().toISOString(), void_reason: "Demo reset" }).eq("id", inv.id);
+    }
+  }
+
   if (Number(k.amount) > 0) {
     try {
       const { data: slip } = k.slip_id ? await supabaseAdmin.from("marina_slips").select("slip_name").eq("id", k.slip_id).maybeSingle() : { data: null };
@@ -173,6 +186,17 @@ export async function POST(req: Request) {
   } catch (e: any) {
     // The signature itself is recorded; the office can still see it. Log the PDF problem.
     console.error("contract pdf failed:", e?.message);
+  }
+
+  // …and a fresh copy of the contract is waiting, so the next visitor can sign too.
+  if (demo) {
+    const { count: pending } = await supabaseAdmin.from("marina_contracts").select("id", { count: "exact", head: true })
+      .eq("company_id", w.company.id).eq("member_id", w.memberId).in("status", ["sent", "viewed"]);
+    if (!pending) {
+      const { id: _id, status: _s, viewed_at: _v, signed_at: _sa, signer_name: _sn, signer_email: _se, signer_ip: _si, signer_agent: _sg,
+        signature_image: _img, pdf_path: _p, document_id: _d, invoice_ids: _ii, cancelled_at: _c, cancel_reason: _cr, created_at: _ca, renewal_id: _r, ...copy } = k as any;
+      await supabaseAdmin.from("marina_contracts").insert({ ...copy, status: "sent", sent_at: new Date().toISOString() }).then(() => {}, () => {});
+    }
   }
 
   return NextResponse.json({ ok: true });

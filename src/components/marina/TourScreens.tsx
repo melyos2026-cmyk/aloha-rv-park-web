@@ -53,7 +53,17 @@ const STEPS: Step[] = [
     points: ["Hourly, daily or flat pricing per room", "Requests to review, confirmed bookings and totals", "Bill any booking with an invoice in Invoices"],
   },
   {
-    key: "mely", kicker: "10 · Mely, your AI assistant", title: "Answers boaters 24/7, in their language",
+    key: "contracts", kicker: "10 · Contracts & e-signature", title: "Slip agreements signed online",
+    text: "Write your agreement once; every boater signs from their phone.",
+    points: ["Price read from your rates, plus extras and deposit from your fee schedule", "Boater signs with an elegant signature; date, IP and document fingerprint recorded", "Signed PDF saved to the boat's documents; invoices created on signing", "Annual renewals sent as contracts in one click"],
+  },
+  {
+    key: "messages", kicker: "11 · Messages", title: "Talk to your boaters, privately",
+    text: "Hurricane watch, dock closed, fuel hours: one notice, a private copy for each boater.",
+    points: ["Send to everyone, one dock, dry storage or owners with a balance due", "Email plus the boater's account; see who has read it", "Replies come only to the office, never to the whole group"],
+  },
+  {
+    key: "mely", kicker: "12 · Mely, your AI assistant", title: "Answers boaters 24/7, in their language",
     text: "Try her now: the chat bubble on this page is the real Mely.",
     points: ["Knows your slips, prices, hours and rules", "Answers in English, Spanish and other languages", "Helps your staff in the office too"],
   },
