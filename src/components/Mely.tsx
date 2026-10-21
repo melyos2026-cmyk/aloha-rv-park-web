@@ -8,6 +8,10 @@ export default function Mely() {
   const { company } = useCompany();
   const companyName = company?.company_name || "Aloha RV Park";
   const phone = company?.contact_phone || "(689) 252-0567";
+  // Oct 21 (per Mely): only Aloha RV Park greets with "Aloha!" and uses its avatar;
+  // every other company (demo.melyos.io, future parks) gets a neutral greeting and Mely's photo.
+  const isAloha = !company || /aloharvpark/i.test(String((company as any)?.domain || "")) || /aloha rv park/i.test(String(company?.company_name || ""));
+  const avatar = isAloha ? "/mely-avatar.jpeg" : "/mely-avatar-demo.jpg";
 
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -42,7 +46,7 @@ export default function Mely() {
     const timer = setTimeout(() => {
       setShowTyping(false);
       setMessages([
-        { role: "assistant", text: `Hi! I'm Mely 🌺 Your ${companyName} assistant. How can I help you today?` },
+        { role: "assistant", text: `Hi! I'm Mely${isAloha ? " 🌺" : "."} Your ${companyName} assistant. How can I help you today?` },
       ]);
     }, MIN_TYPING_MS);
     return () => clearTimeout(timer);
@@ -118,7 +122,7 @@ export default function Mely() {
             fontFamily: "DM Sans, sans-serif"
           }}
         >
-          Aloha! Need any help?
+          {isAloha ? "Aloha! Need any help?" : "Hi! Need any help?"}
         </div>
       )}
 
@@ -134,7 +138,7 @@ export default function Mely() {
         transition: "transform 0.2s"
       }}>
         {open ? "✕" : (
-          <img src="/mely-avatar.jpeg" alt="Mely" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+          <img src={avatar} alt="Mely" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
         )}
       </button>
 
@@ -148,7 +152,7 @@ export default function Mely() {
           display: "flex", flexDirection: "column", overflow: "hidden"
         }}>
           <div style={{ background: "var(--sea)", color: "var(--black)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ fontSize: 20 }}>🌺</div>
+            {isAloha ? <div style={{ fontSize: 20 }}>🌺</div> : <img src={avatar} alt="" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }} />}
             <div>
               <div style={{ fontFamily: "Playfair Display, serif", fontWeight: 700, fontSize: 15 }}>Mely</div>
               <div style={{ fontSize: 11, color: "#9ca3af" }}>{companyName} Assistant</div>
