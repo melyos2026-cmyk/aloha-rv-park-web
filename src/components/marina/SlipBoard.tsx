@@ -4,7 +4,8 @@ import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 import ReserveModal from "./ReserveModal";
 
-const money = (n: number | null) => (n === null ? "" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+// Whole dollars show as $280; anything with cents always shows two decimals ($2,553.60).
+const money = (n: number | null | undefined) => (n == null ? "" : `$${n.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`);
 const TYPES: { key: SlipType; title: string; blurb: string }[] = [
   { key: "wet", title: "Wet slips", blurb: "Your boat stays in the water, ready to go in minutes." },
   { key: "lift", title: "Lift slips", blurb: "Lifted out of the water between trips: safer and cleaner." },

@@ -4,7 +4,8 @@ import { loadPublicSlips, summarizeRates, RATE_LABEL, RATE_TYPES, loadFuelPrices
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
-const money = (n: number | null | undefined) => (n == null ? "—" : `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`);
+// Whole dollars show as $280; anything with cents always shows two decimals ($2,553.60).
+const money = (n: number | null | undefined) => (n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`);
 
 const CAPABILITIES: [string, string][] = [
   ["Pay online, any hour", "Boaters see every open invoice and pay by card without calling the office."],
