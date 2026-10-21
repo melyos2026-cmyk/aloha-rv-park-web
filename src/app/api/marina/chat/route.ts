@@ -20,8 +20,10 @@ What the marina platform includes (describe it from this website, which is the l
 5. Boater accounts: boaters sign in with their email to see their boats, invoices and payments, and pay what they owe online.
 6. A waitlist for the slips that are full, handled first come, first served.
 7. An admin dashboard for the marina office: slips and rates, boat owners and boats, annual renewals, invoices, shift and daily close, collections report, event rooms, and the list of online reservations.
-7a. Fuel dock (added Oct 21): the office keeps fuel prices per gallon (for example diesel and non-ethanol gas), the dock staff record each fuel sale (gallons or dollar amount; cash, card at the dock terminal, check, or charged to the boat owner's account), and every sale goes into the shift's daily close and the marina's reports with gallons and money per day and month. The prices can be shown on the marina's website. It does not connect to the fuel pumps; staff type the gallons from the pump.
+7a. Fuel dock (added Oct 21): the office keeps fuel prices per gallon (for example diesel and non-ethanol gas), the dock staff record each fuel sale (gallons or dollar amount; cash, card at the dock terminal, check, or charged to the boat owner's account), and every sale goes into the shift's daily close and the marina's reports with gallons and money per day and month. The prices can be shown on the marina's website. It also tracks each pump and each fuel tank (tank level, deliveries, low-fuel alert); a pump controller can be connected later so gallons come in on their own, but today staff type the gallons from the pump.
 7b. Dry stack (added Oct 21): boats stored on racks. Boat owners ask from their online account to have their boat put in the water at a time they choose, and the dock team sees a launch board for the day (new request, confirmed, in the water, back on the rack).
+7c. Ship store (added Oct 21): a point of sale at the counter for ice, bait, drinks, boat supplies and gear. Items with price, category and sales tax; stock that goes down with each sale and a low-stock alert; barcode scanning with a USB or Bluetooth scanner or the phone camera; the whole product list can be uploaded from Excel or Google Sheets (CSV); sales can be charged to the boat owner's account. Every sale goes into the shift's daily close and the reports.
+7d. Accounting (added Oct 21): "Export for QuickBooks" makes the files QuickBooks Online imports (customers and invoices, plus a payments list), and every transactions list can be printed or saved as a PDF with the marina's logo.
 8. An AI assistant like me for each marina. Each marina decides what its own Mely knows and says, so a marina's Mely answers about that marina's slips, rules, hours and prices.
 It also works for government marinas: the look is clean and formal, records are kept per payment and per invoice, and the office controls everything from the admin.
 
@@ -120,7 +122,13 @@ async function handle(req: Request) {
     const fuelLine = fuelRows && fuelRows.length
       ? `\nFuel dock prices per gallon: ${fuelRows.map((f: any) => `${f.label} $${Number(f.price_per_gallon).toFixed(3)}${f.tax_included ? " tax included" : " plus tax"}`).join("; ")}.`
       : "";
-    marinaFacts = `${fuelLine}\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can reserve an open slip online with the Reserve online button on the slip map, or join the waitlist for full ones. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
+    // Oct 21 (per Mely): what the ship store sells (price and whether it is in stock; never stock counts).
+    const { data: storeRows } = await supabaseAdmin.from("marina_store_items").select("name, price, stock")
+      .eq("company_id", marina.id).eq("active", true).order("sort").limit(60);
+    const storeLine = storeRows && storeRows.length
+      ? `\nShip store items: ${storeRows.map((i: any) => `${i.name} $${Number(i.price).toFixed(2)}${i.stock !== null && Number(i.stock) <= 0 ? " (sold out right now)" : ""}`).join("; ")}. Prices before sales tax where it applies. Bought at the ship store counter.`
+      : "";
+    marinaFacts = `${fuelLine}${storeLine}\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can reserve an open slip online with the Reserve online button on the slip map, or join the waitlist for full ones. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
   }
 
   const identity = demo
@@ -130,7 +138,7 @@ async function handle(req: Request) {
   const system = `${identity}
 Right now it is ${now} (Eastern Time).
 
-${demo ? MELYOS_PITCH : "Answer questions from boaters and visitors about the marina: slips, availability, rates, reservations, the waitlist, boater accounts and payments, fuel prices, and dry stack launches (boat owners with a rack ask for a launch from their online account, Boater login)."}${marinaFacts}${notes}
+${demo ? MELYOS_PITCH : "Answer questions from boaters and visitors about the marina: slips, availability, rates, reservations, the waitlist, boater accounts and payments, fuel prices, the ship store (what it sells and prices), and dry stack launches (boat owners with a rack ask for a launch from their online account, Boater login)."}${marinaFacts}${notes}
 
 Style: warm, kind and professional, with a nautical-elegant tone. Answer fully but briefly, in short paragraphs. Ask at most one question at a time. Reply in the same language the person just wrote in.
 Formatting: this chat shows plain text only. Never use markdown (no asterisks, no dashes as bullets, no headers). For a list, put each item on its own line as "1. ", "2. " with a blank line between items.
