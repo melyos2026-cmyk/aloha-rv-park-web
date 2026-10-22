@@ -40,6 +40,10 @@ export type PublicSlip = {
   max_draft_ft: number | null;
   has_power: boolean;
   has_water: boolean;
+  /** Oct 22: amperage ("30A", "30A/50A"…), how utilities are billed, and extras for boaters. */
+  power_amps: string | null;
+  utilities_mode: string | null;
+  amenities: string | null;
   status: "available" | "occupied" | "reserved" | "maintenance";
   /** Occupied slips: the day the current contract ends and the slip opens. */
   available_from: string | null;
@@ -107,6 +111,9 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
       max_draft_ft: num(s.max_draft_ft),
       has_power: !!s.has_power,
       has_water: !!s.has_water,
+      power_amps: typeof s.power_amps === "string" && s.power_amps ? s.power_amps : null,
+      utilities_mode: typeof s.utilities_mode === "string" ? s.utilities_mode : null,
+      amenities: typeof s.amenities === "string" && s.amenities.trim() ? s.amenities.trim() : null,
       status: s.status as PublicSlip["status"],
       available_from: typeof s.available_from === "string" && s.available_from ? s.available_from : null,
       booked: (bookedBySlip.get(s.id) || []).sort((a, b) => a[0].localeCompare(b[0])),

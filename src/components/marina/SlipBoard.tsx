@@ -159,14 +159,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               </div>
               <div className="mr-pop-sub">{selected.slip_type === "dry" ? "Dry storage" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"}{selected.dock ? ` · ${selected.dock}` : ""}</div>
               {when(selected)}
-              <div className="mr-pop-rows">
-                {selected.length_ft && <span>Length <b>{selected.length_ft} ft</b></span>}
-                {selected.max_beam_ft && <span>Beam <b>{Math.round(selected.max_beam_ft * 10) / 10} ft</b></span>}
-                {selected.max_draft_ft && <span>Draft <b>{selected.max_draft_ft} ft</b></span>}
-                <span>Power <b>{selected.has_power ? "Yes" : "No"}</b></span>
-                <span>Water <b>{selected.has_water ? "Yes" : "No"}</b></span>
-                {selected.rates.monthly && <span>Monthly <b>{money(selected.rates.monthly.non_resident ?? selected.rates.monthly.resident)}</b></span>}
-              </div>
+              <SlipFacts s={selected} />
               {selected.status !== "maintenance" && (
                 canBook(selected) ? (
                   <>
@@ -195,9 +188,8 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
             {selected.length_ft && <span>Length <b>{selected.length_ft} ft</b></span>}
             {selected.max_beam_ft && <span>Max beam <b>{selected.max_beam_ft} ft</b></span>}
             {selected.max_draft_ft && <span>Max draft <b>{selected.max_draft_ft} ft</b></span>}
-            <span>Power <b>{selected.has_power ? "Yes" : "No"}</b></span>
-            <span>Water <b>{selected.has_water ? "Yes" : "No"}</b></span>
           </div>
+          <SlipFacts s={selected} />
           <div className="mr-facts">
             {RATE_TYPES.filter((t) => selected.rates[t]).map((t) => (
               <span key={t}>{RATE_LABEL[t]} <b>{money(selected.rates[t]!.non_resident ?? selected.rates[t]!.resident)}</b></span>
@@ -248,5 +240,34 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 
       {booking && <ReserveModal slip={booking} startDate={onDate || undefined} onClose={() => setBooking(null)} />}
     </div>
+  );
+}
+
+
+// Oct 22 (per Mely): what a boater needs before renting — what fits, power and water,
+// the prices for each stay, and the slip's extras. Prices come from Slips & Rates.
+function SlipFacts({ s }: { s: PublicSlip }) {
+  const price = (t: "monthly" | "transient_weekly" | "transient_daily") => {
+    const r = s.rates[t]; const v = r ? (r.non_resident ?? r.resident) : null;
+    return v == null ? null : `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(Number(v)) ? 0 : 2, maximumFractionDigits: 2 })}`;
+  };
+  const fits = [s.length_ft ? `${s.length_ft} ft long` : null, s.max_beam_ft ? `${Math.round(s.max_beam_ft * 10) / 10} ft beam` : null, s.max_draft_ft ? `${s.max_draft_ft} ft draft` : null].filter(Boolean).join(" · ");
+  const power = !s.has_power ? "No" : `${s.power_amps ? s.power_amps.replace("/", " / ").replace(/A/g, " amp").replace("amp /", "/") : "Yes"}${s.utilities_mode === "included" ? " · included" : s.utilities_mode === "metered" ? " · metered" : ""}`;
+  const prices: [string, string | null][] = [["Monthly", price("monthly")], ["Weekly", price("transient_weekly")], ["Nightly", price("transient_daily")]];
+  const extras = (s.amenities || "").split(/\s*[·|•;]\s*/).filter(Boolean);
+  return (
+    <>
+      {fits && <div className="mr-fits">Fits boats up to <b>{fits}</b></div>}
+      <div className="mr-pop-rows">
+        <span>Power <b>{power}</b></span>
+        <span>Water <b>{s.has_water ? "Yes" : "No"}</b></span>
+      </div>
+      {prices.some(([, v]) => v) && (
+        <div className="mr-prices">
+          {prices.filter(([, v]) => v).map(([k, v]) => <div key={k}><small>{k}</small><b>{v}</b></div>)}
+        </div>
+      )}
+      {extras.length > 0 && <div className="mr-extras">{extras.map((e) => <span key={e}>{e}</span>)}</div>}
+    </>
   );
 }

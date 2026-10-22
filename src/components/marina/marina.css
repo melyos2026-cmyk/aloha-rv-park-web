@@ -455,3 +455,12 @@
   .mr-hot[data-status=occupied] { box-shadow: 0 0 2px rgba(255,102,112,.8); }
   .mr-hot[data-status=reserved] { box-shadow: 0 0 2px rgba(255,197,69,.8); }
 }
+/* Oct 22 (per Mely): slip card details a boater needs before renting. */
+.mr-fits { font-size: .85rem; color: var(--mr-muted); }
+.mr-fits b { color: var(--mr-ink); }
+.mr-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; }
+.mr-prices > div { background: var(--mr-foam, #f2f7fa); border: 1px solid var(--mr-line); border-radius: 6px; padding: 6px 8px; display: grid; }
+.mr-prices small { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--mr-muted); }
+.mr-prices b { font-size: 1rem; color: var(--mr-ink); }
+.mr-extras { display: flex; flex-wrap: wrap; gap: 5px; }
+.mr-extras span { font-size: .75rem; font-weight: 600; color: var(--mr-deep, #1f3a5f); background: #eaf3fa; border-radius: 999px; padding: 3px 9px; }
