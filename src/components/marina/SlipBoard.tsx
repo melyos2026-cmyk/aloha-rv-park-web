@@ -150,6 +150,8 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               })()}
               onClick={(e) => e.stopPropagation()}
             >
+              {/* Oct 22 (per Mely): close the card and pick another slip. */}
+              <button type="button" className="mr-pop-x" aria-label="Close" onClick={() => setPicked(null)}>×</button>
               {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
               <div className="mr-pop-head">
                 <b>{selected.slip_name}</b>
@@ -181,7 +183,8 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
       )}
 
       {selected && !showMap && (
-        <div className="mr-detail" aria-live="polite">
+        <div className="mr-detail" aria-live="polite" style={{ position: "relative" }}>
+          <button type="button" className="mr-pop-x" aria-label="Close" onClick={() => setPicked(null)}>×</button>
           {selected.photo && <img className="mr-pop-photo" src={selected.photo} alt={`Slip ${selected.slip_name}`} />}
           <div>
             <h3>{selected.slip_type === "dry" ? "Storage space" : selected.slip_type === "lift" ? "Lift slip" : "Wet slip"} {selected.slip_name}</h3>

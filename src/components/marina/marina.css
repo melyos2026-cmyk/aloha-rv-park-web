@@ -443,3 +443,15 @@
   .mr-hot[data-status=maintenance] { border-width: 1px; }
   .mr-polylabel, .mr-hot span { font-weight: 600; text-shadow: 0 0 2px rgba(0,0,0,.85); }
 }
+/* Oct 22 (per Mely): X to close a slip card. */
+.mr-pop-x { position: absolute; top: 8px; right: 8px; z-index: 2; width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 999px; background: rgba(15,37,64,.78); color: #fff; font-size: 1.35rem; line-height: 1; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+.mr-pop-x:hover, .mr-pop-x:focus-visible { background: var(--mr-ink); outline: 2px solid #fff; outline-offset: 1px; }
+/* Phones: even finer slip edges. */
+@media (max-width: 700px) {
+  .mr-poly { stroke-width: .75; filter: drop-shadow(0 0 1px rgba(93,255,168,.9)); }
+  .mr-poly[data-status=occupied] { filter: drop-shadow(0 0 1px rgba(255,102,112,.9)); }
+  .mr-poly[data-status=reserved] { filter: drop-shadow(0 0 1px rgba(255,197,69,.9)); }
+  .mr-hot { border-width: .75px; box-shadow: 0 0 2px rgba(93,255,168,.8); }
+  .mr-hot[data-status=occupied] { box-shadow: 0 0 2px rgba(255,102,112,.8); }
+  .mr-hot[data-status=reserved] { box-shadow: 0 0 2px rgba(255,197,69,.8); }
+}
