@@ -464,3 +464,9 @@
 .mr-prices b { font-size: 1rem; color: var(--mr-ink); }
 .mr-extras { display: flex; flex-wrap: wrap; gap: 5px; }
 .mr-extras span { font-size: .75rem; font-weight: 600; color: var(--mr-deep, #1f3a5f); background: #eaf3fa; border-radius: 999px; padding: 3px 9px; }
+/* Oct 22: the three prices side by side, compact, so the card stays short on phones. */
+.mr-prices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.mr-prices > div { padding: 5px 7px; }
+.mr-prices small { font-size: .62rem; }
+.mr-prices b { font-size: .92rem; white-space: nowrap; }
+.mr-pop .mr-pop-rows { grid-template-columns: 1.4fr 1fr; }
