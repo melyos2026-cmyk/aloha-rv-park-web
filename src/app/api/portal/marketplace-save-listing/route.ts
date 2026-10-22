@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { moderateListing } from "@/lib/marketplaceModeration";
 
 // POST /api/portal/marketplace-save-listing
 // Body: { residentId, listingId? (edit) , title, description, price, category }
@@ -31,6 +32,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Resident not found." }, { status: 404 });
   }
 
+  // Oct 22 (per Mely): Mely checks the listing before it is saved or changed.
+  const review = await moderateListing({ title, description, category, price: price ? Number(price) : null });
+  if (!review.allowed) {
+    return NextResponse.json({ error: review.reason, rejected: true }, { status: 422 });
+  }
+  // moderation_note is saved when the column exists (scripts/marina_37_marketplace.sql).
+  const withNote = async (write: (extra: Record<string, any>) => PromiseLike<{ data?: any; error: any }>) => {
+    const first = await write({ moderation_note: review.note });
+    if (first.error && /moderation_note/i.test(String(first.error.message || ""))) return write({});
+    return first;
+  };
+
   if (listingId) {
     // Editing an existing listing — confirm it's really theirs first.
     const { data: existing } = await supabase
@@ -44,15 +57,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Listing not found." }, { status: 404 });
     }
 
-    const { error } = await supabase
+    const { error } = await withNote((extra) => supabase
       .from("marketplace_listings")
       .update({
         title: title.trim(),
         description: description?.trim() || null,
         price: price ? Number(price) : null,
         category,
+        ...extra,
       })
-      .eq("id", listingId);
+      .eq("id", listingId)
+      .eq("resident_id", residentId));
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true, listingId });
@@ -61,7 +76,7 @@ export async function POST(req: NextRequest) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  const { data: newListing, error } = await supabase
+  const { data: newListing, error } = await withNote((extra) => supabase
     .from("marketplace_listings")
     .insert({
       company_id: resident.company_id,
@@ -72,9 +87,10 @@ export async function POST(req: NextRequest) {
       category,
       status: "active",
       expires_at: expiresAt.toISOString(),
+      ...extra,
     })
     .select("id")
-    .single();
+    .single());
 
   if (error || !newListing) {
     return NextResponse.json({ error: error?.message || "Could not create listing." }, { status: 500 });

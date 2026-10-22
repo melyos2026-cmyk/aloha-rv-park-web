@@ -179,7 +179,8 @@ export default function MarketplacePage() {
     const result = await res.json();
 
     if (!res.ok) {
-      void portalAlert("Could not save listing: " + (result.error || ""));
+      // Oct 22: when Mely stops a listing, show her friendly reason by itself.
+      void portalAlert(result.rejected ? result.error : "Could not save listing: " + (result.error || ""));
       setSaving(false);
       return;
     }

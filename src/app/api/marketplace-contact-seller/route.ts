@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { hostnameFromRequest } from "@/lib/marina/host";
 
 // POST /api/marketplace-contact-seller
 // Body: { listingId, buyerName, buyerEmail, buyerPhone, message }
@@ -34,18 +35,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
   }
 
+  // Oct 22 (per Mely): works for residents' (RV) and boaters' (marina) items, only for an active
+  // item of the park/marina whose website this is, and the email carries that park's own name.
   const { data: listing } = await supabase
     .from("marketplace_listings")
-    .select("title, resident_id, resident_accounts(full_name, email)")
+    .select("*, resident_accounts(full_name, email), companies(company_name, domain)")
     .eq("id", listingId)
-    .single();
+    .eq("status", "active")
+    .maybeSingle();
 
   if (!listing) {
     return NextResponse.json({ error: "Listing not found." }, { status: 404 });
   }
+  const host = hostnameFromRequest(req);
+  const siteDomain = String((listing as any).companies?.domain || "").toLowerCase().replace(/^www\./, "");
+  if (host && siteDomain && !host.endsWith(".vercel.app") && host !== "localhost" && host !== siteDomain) {
+    return NextResponse.json({ error: "Listing not found." }, { status: 404 });
+  }
 
-  const sellerEmail = (listing as any).resident_accounts?.email;
-  const sellerName = (listing as any).resident_accounts?.full_name || "there";
+  let sellerEmail = (listing as any).resident_accounts?.email;
+  let sellerName = (listing as any).resident_accounts?.full_name || "there";
+  if ((listing as any).member_id) {
+    const { data: m } = await supabase.from("marina_members").select("full_name, email").eq("id", (listing as any).member_id).eq("company_id", (listing as any).company_id).maybeSingle();
+    sellerEmail = m?.email || null;
+    sellerName = m?.full_name || "there";
+  }
+  const placeName = (listing as any).companies?.company_name || "Community";
 
   if (!sellerEmail) {
     return NextResponse.json({ error: "This seller has no email on file." }, { status: 400 });
@@ -60,7 +75,7 @@ export async function POST(req: NextRequest) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Aloha RV Park Marketplace <noreply@aloharvparkfl.com>",
+          from: `${placeName.replace(/[<>"]/g, "")} Marketplace <noreply@aloharvparkfl.com>`,
           to: sellerEmail,
           reply_to: buyerEmail,
           subject: `Someone is interested in your listing: ${listing.title}`,

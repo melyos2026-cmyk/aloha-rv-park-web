@@ -55,6 +55,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
           )}
         </div>
       ))}
+      <a className="mr-link mr-desk" href="/marina/marketplace">Marketplace</a>
       <a className="mr-link mr-desk" href="/#contact">Contact</a>
       {demo && <Link className="mr-link mr-desk" href="/marina/tour">Office tour</Link>}
 
@@ -78,6 +79,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
               </div>
             ))}
             <div className="mr-dd-head">More</div>
+            <a href="/marina/marketplace" onClick={go}><b>Marketplace</b></a>
             <a href="/#contact" onClick={go}><b>Contact</b></a>
             {demo && <Link href="/marina/tour" onClick={go}><b>Office tour</b></Link>}
           </div>
