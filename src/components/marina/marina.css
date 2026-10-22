@@ -470,3 +470,8 @@
 .mr-prices small { font-size: .62rem; }
 .mr-prices b { font-size: .92rem; white-space: nowrap; }
 .mr-pop .mr-pop-rows { grid-template-columns: 1.4fr 1fr; }
+
+/* Oct 22 (per Mely): phone header = logo + three lines; Boater login is the first item in the menu. */
+.mr-burger { padding: 8px; color: #fff; }
+.mr-nav .mr-dd-menu a.mr-menu-login { display: flex; justify-content: center; align-items: center; margin: 4px 4px 8px; color: var(--mr-ink); outline: none; font-weight: 700; }
+@media (max-width: 760px) { .mr-mob { margin-right: 0; } .mr-nav .mr-dd-menu.mr-dd-right { min-width: 240px; } }

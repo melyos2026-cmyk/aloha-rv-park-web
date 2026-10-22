@@ -60,11 +60,15 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
 
       {/* Phones: one "Menu" button with every group. */}
       <div className="mr-dd mr-mob">
-        <button type="button" className="mr-dd-btn" aria-expanded={open === "all"} onClick={() => setOpen(open === "all" ? null : "all")}>
-          Menu <span aria-hidden className="mr-caret">☰</span>
+        {/* Oct 22 (per Mely): just the three lines (no "Menu" word); Boater login goes inside. */}
+        <button type="button" className="mr-dd-btn mr-burger" aria-label="Menu" aria-expanded={open === "all"} onClick={() => setOpen(open === "all" ? null : "all")}>
+          {open === "all"
+            ? <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+            : <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>}
         </button>
         {open === "all" && (
           <div className="mr-dd-menu mr-dd-right" role="menu">
+            <Link className="mr-btn mr-menu-login" href="/marina/account" onClick={go}>Boater login</Link>
             {groups.map((g) => (
               <div key={g.key}>
                 <div className="mr-dd-head">{g.label}</div>
@@ -80,7 +84,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
         )}
       </div>
 
-      <Link className="mr-btn" href="/marina/account">Boater login</Link>
+      <Link className="mr-btn mr-desk" href="/marina/account">Boater login</Link>
     </nav>
   );
 }
