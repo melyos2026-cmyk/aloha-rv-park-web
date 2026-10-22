@@ -416,3 +416,18 @@
 @media (max-width: 640px) { .mr-rates th, .mr-rates td { padding: 12px 10px; font-size: .92rem; } }
 .mr-powered { display: block; margin-top: 6px; letter-spacing: .02em; }
 .mr-powered a { font-weight: 700; color: #39d5ee; text-decoration: none; }
+
+/* Oct 22 (per Mely): on phones the map is small, so the 3px edges and big glow looked heavy.
+   Thinner edges and a softer glow on small screens only; desktop stays exactly the same. */
+@media (max-width: 700px) {
+  .mr-poly { stroke-width: 1.5; filter: drop-shadow(0 0 2.5px rgba(93,255,168,.85)); }
+  .mr-poly[data-status=occupied] { filter: drop-shadow(0 0 2.5px rgba(255,102,112,.85)); }
+  .mr-poly[data-status=reserved] { filter: drop-shadow(0 0 2.5px rgba(255,197,69,.85)); }
+  .mr-poly[data-status=maintenance] { stroke-dasharray: 3 2; filter: none; }
+  .mr-poly[data-picked=true] { stroke-width: 2.5; }
+  .mr-hot { border-width: 1.5px; box-shadow: 0 0 6px 1px rgba(93,255,168,.8), inset 0 0 6px rgba(93,255,168,.5); }
+  .mr-hot[data-status=occupied] { box-shadow: 0 0 6px 1px rgba(255,102,112,.8), inset 0 0 6px rgba(255,102,112,.5); }
+  .mr-hot[data-status=reserved] { box-shadow: 0 0 6px 1px rgba(255,197,69,.8), inset 0 0 6px rgba(255,197,69,.5); }
+  .mr-hot[data-status=maintenance] { border-width: 1.5px; }
+  .mr-polylabel, .mr-hot span { font-size: .55rem; text-shadow: 0 0 2px #000, 0 1px 2px #000; }
+}
