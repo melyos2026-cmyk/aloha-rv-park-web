@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const { data: resident } = await supabase
     .from("resident_accounts")
-    .select("email, rv_lots(lot_name)")
+    .select("email, rv_lots(lot_name), companies(park_id)")
     .eq("id", residentId)
     .maybeSingle();
 
@@ -32,12 +32,14 @@ export async function POST(req: NextRequest) {
 
   const { data: order } = await supabase
     .from("propane_orders")
-    .select("id, customer_email, resident_lot_name")
+    .select("id, customer_email, resident_lot_name, park_id")
     .eq("id", orderId)
     .maybeSingle();
 
+  // Oct 22 (security): the order must also be from the resident's own park.
+  const parkId = (resident as any)?.companies?.park_id;
   const belongsToResident =
-    order && ((email && order.customer_email === email) || (lotName && order.resident_lot_name === lotName));
+    order && parkId && order.park_id === parkId && ((email && order.customer_email === email) || (lotName && order.resident_lot_name === lotName));
 
   if (!belongsToResident) {
     return NextResponse.json({ error: "Order not found." }, { status: 404 });
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
     .eq("id", orderId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Could not update the order." }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

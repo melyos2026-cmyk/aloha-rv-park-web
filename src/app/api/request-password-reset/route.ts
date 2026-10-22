@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { hostnameFromRequest } from "@/lib/marina/host";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const supabaseAdmin = createClient(
@@ -18,10 +19,17 @@ export async function POST(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   const requestIp = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
 
-  const { data: residentMatches } = await supabaseAdmin
+  // Oct 22 (security): reset only the account of the park whose website this is.
+  const host = hostnameFromRequest(req);
+  const { data: hostCompany } = host
+    ? await supabaseAdmin.from("companies").select("id").in("domain", [host, `www.${host}`]).limit(1).maybeSingle()
+    : { data: null };
+  let resetQuery = supabaseAdmin
     .from("resident_accounts")
     .select("id, email, portal_password, company_id, companies(company_name, domain, logo_url, primary_color)")
-    .eq("email", email)
+    .eq("email", email);
+  if (hostCompany?.id) resetQuery = resetQuery.eq("company_id", hostCompany.id);
+  const { data: residentMatches } = await resetQuery
     .eq("portal_enabled", true)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })

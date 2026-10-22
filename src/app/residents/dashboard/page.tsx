@@ -365,13 +365,10 @@ export default function ResidentDashboard() {
       setInvoiceItemsByInvoice({});
     }
 
-    const { data: anns } = await supabase
-      .from("announcements")
-      .select("*")
-      .eq("company_id", residentData.company_id)
-      .is("archived_at", null)
-      .order("created_at", { ascending: false });
-    setAnnouncements(anns || []);
+    // Oct 22 (security): announcements come from the portal API (signed-in session), not the public key.
+    const annRes = await fetch("/api/portal/announcements", { cache: "no-store" }).catch(() => null);
+    const annJson = annRes && annRes.ok ? await annRes.json().catch(() => null) : null;
+    setAnnouncements(annJson?.announcements || []);
 
     setMessage("");
   }

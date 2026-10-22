@@ -1216,7 +1216,10 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
     const qrToken = crypto.randomBytes(16).toString("hex");
     const customerEmail = session.customer_details?.email || null;
 
-    const { error } = await supabase.from("propane_orders").upsert(
+    // Oct 22 (security/reliability): insert only if this payment isn't saved yet. The map app's
+    // webhook can receive the same Stripe event; overwriting would change the QR code the
+    // customer already got by email, so the second one now leaves the order alone.
+    const { data: inserted, error } = await supabase.from("propane_orders").upsert(
       {
         park_id: park || "aloha",
         lot_id: lotId || null,
@@ -1238,13 +1241,14 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
         redeemed: false,
         resident_lot_name: residentLot || null,
       },
-      { onConflict: "stripe_session_id" }
-    );
+      { onConflict: "stripe_session_id", ignoreDuplicates: true }
+    ).select("id");
 
     if (error) {
       console.error("Error saving propane order:", error.message);
       return;
     }
+    if (!inserted || inserted.length === 0) return; // already saved (and emailed) once
 
     const { data: company } = await supabase
       .from("companies")

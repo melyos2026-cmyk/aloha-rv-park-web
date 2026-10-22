@@ -50,6 +50,25 @@ export async function POST(req: NextRequest) {
     emergencyContactRelationship ?? resident.emergency_contact_relationship ?? ""
   ).toString().trim();
 
+  // Oct 22 (security): a real email only, and not one another resident of this park already uses
+  // (that would let someone take over or block another resident's sign-in).
+  if (newEmail !== (resident.email || "")) {
+    if (newEmail && !/^[^\s@,()<>;:"]+@[^\s@,()<>;:"]+\.[a-z]{2,}$/i.test(newEmail)) {
+      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 });
+    }
+    if (newEmail) {
+      const { count: taken } = await supabase
+        .from("resident_accounts")
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", resident.company_id)
+        .ilike("email", newEmail.replace(/[%_\\]/g, (c: string) => "\\" + c))
+        .neq("id", residentId)
+        .is("deleted_at", null);
+      if ((taken || 0) > 0) {
+        return NextResponse.json({ error: "That email is already used by another account. Please contact the office." }, { status: 409 });
+      }
+    }
+  }
   if (newPhone !== (resident.phone || "")) changes.push(`phone to ${newPhone}`);
   if (newEmail !== (resident.email || "")) changes.push(`email to ${newEmail}`);
   if (newEcName !== (resident.emergency_contact_name || "")) changes.push(`emergency contact name to ${newEcName}`);
@@ -69,7 +88,8 @@ export async function POST(req: NextRequest) {
     .eq("id", residentId);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("save-resident-info:", error.message);
+    return NextResponse.json({ error: "Could not save your information." }, { status: 500 });
   }
 
   if (changes.length > 0) {

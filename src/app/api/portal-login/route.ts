@@ -3,6 +3,13 @@ import bcrypt from "bcryptjs";
 import { createClient } from "@supabase/supabase-js";
 import { getSecurityAlertPrefs } from "@/lib/securityAlertPrefs";
 import { setPortalSessionCookie } from "@/lib/portalSession";
+import { hostnameFromRequest } from "@/lib/marina/host";
+
+async function companyIdForHost(host: string): Promise<string | null> {
+  if (!host) return null;
+  const { data } = await supabaseAdmin.from("companies").select("id").in("domain", [host, `www.${host}`]).limit(1).maybeSingle();
+  return data?.id || null;
+}
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,12 +42,18 @@ export async function POST(req: Request) {
     }
   }
 
-  const { data: resident, error } = await supabaseAdmin
+  // Oct 22 (security, per Mely — "a resident can never get into another park"): sign in
+  // only to the park whose website this is. The company comes from the website's domain
+  // (never from the browser). If the domain isn't a known company (preview links), the
+  // old lookup is used so nobody is locked out.
+  const hostCompanyId = await companyIdForHost(hostnameFromRequest(req));
+  let residentQuery = supabaseAdmin
     .from("resident_accounts")
     .select("id, full_name, company_id, portal_password, portal_enabled, portal_access_ends_at")
     .eq("email", email)
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (hostCompanyId) residentQuery = residentQuery.eq("company_id", hostCompanyId);
+  const { data: resident, error } = await residentQuery.maybeSingle();
 
   if (error || !resident || !resident.portal_password) {
     // Log the attempt even if the email doesn't match a real account — still

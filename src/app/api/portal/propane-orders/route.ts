@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   const { data: resident, error: residentError } = await supabase
     .from("resident_accounts")
-    .select("email, rv_lots(lot_name)")
+    .select("email, company_id, rv_lots(lot_name), companies(park_id)")
     .eq("id", residentId)
     .single();
 
@@ -28,32 +28,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Resident not found." }, { status: 404 });
   }
 
-  const lotName = (resident as any).rv_lots?.lot_name;
-  const email = resident.email;
+  const lotName = (resident as any).rv_lots?.lot_name as string | undefined;
+  const email = resident.email as string | null;
+  // Oct 22 (security, per Mely — "payments can never cross between companies"): only this
+  // resident's own park, and exact matches only (the email/lot used to be pasted into a
+  // filter string, which could be abused to list every park's orders and QR codes).
+  const parkId = (resident as any).companies?.park_id as string | undefined;
+  if (!parkId || (!email && !lotName)) return NextResponse.json({ orders: [] });
 
-  let query = supabase
-    .from("propane_orders")
-    .select(
-      "id, product_label, quantity, unit, amount_total, paid_at, qr_token, redeemed, redeemed_at, redeemed_count, dismissed_by_resident"
-    )
-    .eq("dismissed_by_resident", false)
-    .order("paid_at", { ascending: false });
-
-  if (email && lotName) {
-    query = query.or(`customer_email.eq.${email},resident_lot_name.eq.${lotName}`);
-  } else if (email) {
-    query = query.eq("customer_email", email);
-  } else if (lotName) {
-    query = query.eq("resident_lot_name", lotName);
-  } else {
-    return NextResponse.json({ orders: [] });
+  const cols = "id, product_label, quantity, unit, amount_total, paid_at, qr_token, redeemed, redeemed_at, redeemed_count, dismissed_by_resident";
+  const base = () => supabase.from("propane_orders").select(cols).eq("park_id", parkId).eq("dismissed_by_resident", false);
+  const [byEmail, byLot] = await Promise.all([
+    email ? base().eq("customer_email", email) : Promise.resolve({ data: [], error: null } as any),
+    lotName ? base().eq("resident_lot_name", lotName) : Promise.resolve({ data: [], error: null } as any),
+  ]);
+  if (byEmail.error || byLot.error) {
+    console.error("portal propane-orders:", byEmail.error?.message || byLot.error?.message);
+    return NextResponse.json({ error: "Could not load your propane orders." }, { status: 500 });
   }
-
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  const seen = new Set<string>();
+  const data = [...(byEmail.data || []), ...(byLot.data || [])]
+    .filter((o: any) => (seen.has(o.id) ? false : (seen.add(o.id), true)))
+    .sort((a: any, b: any) => String(b.paid_at || "").localeCompare(String(a.paid_at || "")));
 
   return NextResponse.json({ orders: data ?? [] });
 }
