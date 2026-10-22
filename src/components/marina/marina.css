@@ -431,3 +431,15 @@
   .mr-hot[data-status=maintenance] { border-width: 1.5px; }
   .mr-polylabel, .mr-hot span { font-size: .55rem; text-shadow: 0 0 2px #000, 0 1px 2px #000; }
 }
+/* Oct 22 (per Mely): a touch finer on phones — delicate, but still clearly buttons. */
+@media (max-width: 700px) {
+  .mr-poly { stroke-width: 1; fill: rgba(93,255,168,.22); filter: drop-shadow(0 0 1.5px rgba(93,255,168,.9)); }
+  .mr-poly[data-status=occupied] { fill: rgba(214,69,80,.22); filter: drop-shadow(0 0 1.5px rgba(255,102,112,.9)); }
+  .mr-poly[data-status=reserved] { fill: rgba(227,168,43,.22); filter: drop-shadow(0 0 1.5px rgba(255,197,69,.9)); }
+  .mr-poly[data-picked=true] { stroke-width: 2; }
+  .mr-hot { border-width: 1px; box-shadow: 0 0 3px rgba(93,255,168,.85), inset 0 0 4px rgba(93,255,168,.4); }
+  .mr-hot[data-status=occupied] { box-shadow: 0 0 3px rgba(255,102,112,.85), inset 0 0 4px rgba(255,102,112,.4); }
+  .mr-hot[data-status=reserved] { box-shadow: 0 0 3px rgba(255,197,69,.85), inset 0 0 4px rgba(255,197,69,.4); }
+  .mr-hot[data-status=maintenance] { border-width: 1px; }
+  .mr-polylabel, .mr-hot span { font-weight: 600; text-shadow: 0 0 2px rgba(0,0,0,.85); }
+}
