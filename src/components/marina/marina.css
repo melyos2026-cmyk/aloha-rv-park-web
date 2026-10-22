@@ -475,3 +475,6 @@
 .mr-burger { padding: 8px; color: #fff; }
 .mr-nav .mr-dd-menu a.mr-menu-login { display: flex; justify-content: center; align-items: center; margin: 4px 4px 8px; color: var(--mr-ink); outline: none; font-weight: 700; }
 @media (max-width: 760px) { .mr-mob { margin-right: 0; } .mr-nav .mr-dd-menu.mr-dd-right { min-width: 240px; } }
+
+.mr-showing { margin: 14px 0 4px; font-weight: 600; color: var(--mr-ink); }
+.mr-showing button { background: none; border: 0; padding: 0; color: #0369a1; font: inherit; text-decoration: underline; cursor: pointer; }

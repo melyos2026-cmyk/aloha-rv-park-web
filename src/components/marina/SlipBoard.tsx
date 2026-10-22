@@ -68,6 +68,14 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 
   if (!slips.length) return <p className="mr-note">Slip availability is being updated. Call the office for current openings.</p>;
 
+  // Oct 22 (per Mely): tapping Wet / Lift / Dry also takes you down to the slips, so on a
+  // phone you see right away that the map changed (before, the tap looked like it did nothing).
+  const jumpToMap = () => setTimeout(() => {
+    const el = document.getElementById("mr-showing");
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    if (top > window.innerHeight * 0.6 || top < 0) window.scrollTo({ top: window.scrollY + top - 90, behavior: "smooth" });
+  }, 60);
   const present = TYPES.filter((t) => slips.some((s) => s.slip_type === t.key));
 
   return (
@@ -78,7 +86,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
             const all = slips.filter((s) => s.slip_type === t.key);
             const open = all.filter((s) => eff(s) === "available").length;
             return (
-              <button key={t.key} type="button" className="mr-type" aria-pressed={type === t.key} onClick={() => { setType(type === t.key ? "all" : t.key); setPicked(null); }}>
+              <button key={t.key} type="button" className="mr-type" aria-pressed={type === t.key} onClick={() => { const next = type === t.key ? "all" : t.key; setType(next); setPicked(null); if (next !== "all") jumpToMap(); }}>
                 <b>{t.title}</b>
                 <span>{t.blurb}</span>
                 <em>{open} open of {all.length}</em>
@@ -86,6 +94,12 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
             );
           })}
         </div>
+      )}
+      {type !== "all" && (
+        <p className="mr-showing" id="mr-showing">
+          Showing {TYPES.find((x) => x.key === type)?.title.toLowerCase()} only.{" "}
+          <button type="button" onClick={() => setType("all")}>Show all</button>
+        </p>
       )}
       <div className="mr-tools">
         <label>
