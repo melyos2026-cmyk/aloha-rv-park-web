@@ -90,15 +90,15 @@ export default function MarketplaceCard() {
       {!form && list.map((l) => {
         const expired = l.status === "active" && l.expires_at && new Date(l.expires_at) < new Date();
         return (
-          <div key={l.id} className="mr-inv" style={{ alignItems: "center" }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+          <div key={l.id} className="mr-inv mr-mkt-row">
+            <div className="mr-mkt-info" style={{ display: "flex", gap: 10, alignItems: "center" }}>
               {l.photos[0] ? <img src={l.photos[0]} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 8, flexShrink: 0 }} /> : null}
               <div style={{ minWidth: 0 }}>
                 {l.title}
                 <small>{money(l.price)} · {l.status === "sold" ? "Sold" : expired ? "Expired" : "Active"}</small>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div className="mr-mkt-actions">
               {l.status === "active" && !expired && <button className="mr-btn ghost" onClick={() => { setEditing(l.id); setForm({ title: l.title, description: l.description || "", price: l.price == null ? "" : String(l.price), category: l.category || "Other" }); setFiles([]); }}>Edit</button>}
               {l.status === "active" && !expired && <button className="mr-btn ghost" onClick={() => act("sold", l.id)}>Sold</button>}
               {(l.status === "sold" || expired) && <button className="mr-btn ghost" onClick={() => act("repost", l.id)}>Repost</button>}

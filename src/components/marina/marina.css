@@ -478,3 +478,12 @@
 
 .mr-showing { margin: 14px 0 4px; font-weight: 600; color: var(--mr-ink); }
 .mr-showing button { background: none; border: 0; padding: 0; color: #0369a1; font: inherit; text-decoration: underline; cursor: pointer; }
+
+/* Oct 22 (per Mely): outline buttons inside white cards were white-on-white (invisible). */
+.mr-card .mr-btn.ghost, .mr-acct .mr-btn.ghost { color: var(--mr-ink); border: 1px solid #b8c7d1; background: #fff; }
+.mr-card .mr-btn.ghost:hover, .mr-acct .mr-btn.ghost:hover { background: #eef3f6; }
+/* Marketplace items in the boater account: on phones the buttons go under the item. */
+.mr-mkt-row { flex-wrap: wrap; }
+.mr-mkt-row .mr-mkt-info { flex: 1 1 220px; min-width: 0; }
+.mr-mkt-row .mr-mkt-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 560px) { .mr-mkt-row .mr-mkt-actions { width: 100%; } .mr-mkt-row .mr-mkt-actions .mr-btn { flex: 1 1 auto; } }
