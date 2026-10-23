@@ -55,13 +55,18 @@ export default function MarinaConcierge({ title, intro, services, taxRate, phone
 function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Service; taxRate: number; signedIn: boolean; member: any; onClose: () => void; onDone: (d: any) => void }) {
   const [f, setF] = useState({ wanted_at: localNow(), units: s.min_units, slip: "", boat: "", details: "", name: member?.full_name || "", email: member?.email || "", phone: member?.phone || "" });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const perUnit = s.pricing === "per_unit";
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const chosen = s.options.filter((o) => (qty[o] || 0) > 0).map((o) => ({ name: o, qty: perUnit ? qty[o] : 1 }));
+  const unitsFromChoices = chosen.reduce((n, c) => n + c.qty, 0);
+  const units = s.options.length && perUnit ? Math.max(s.min_units, unitsFromChoices) : f.units;
   const input = { width: "100%", padding: 10, borderRadius: 8, border: "1px solid #b8c7d1", fontSize: 15, boxSizing: "border-box" as const };
   const isQuote = s.pricing === "quote" || s.price == null;
-  const subtotal = isQuote ? null : s.pricing === "fixed" ? s.price! : s.price! * f.units;
+  const subtotal = isQuote ? null : s.pricing === "fixed" ? s.price! : s.price! * units;
   const tax = subtotal != null && s.taxable ? subtotal * taxRate / 100 : 0;
   async function send() {
     setBusy(true); setErr("");
-    const res = await fetch("/api/marina/concierge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service: s.id, ...f }) });
+    const res = await fetch("/api/marina/concierge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service: s.id, ...f, units, choices: chosen }) });
     const r = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { setErr(r.error || "Could not send."); return; }
@@ -77,7 +82,25 @@ function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Se
           {s.description && <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{s.description}</p>}
           {s.lead_hours > 0 && <p className="mr-note" style={{ margin: 0 }}>Request at least {s.lead_hours} hour{s.lead_hours === 1 ? "" : "s"} ahead.</p>}
           <label className="mr-note" style={{ margin: 0 }}>When do you need it?<input type="datetime-local" style={input} value={f.wanted_at} onChange={(e) => setF({ ...f, wanted_at: e.target.value })} /></label>
-          {(s.pricing === "per_unit" || s.pricing === "per_hour") && <label className="mr-note" style={{ margin: 0 }}>How many {s.pricing === "per_hour" ? "hours" : s.unit_label ? s.unit_label + "s" : ""}<input type="number" min={s.min_units} style={input} value={f.units} onChange={(e) => setF({ ...f, units: Math.max(s.min_units, Number(e.target.value) || s.min_units) })} /></label>}
+          {s.options.length > 0 && (
+            <div>
+              <div className="mr-note" style={{ margin: "0 0 6px" }}>{s.option_label || "Choose"}{perUnit && s.unit_label ? ` (per ${s.unit_label})` : ""}</div>
+              {perUnit ? (
+                <div className="mr-opt-list">
+                  {s.options.map((o) => (
+                    <div key={o} className="mr-opt-row">
+                      <span>{o}</span>
+                      <span className="mr-qty"><button type="button" aria-label={`Less ${o}`} onClick={() => setQty({ ...qty, [o]: Math.max(0, (qty[o] || 0) - 1) })}>−</button><b>{qty[o] || 0}</b><button type="button" aria-label={`More ${o}`} onClick={() => setQty({ ...qty, [o]: Math.min(99, (qty[o] || 0) + 1) })}>+</button></span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mr-seg">{s.options.map((o) => <button key={o} type="button" aria-pressed={!!qty[o]} onClick={() => setQty({ ...qty, [o]: qty[o] ? 0 : 1 })}>{o}</button>)}</div>
+              )}
+              {perUnit && unitsFromChoices < s.min_units && <p className="mr-note" style={{ margin: "6px 0 0" }}>Minimum {s.min_units} {s.unit_label || "unit"}{s.min_units > 1 ? "s" : ""}.</p>}
+            </div>
+          )}
+          {(s.pricing === "per_unit" || s.pricing === "per_hour") && !(s.options.length && perUnit) && <label className="mr-note" style={{ margin: 0 }}>How many {s.pricing === "per_hour" ? "hours" : s.unit_label ? s.unit_label + "s" : ""}<input type="number" min={s.min_units} style={input} value={f.units} onChange={(e) => setF({ ...f, units: Math.max(s.min_units, Number(e.target.value) || s.min_units) })} /></label>}
           <div className="mr-fld-row">
             <input style={input} placeholder="Slip (e.g. B2)" value={f.slip} onChange={(e) => setF({ ...f, slip: e.target.value })} />
             <input style={input} placeholder="Boat name" value={f.boat} onChange={(e) => setF({ ...f, boat: e.target.value })} />
@@ -90,7 +113,7 @@ function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Se
           </>)}
           {subtotal != null ? (
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "4px 16px", fontSize: 15 }}>
-              <span>{s.name}{f.units > 1 ? ` × ${f.units}` : ""}</span><span style={{ textAlign: "right" }}>{money(subtotal)}</span>
+              <span>{s.name}{units > 1 ? ` × ${units}` : ""}</span><span style={{ textAlign: "right" }}>{money(subtotal)}</span>
               {tax > 0 && <><span>Sales tax</span><span style={{ textAlign: "right" }}>{money(tax)}</span></>}
               <b>Total</b><b style={{ textAlign: "right" }}>{money(subtotal + tax)}</b>
               <span className="mr-note" style={{ gridColumn: "1 / -1", margin: 0 }}>{signedIn ? "Charged to your boater account when the office confirms." : "Pay at the office when the office confirms."}</span>
