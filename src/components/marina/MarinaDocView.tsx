@@ -11,7 +11,7 @@ export default function MarinaDocView({ doc, company }: { doc: MarinaDoc; compan
   return (
     <div className="mr-doc-page">
       <div className="mr-doc-actions">
-        <a className="mr-btn ghost" href="/marina/account#history">← Back to my account</a>
+        <a className="mr-btn ghost" href="/marina/account/statements">← Payments &amp; statements</a>
         <PrintButton />
       </div>
       <article className="mr-doc">

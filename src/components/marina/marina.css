@@ -555,3 +555,14 @@
 .mr-spent .big { font-size: 24px; font-weight: 800; color: #0f2540; }
 .mr-spent small { color: var(--mr-muted); }
 .mr-spent-cats { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 14px; color: #33475b; }
+/* Oct 23: preview cards and statements */
+a.mr-preview { display: block; text-decoration: none; color: inherit; }
+a.mr-preview:hover { box-shadow: 0 6px 18px rgba(15,37,64,.12); }
+.mr-preview-go { font-size: 30px; line-height: 1; color: #8aa1b1; }
+.mr-preview-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.mr-preview-stats > div { background: #eef3f6; border-radius: 10px; padding: 10px; }
+.mr-preview-stats small { display: block; color: var(--mr-muted); font-size: 12px; }
+.mr-preview-stats b { font-size: 18px; color: #0f2540; }
+.mr-preview-link { display: inline-block; margin-top: 10px; font-weight: 700; color: #0369a1; }
+.mr-stmt-month { display: flex; justify-content: space-between; font-weight: 800; background: #0f2540; color: #fff; border-radius: 8px; padding: 8px 12px; }
+@media print { .mr-noprint { display: none !important; } .mr-stmt-month { background: #eef3f6 !important; color: #0f2540 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

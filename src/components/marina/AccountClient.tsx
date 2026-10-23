@@ -4,7 +4,7 @@ import ContractsCard from "./ContractsCard";
 import MessagesCard from "./MessagesCard";
 import MarketplaceCard from "./MarketplaceCard";
 import StoreOrdersCard from "./StoreOrdersCard";
-import PaymentHistory from "./PaymentHistory";
+import PaymentsSummaryCard from "./PaymentsSummaryCard";
 import type { AccountData } from "@/lib/marina/data";
 
 type Account = AccountData & { demo: boolean; companyName: string };
@@ -247,7 +247,7 @@ export default function AccountClient() {
         ))}
       </div>
 
-      <PaymentHistory payments={acct.payments} />
+      <PaymentsSummaryCard payments={acct.payments} />
     </div>
   );
 }
