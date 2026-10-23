@@ -51,3 +51,12 @@ button:active,
   transform: scale(0.97);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
+
+/* Oct 23 (per Mely): cookie notice */
+.ck-banner { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 1500; background: #fff; color: #0f2540; border: 1px solid #d5dee5; border-radius: 14px; box-shadow: 0 12px 32px rgba(10,20,35,.22); padding: 14px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 14px; line-height: 1.5; max-width: 760px; margin: 0 auto; }
+.ck-text { flex: 1 1 320px; }
+.ck-text a { color: #0369a1; text-decoration: underline; }
+.ck-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ck-btn { background: #0f2540; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-weight: 700; cursor: pointer; }
+.ck-btn.ghost { background: #fff; color: #0f2540; border: 1px solid #b8c7d1; }
+@media (max-width: 560px) { .ck-actions { width: 100%; } .ck-actions .ck-btn { flex: 1 1 auto; } }

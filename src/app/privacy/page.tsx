@@ -118,6 +118,18 @@ export default function PrivacyPage() {
           ),
         },
         {
+          title: "Cookies",
+          body: (
+            <p>
+              This website uses cookies and similar storage that are needed for it to work, such as
+              keeping you signed in, remembering your shopping cart and remembering your cookie choice.
+              If you accept all cookies, we also keep a simple visit counter (which pages are viewed)
+              that helps us improve the site. We do not sell cookie data or share it for advertising.
+              You can change your choice by clearing your browser&apos;s site data.
+            </p>
+          ),
+        },
+        {
           title: "Your choices",
           body: (
             <p>

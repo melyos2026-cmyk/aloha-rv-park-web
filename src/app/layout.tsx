@@ -6,6 +6,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import Mely from "@/components/Mely";
 import PageTracker from "@/components/PageTracker";
+import CookieBanner from "@/components/CookieBanner";
 import { CompanyProvider } from "@/lib/CompanyContext";
 import { COMPANY_COLUMNS } from "@/lib/companyColumns";
 import { supabase } from "@/lib/supabase";
@@ -156,7 +157,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         {marina ? (
-          <MarinaShell company={marina}>{children}</MarinaShell>
+          <MarinaShell company={marina}>{children}<CookieBanner name={marina.company_name} /></MarinaShell>
         ) : (
         <CompanyProvider initialCompany={initialCompany}>
           <Header />
@@ -164,6 +165,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Footer />
           <Mely />
           <PageTracker />
+          <CookieBanner name={initialCompany?.company_name} />
         </CompanyProvider>
         )}
       </body>
