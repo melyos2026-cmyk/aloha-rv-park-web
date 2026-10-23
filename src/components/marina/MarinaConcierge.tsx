@@ -79,7 +79,7 @@ function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Se
           {s.lead_hours > 0 && <p className="mr-note" style={{ margin: 0 }}>Request at least {s.lead_hours} hour{s.lead_hours === 1 ? "" : "s"} ahead.</p>}
           <label className="mr-note" style={{ margin: 0 }}>When do you need it?<input type="datetime-local" style={input} value={f.wanted_at} onChange={(e) => setF({ ...f, wanted_at: e.target.value })} /></label>
           {(s.pricing === "per_unit" || s.pricing === "per_hour") && <label className="mr-note" style={{ margin: 0 }}>How many {s.pricing === "per_hour" ? "hours" : s.unit_label ? s.unit_label + "s" : ""}<input type="number" min={s.min_units} style={input} value={f.units} onChange={(e) => setF({ ...f, units: Math.max(s.min_units, Number(e.target.value) || s.min_units) })} /></label>}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div className="mr-fld-row">
             <input style={input} placeholder="Slip (e.g. B2)" value={f.slip} onChange={(e) => setF({ ...f, slip: e.target.value })} />
             <input style={input} placeholder="Boat name" value={f.boat} onChange={(e) => setF({ ...f, boat: e.target.value })} />
           </div>

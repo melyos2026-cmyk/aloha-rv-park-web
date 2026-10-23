@@ -571,3 +571,12 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-stmt-month small { font-weight: 500; font-size: 13px; opacity: .8; }
 .mr-stmt-chev { width: 14px; display: inline-block; }
 @media print { .mr-stmt-chev { display: none; } }
+
+/* Oct 23: labelled form fields (Careers etc.) — single column on phones, styled file picker */
+.mr-fld { display: grid; gap: 4px; margin: 0; }
+.mr-fld > span:first-child { font-size: 13px; font-weight: 600; color: #30475c; }
+.mr-fld-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mr-file { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer; }
+.mr-file input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.mr-file-name { font-size: 14px; color: #5b6b78; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) { .mr-fld-row { grid-template-columns: 1fr; } }

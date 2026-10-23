@@ -59,19 +59,21 @@ export default function MarinaCareers({ title, intro, roles, bgcFee, requireBgc,
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Roles you can do</div>
           <div className="mr-seg">{roles.map((r) => <button key={r} type="button" aria-pressed={picked.includes(r)} onClick={() => setPicked(picked.includes(r) ? picked.filter((x) => x !== r) : [...picked, r])}>{r}</button>)}</div>
         </div>
-        <input style={input} placeholder="Full name (as on your license)" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <input style={input} type="email" placeholder="Email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required />
-          <input style={input} type="tel" placeholder="Phone" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} />
+        <label className="mr-fld"><span>Full name (as on your license)</span><input style={input} placeholder="Jane Smith" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></label>
+        <div className="mr-fld-row">
+          <label className="mr-fld"><span>Email</span><input style={input} type="email" placeholder="you@email.com" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} required /></label>
+          <label className="mr-fld"><span>Phone</span><input style={input} type="tel" placeholder="(555) 555-5555" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></label>
         </div>
-        <textarea style={input} rows={3} placeholder="Experience (boats you've run, years, where)" value={f.experience} onChange={(e) => setF({ ...f, experience: e.target.value })} />
-        <input style={input} placeholder="Licenses and certifications (USCG license #, STCW, CPR…)" value={f.certifications} onChange={(e) => setF({ ...f, certifications: e.target.value })} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <input style={input} placeholder="Availability (weekends, full time…)" value={f.availability} onChange={(e) => setF({ ...f, availability: e.target.value })} />
-          <input style={input} type="number" inputMode="decimal" placeholder="Hourly rate ($, optional)" value={f.hourly_rate} onChange={(e) => setF({ ...f, hourly_rate: e.target.value })} />
+        <label className="mr-fld"><span>Experience</span><textarea style={input} rows={3} placeholder="Boats you've run, years, where" value={f.experience} onChange={(e) => setF({ ...f, experience: e.target.value })} /></label>
+        <label className="mr-fld"><span>Licenses and certifications</span><input style={input} placeholder="USCG license #, STCW, CPR…" value={f.certifications} onChange={(e) => setF({ ...f, certifications: e.target.value })} /></label>
+        <div className="mr-fld-row">
+          <label className="mr-fld"><span>Availability</span><input style={input} placeholder="Weekends, full time…" value={f.availability} onChange={(e) => setF({ ...f, availability: e.target.value })} /></label>
+          <label className="mr-fld"><span>Hourly rate ($, optional)</span><input style={input} type="number" inputMode="decimal" placeholder="35" value={f.hourly_rate} onChange={(e) => setF({ ...f, hourly_rate: e.target.value })} /></label>
         </div>
-        <label className="mr-note" style={{ margin: 0 }}>License or ID (photo or PDF)<input type="file" accept="image/*,application/pdf" style={{ display: "block", marginTop: 4 }} onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
-        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14 }}>
+        <div className="mr-fld"><span>License or ID (photo or PDF)</span>
+          <label className="mr-file"><input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] || null)} /><span className="mr-btn ghost">Choose file</span><span className="mr-file-name">{file ? file.name : "No file chosen"}</span></label>
+        </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14, paddingRight: 72 }}>
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
           <span>I authorize {marina} to run a background check{requireBgc ? ` that I pay for ($${bgcFee.toFixed(2)})` : ""}, I confirm the information above is true, and I agree to the <a href="/privacy">Privacy Policy</a>.</span>
         </label>
