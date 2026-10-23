@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // Oct 21 (per Mely): the marina website's top menu, organized in drop-downs
 // (Slips, Services). Services only lists what this marina really has (fuel
 // prices, ship store items, dry stack slips), so no menu link ever leads nowhere.
-export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean };
+export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean; concierge?: boolean; careers?: boolean };
 type Item = { href: string; label: string; note?: string };
 
 export default function MarinaNav({ services, demo }: { services: MarinaServices; demo: boolean }) {
@@ -31,6 +31,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
     ...(services.store ? [{ href: "/marina/store", label: "Ship store", note: "Shop by category" }] : []),
     ...(services.dry ? [{ href: "/marina/account#launch", label: "Dry stack launch", note: "Ask for your boat in the water" }] : []),
     ...(services.rentals ? [{ href: "/marina/rentals", label: "Rentals & experiences", note: "Golf carts, boats, tours and more" }] : []),
+    ...(services.concierge ? [{ href: "/marina/concierge", label: "Concierge", note: "Ice, provisions, catering, crew to your slip" }] : []),
   ];
   const groups: { key: string; label: string; items: Item[] }[] = [
     { key: "slips", label: "Slips", items: slips },
@@ -57,6 +58,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
         </div>
       ))}
       <a className="mr-link mr-desk" href="/marina/marketplace">Marketplace</a>
+      {services.careers && <a className="mr-link mr-desk" href="/marina/careers">Careers</a>}
       <a className="mr-link mr-desk" href="/#contact">Contact</a>
       {demo && <Link className="mr-link mr-desk" href="/marina/tour">Office tour</Link>}
 
@@ -81,6 +83,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
             ))}
             <div className="mr-dd-head">More</div>
             <a href="/marina/marketplace" onClick={go}><b>Marketplace</b></a>
+            {services.careers && <a href="/marina/careers" onClick={go}><b>Careers</b></a>}
             <a href="/#contact" onClick={go}><b>Contact</b></a>
             {demo && <Link href="/marina/tour" onClick={go}><b>Office tour</b></Link>}
           </div>

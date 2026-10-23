@@ -127,6 +127,13 @@ async function handleWebhook(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // Oct 23 (per Mely — Careers & Crew): the applicant paid their own background check →
+    // send the Checkr invitation (customId "crew::<applicantId>").
+    if (session.metadata?.type === "crew_background_check") {
+      await handleCrewBackgroundCheckPaid(session);
+      return NextResponse.json({ received: true });
+    }
+
     if (session.metadata?.productId) {
       await handlePropanePaid(session);
       return NextResponse.json({ received: true });
@@ -1584,5 +1591,24 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
         }
       }
     }
+  }
+}
+
+async function handleCrewBackgroundCheckPaid(session: Stripe.Checkout.Session) {
+  const applicantId = session.metadata?.applicant_id;
+  const companyId = session.metadata?.company_id;
+  if (!applicantId || !companyId) return;
+  const { data: a } = await supabase.from("crew_applicants").select("*").eq("id", applicantId).eq("company_id", companyId).maybeSingle();
+  if (!a || a.bgc_status !== "not_started") return; // already handled (Stripe retries)
+  await supabase.from("crew_applicants").update({ bgc_status: "paid", bgc_paid_at: new Date().toISOString(), bgc_stripe_session_id: session.id, updated_at: new Date().toISOString() }).eq("id", a.id);
+  const { data: settings } = await supabase.from("park_settings").select("checkr_work_location_state, checkr_default_package_slug").eq("company_id", companyId).maybeSingle();
+  const state = settings?.checkr_work_location_state || "FL";
+  const pkg = settings?.checkr_default_package_slug || "basic_plus_criminal";
+  try {
+    const { candidateId, invitationId, invitationUrl } = await createCheckrInvitation({ applicationId: "crew", personKey: a.id, email: a.email, fullName: a.full_name, state, packageSlug: pkg });
+    await supabase.from("crew_applicants").update({ bgc_status: "invited", checkr_candidate_id: candidateId, checkr_invitation_id: invitationId, checkr_invitation_url: invitationUrl || null, updated_at: new Date().toISOString() }).eq("id", a.id);
+  } catch (err: any) {
+    console.log(`Crew applicant ${a.id}: could not create Checkr invitation:`, err?.message);
+    await logSystemHealthIssue({ companyId, issueType: "crew_checkr_invitation_failed", source: "checkr", message: `Crew applicant ${a.full_name} paid but the Checkr invitation failed: ${err?.message}` });
   }
 }

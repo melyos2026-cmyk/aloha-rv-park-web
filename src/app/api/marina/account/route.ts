@@ -4,6 +4,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 import { loadAccount } from "@/lib/marina/data";
 import { isDemoDomain } from "@/lib/marina/host";
 import { rentalsEnabled } from "@/lib/rentals";
+import { moduleOn } from "@/lib/concierge";
 
 // GET /api/marina/account — the signed-in boater's own account.
 export async function GET(req: Request) {
@@ -19,5 +20,5 @@ export async function GET(req: Request) {
   const account = await loadAccount(company.id, session.memberId);
   if (!account) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  return NextResponse.json({ ...account, demo: isDemoDomain(company.domain), companyName: company.company_name, rentals: await rentalsEnabled(company.id) });
+  return NextResponse.json({ ...account, demo: isDemoDomain(company.domain), companyName: company.company_name, rentals: await rentalsEnabled(company.id), concierge: await moduleOn(company.id, "concierge") });
 }

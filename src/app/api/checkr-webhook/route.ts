@@ -135,6 +135,21 @@ async function updatePersonStatus(
   // "<applicationId>::<personKey>" format lease-application occupants
   // use — each occupant is its own row here, so no aggregate/multi-
   // person logic is needed, just a direct status update.
+  // Oct 23 (per Mely — Careers & Crew): customId "crew::<applicantId>" → crew_applicants.
+  if (applicationId === "crew") {
+    const map: Record<string, string> = { in_progress: "in_progress", Passed: "clear", "Needs Review": "consider", Failed: "failed", Canceled: "failed", invitation_expired: "expired", invitation_failed: "failed", "Needs More Info": "needs_info", "Under Review": "in_progress" };
+    const next = map[status] || "in_progress";
+    const { data: cur } = await supabase.from("crew_applicants").select("id, company_id, full_name, bgc_status").eq("id", personKey).maybeSingle();
+    if (!cur) return;
+    const finals = ["clear", "consider", "failed", "expired"];
+    if (finals.includes(cur.bgc_status) && !finals.includes(next)) return; // never downgrade a final result
+    await supabase.from("crew_applicants").update({ bgc_status: next, ...(reportId ? { checkr_report_id: reportId } : {}), updated_at: new Date().toISOString() }).eq("id", cur.id);
+    if (finals.includes(next)) {
+      await supabase.from("resident_update_notifications").insert({ company_id: cur.company_id, resident_name: cur.full_name, update_type: "crew_background_check_result", message: `Background check for crew applicant ${cur.full_name}: ${next === "clear" ? "clear" : next === "consider" ? "needs review" : next}. Review in Careers & Crew.` }).then(() => null, () => null);
+    }
+    return;
+  }
+
   if (applicationId === "occupant") {
     const occupantId = personKey;
 
