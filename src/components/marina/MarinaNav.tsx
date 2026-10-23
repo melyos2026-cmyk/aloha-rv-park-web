@@ -28,7 +28,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
   ];
   const svc: Item[] = [
     ...(services.fuel ? [{ href: "/#fuel", label: "Fuel dock", note: "Today's prices per gallon" }] : []),
-    ...(services.store ? [{ href: "/#store", label: "Ship store", note: "Ice, bait, drinks and supplies" }] : []),
+    ...(services.store ? [{ href: "/marina/store", label: "Ship store", note: "Shop by category" }] : []),
     ...(services.dry ? [{ href: "/marina/account#launch", label: "Dry stack launch", note: "Ask for your boat in the water" }] : []),
   ];
   const groups: { key: string; label: string; items: Item[] }[] = [

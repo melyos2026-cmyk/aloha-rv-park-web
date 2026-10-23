@@ -295,18 +295,69 @@ export async function loadFuelPrices(companyId: string): Promise<{ label: string
 
 // Oct 21 (per Mely): ship store items shown on the marina's website (active items only;
 // shows "sold out" instead of stock counts). Empty if the marina has no store yet.
-export async function loadStoreItems(companyId: string): Promise<{ name: string; category: string; price: number; soldOut: boolean }[]> {
-  const { data, error } = await supabaseAdmin
+// Oct 23 (per Mely): items can have a photo, a description and be featured on the homepage.
+export type StoreItem = { id: string; name: string; category: string; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean };
+const STORE_COLS = "id, name, category, price, stock, photo_url, description, featured";
+function toStoreItem(i: any): StoreItem {
+  return { id: i.id, name: i.name, category: i.category || "Other", price: Number(i.price), soldOut: i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
+}
+export async function loadStoreItems(companyId: string): Promise<StoreItem[]> {
+  const q = (cols: string) => supabaseAdmin
     .from("marina_store_items")
-    .select("name, category, price, stock")
+    .select(cols)
     .eq("company_id", companyId)
     .eq("active", true)
     .order("category")
     .order("sort")
     .order("name")
     .limit(200);
+  let { data, error } = await q(STORE_COLS);
+  if (error) ({ data, error } = await q("id, name, category, price, stock")); // before scripts/marina_39_store_page.sql
   if (error || !data) return [];
-  return data.map((i) => ({ name: i.name, category: i.category || "Other", price: Number(i.price), soldOut: i.stock !== null && Number(i.stock) <= 0 }));
+  return (data as any[]).map(toStoreItem);
+}
+
+// Oct 23: the store's own name and short line (each marina names its store).
+export async function loadStoreSettings(companyId: string): Promise<{ name: string; tagline: string }> {
+  const { data, error } = await supabaseAdmin.from("marina_store_settings").select("store_name, store_tagline").eq("company_id", companyId).maybeSingle();
+  const d: any = error ? null : data;
+  return {
+    name: (d?.store_name || "").trim() || "Ship Store",
+    tagline: (d?.store_tagline || "").trim() || "Ice, bait, drinks and boat supplies at the dock.",
+  };
+}
+
+// Oct 23: one page of the store (category, search), for the store page.
+export async function searchStoreItems(companyId: string, opts: { category?: string; q?: string; page?: number; size?: number }) {
+  const size = Math.min(48, Math.max(6, opts.size || 24));
+  const page = Math.max(0, opts.page || 0);
+  const build = (cols: string) => {
+    let qy = supabaseAdmin.from("marina_store_items").select(cols, { count: "exact" }).eq("company_id", companyId).eq("active", true);
+    if (opts.category && opts.category !== "All") qy = opts.category === "Other" ? qy.or("category.is.null,category.eq.Other") : qy.eq("category", opts.category);
+    const term = String(opts.q || "").trim().replace(/[%,()]/g, " ").slice(0, 60);
+    if (term) qy = qy.ilike("name", `%${term}%`);
+    return qy.order("featured", { ascending: false }).order("sort").order("name").range(page * size, page * size + size - 1);
+  };
+  let res: any = await build(STORE_COLS);
+  if (res.error) {
+    const fb = (cols: string) => {
+      let qy = supabaseAdmin.from("marina_store_items").select(cols, { count: "exact" }).eq("company_id", companyId).eq("active", true);
+      if (opts.category && opts.category !== "All") qy = qy.eq("category", opts.category);
+      const term = String(opts.q || "").trim().replace(/[%,()]/g, " ").slice(0, 60);
+      if (term) qy = qy.ilike("name", `%${term}%`);
+      return qy.order("sort").order("name").range(page * size, page * size + size - 1);
+    };
+    res = await fb("id, name, category, price, stock");
+  }
+  if (res.error) return { items: [] as StoreItem[], total: 0 };
+  return { items: (res.data || []).map(toStoreItem), total: res.count || 0 };
+}
+
+export async function storeCategories(companyId: string): Promise<{ name: string; count: number }[]> {
+  const { data } = await supabaseAdmin.from("marina_store_items").select("category").eq("company_id", companyId).eq("active", true).limit(10000);
+  const m = new Map<string, number>();
+  (data || []).forEach((r: any) => { const c = r.category || "Other"; m.set(c, (m.get(c) || 0) + 1); });
+  return Array.from(m.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Oct 21 (per Mely): which services the marina really has, for the top menu.

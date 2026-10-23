@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
-import { loadPublicSlips, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems } from "@/lib/marina/data";
+import { loadPublicSlips, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems, loadStoreSettings } from "@/lib/marina/data";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -20,8 +20,9 @@ const CAPABILITIES: [string, string][] = [
 ];
 
 export default async function MarinaHome({ company }: { company: MarinaCompany }) {
-  const [slips, fuel, store] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id)]);
-  const storeGroups = store.reduce<Record<string, typeof store>>((g, i) => { (g[i.category] ||= []).push(i); return g; }, {});
+  const [slips, fuel, store, storeSettings] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id), loadStoreSettings(company.id)]);
+  // Oct 23 (per Mely): the homepage shows only a few items; the whole store has its own page.
+  const featured = (store.some((i) => i.featured) ? store.filter((i) => i.featured) : store).slice(0, 6);
   const open = slips.filter((s) => s.status === "available").length;
   const rates = ratesBySlipType(slips);
   const TYPE_LABEL = { wet: "Wet slips", lift: "Boat lifts", dry: "Dry storage" } as const;
@@ -130,22 +131,22 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
       {store.length > 0 && (
         <section className="mr-section" id="store">
           <div className="mr-wrap">
-            <h2 className="mr-h2">Ship store</h2>
-            <p className="mr-lede">Ice, bait, drinks and boat supplies at the dock. Members can charge purchases to their account. Prices before sales tax.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 24 }}>
-              {Object.entries(storeGroups).map(([cat, items]) => (
-                <table className="mr-table" key={cat}>
-                  <thead><tr><th>{cat}</th><th>Price</th></tr></thead>
-                  <tbody>
-                    {items.map((i) => (
-                      <tr key={i.name}>
-                        <td>{i.name}</td>
-                        <td className="num">{i.soldOut ? "Sold out" : `$${i.price.toFixed(2)}`}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <h2 className="mr-h2">{storeSettings.name}</h2>
+            <p className="mr-lede">{storeSettings.tagline} Members can charge purchases to their account.</p>
+            <div className="mr-feat-grid">
+              {featured.map((i) => (
+                <a key={i.id} href="/marina/store" className="mr-store-card" style={{ textDecoration: "none" }}>
+                  <div className="mr-store-img">{i.photo ? <img src={i.photo} alt="" loading="lazy" /> : <span aria-hidden>{i.name.slice(0, 1)}</span>}</div>
+                  <div className="mr-store-body">
+                    <div className="mr-store-name">{i.name}</div>
+                    <div className="mr-store-cat">{i.category}</div>
+                    <div className="mr-store-price">{i.soldOut ? "Sold out" : `$${i.price.toFixed(2)}`}</div>
+                  </div>
+                </a>
               ))}
+            </div>
+            <div style={{ marginTop: 20 }}>
+              <a className="mr-btn dark" href="/marina/store">Visit the {storeSettings.name} →</a>
             </div>
           </div>
         </section>
