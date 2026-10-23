@@ -510,3 +510,13 @@
 .mr-store-sheet { background: #fff; border-radius: 14px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
 .mr-feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
 @media (max-width: 420px) { .mr-feat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
+/* Oct 23: store cart */
+.mr-store-card { position: relative; }
+.mr-store-add { display: block; margin: 0 12px 12px; padding: 8px 10px; border-radius: 8px; background: #0f2540; color: #fff; text-align: center; font-size: 14px; font-weight: 600; }
+.mr-cart-fab { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 900; background: #0f2540; color: #fff; border: 0; border-radius: 999px; padding: 13px 22px; font: inherit; font-weight: 700; box-shadow: 0 8px 24px rgba(10,20,35,.3); cursor: pointer; max-width: calc(100vw - 120px); white-space: nowrap; }
+.mr-qty { display: inline-flex; align-items: center; border: 1px solid #b8c7d1; border-radius: 8px; overflow: hidden; }
+.mr-qty button { background: #fff; border: 0; width: 34px; height: 34px; font-size: 18px; cursor: pointer; }
+.mr-qty span { min-width: 28px; text-align: center; font-weight: 600; }
+.mr-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.mr-seg button { flex: 1 1 140px; padding: 10px; border-radius: 8px; border: 1px solid #b8c7d1; background: #fff; color: var(--mr-ink); font: inherit; font-size: 14px; cursor: pointer; }
+.mr-seg button[aria-pressed="true"] { background: #0f2540; color: #fff; border-color: #0f2540; }
