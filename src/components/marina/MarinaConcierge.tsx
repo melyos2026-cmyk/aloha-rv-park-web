@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Service } from "@/lib/concierge";
-import { priceLabel } from "@/lib/concierge";
+import { priceLabel, type Service } from "@/lib/concierge-shared";
 
 // Oct 23 (per Mely): Concierge page — pick a service, say when, where (slip) and what; fixed
 // prices are charged to the boater's account; "price on request" gets a quote from the office.
