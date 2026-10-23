@@ -21,6 +21,8 @@ export default function Statements({ company, member, payments, openInvoices }: 
   const [year, setYear] = useState(years[0] || "all");
   const [month, setMonth] = useState("all");
   const [cat, setCat] = useState("all");
+  // Oct 23 (per Mely): also by day — pick one date and print just that day.
+  const [dayPick, setDayPick] = useState("");
   const [q, setQ] = useState("");
   // Oct 23 (per Mely): each month is a card that opens and closes; the newest month starts open.
   const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
@@ -32,6 +34,7 @@ export default function Statements({ company, member, payments, openInvoices }: 
   const list = useMemo(() => payments
     .filter((p) => year === "all" || p.received_at.startsWith(year))
     .filter((p) => month === "all" || p.received_at.slice(5, 7) === month)
+    .filter((p) => !dayPick || p.received_at === dayPick)
     .filter((p) => cat === "all" || p.category === cat)
     .filter((p) => { const t = q.trim().toLowerCase(); return !t || `${p.invoice_number} ${p.description} ${MARINA_CATEGORY[p.category] || ""} ${p.amount.toFixed(2)}`.toLowerCase().includes(t); })
     .sort((a, b) => b.received_at.localeCompare(a.received_at)), [payments, year, month, cat, q]);
@@ -43,7 +46,7 @@ export default function Statements({ company, member, payments, openInvoices }: 
   const total = list.reduce((a, p) => a + p.amount, 0);
   const byCat = list.reduce<Record<string, number>>((m, p) => { const k = MARINA_CATEGORY[p.category] || "Other"; m[k] = (m[k] || 0) + p.amount; return m; }, {});
   const cats = Array.from(new Set(payments.map((p) => p.category)));
-  const period = year === "all" ? "All time" : month === "all" ? `Year ${year}` : `${MONTHS[Number(month) - 1]} ${year}`;
+  const period = dayPick ? day(dayPick) : year === "all" ? "All time" : month === "all" ? `Year ${year}` : `${MONTHS[Number(month) - 1]} ${year}`;
   const input = { padding: 10, borderRadius: 8, border: "1px solid #b8c7d1", fontSize: 15, background: "#fff", boxSizing: "border-box" as const };
 
   return (
@@ -66,6 +69,11 @@ export default function Statements({ company, member, payments, openInvoices }: 
             <option value="all">All types</option>{cats.map((c) => <option key={c} value={c}>{MARINA_CATEGORY[c] || c}</option>)}
           </select>
           <input style={{ ...input, flex: "1 1 180px" }} placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <label className="mr-note" style={{ margin: 0 }}>One day:</label>
+          <input type="date" style={input} value={dayPick} onChange={(e) => { setDayPick(e.target.value); if (e.target.value) { setYear("all"); setMonth("all"); } }} />
+          {dayPick && <button type="button" className="mr-btn ghost" onClick={() => { setDayPick(""); setYear(years[0] || "all"); }}>Clear day</button>}
         </div>
       </div>
 
