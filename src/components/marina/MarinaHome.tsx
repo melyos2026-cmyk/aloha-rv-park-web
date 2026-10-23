@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
 import { loadPublicSlips, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems, loadStoreSettings } from "@/lib/marina/data";
+import { loadRentalItems, loadRentalSettings, rentalsEnabled } from "@/lib/rentals";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -20,7 +21,11 @@ const CAPABILITIES: [string, string][] = [
 ];
 
 export default async function MarinaHome({ company }: { company: MarinaCompany }) {
-  const [slips, fuel, store, storeSettings] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id), loadStoreSettings(company.id)]);
+  const [slips, fuel, store, storeSettings, rentalsOn] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id), loadStoreSettings(company.id), rentalsEnabled(company.id)]);
+  // Oct 23 (per Mely): Rentals & Experiences teaser (only when the module is on).
+  const [rentals, rentalSettings] = rentalsOn ? await Promise.all([loadRentalItems(company.id), loadRentalSettings(company.id)]) : [[], null];
+  const rentalPick = (rentals.some((i) => i.featured) ? rentals.filter((i) => i.featured) : rentals).slice(0, 4);
+  const rentalPrice = (i: (typeof rentals)[number]) => i.kind === "experience" ? (i.price_person != null ? `$${i.price_person.toFixed(2)} per person` : "") : i.price_hour != null ? `from $${i.price_hour.toFixed(2)}/hr` : i.price_day != null ? `$${i.price_day.toFixed(2)}/day` : "";
   // Oct 23 (per Mely): the homepage shows only a few items; the whole store has its own page.
   const featured = (store.some((i) => i.featured) ? store.filter((i) => i.featured) : store).slice(0, 6);
   const open = slips.filter((s) => s.status === "available").length;
@@ -148,6 +153,28 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
             <div style={{ marginTop: 20 }}>
               <a className="mr-btn dark" href="/marina/store">Visit the {storeSettings.name} →</a>
             </div>
+          </div>
+        </section>
+      )}
+
+      {rentalSettings && rentalPick.length > 0 && (
+        <section className="mr-section" id="rentals">
+          <div className="mr-wrap">
+            <h2 className="mr-h2">{rentalSettings.title}</h2>
+            <p className="mr-lede">{rentalSettings.intro}</p>
+            <div className="mr-feat-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+              {rentalPick.map((i) => (
+                <a key={i.id} href="/marina/rentals" className="mr-store-card" style={{ textDecoration: "none" }}>
+                  <div className="mr-store-img" style={{ aspectRatio: "4 / 3" }}>{i.photo ? <img src={i.photo} alt="" loading="lazy" /> : <span aria-hidden>{i.kind === "experience" ? "⛵" : "🛺"}</span>}</div>
+                  <div className="mr-store-body">
+                    <div className="mr-store-cat">{i.category}</div>
+                    <div className="mr-store-name">{i.name}</div>
+                    <div className="mr-store-price">{rentalPrice(i)}</div>
+                  </div>
+                </a>
+              ))}
+            </div>
+            <div style={{ marginTop: 20 }}><a className="mr-btn dark" href="/marina/rentals">Book online →</a></div>
           </div>
         </section>
       )}

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // Oct 21 (per Mely): the marina website's top menu, organized in drop-downs
 // (Slips, Services). Services only lists what this marina really has (fuel
 // prices, ship store items, dry stack slips), so no menu link ever leads nowhere.
-export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean };
+export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean };
 type Item = { href: string; label: string; note?: string };
 
 export default function MarinaNav({ services, demo }: { services: MarinaServices; demo: boolean }) {
@@ -30,6 +30,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
     ...(services.fuel ? [{ href: "/#fuel", label: "Fuel dock", note: "Today's prices per gallon" }] : []),
     ...(services.store ? [{ href: "/marina/store", label: "Ship store", note: "Shop by category" }] : []),
     ...(services.dry ? [{ href: "/marina/account#launch", label: "Dry stack launch", note: "Ask for your boat in the water" }] : []),
+    ...(services.rentals ? [{ href: "/marina/rentals", label: "Rentals & experiences", note: "Golf carts, boats, tours and more" }] : []),
   ];
   const groups: { key: string; label: string; items: Item[] }[] = [
     { key: "slips", label: "Slips", items: slips },

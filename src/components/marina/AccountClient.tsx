@@ -4,6 +4,7 @@ import ContractsCard from "./ContractsCard";
 import MessagesCard from "./MessagesCard";
 import MarketplaceCard from "./MarketplaceCard";
 import StoreOrdersCard from "./StoreOrdersCard";
+import RentalsCard from "./RentalsCard";
 import PaymentsSummaryCard from "./PaymentsSummaryCard";
 import type { AccountData } from "@/lib/marina/data";
 
@@ -181,6 +182,8 @@ export default function AccountClient() {
       <ContractsCard fullName={acct.member.full_name} marinaName={acct.companyName || "the Marina"} />
 
       <StoreOrdersCard />
+
+      {(acct as any).rentals && <RentalsCard />}
 
       <MarketplaceCard />
 

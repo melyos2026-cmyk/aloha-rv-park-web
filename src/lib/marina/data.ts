@@ -365,14 +365,15 @@ export async function storeCategories(companyId: string): Promise<{ name: string
 }
 
 // Oct 21 (per Mely): which services the marina really has, for the top menu.
-export async function loadMarinaServices(companyId: string): Promise<{ fuel: boolean; store: boolean; dry: boolean }> {
+export async function loadMarinaServices(companyId: string): Promise<{ fuel: boolean; store: boolean; dry: boolean; rentals: boolean }> {
   const head = { count: "exact" as const, head: true };
-  const [f, s, d] = await Promise.all([
+  const [f, s, d, r] = await Promise.all([
     supabaseAdmin.from("marina_fuel_prices").select("id", head).eq("company_id", companyId).eq("active", true).eq("show_on_website", true),
     supabaseAdmin.from("marina_store_items").select("id", head).eq("company_id", companyId).eq("active", true),
     supabaseAdmin.from("marina_slips").select("id", head).eq("company_id", companyId).eq("slip_type", "dry"),
+    supabaseAdmin.from("company_modules").select("enabled").eq("company_id", companyId).eq("module_name", "rentals").maybeSingle(),
   ]);
-  return { fuel: !f.error && (f.count || 0) > 0, store: !s.error && (s.count || 0) > 0, dry: !d.error && (d.count || 0) > 0 };
+  return { fuel: !f.error && (f.count || 0) > 0, store: !s.error && (s.count || 0) > 0, dry: !d.error && (d.count || 0) > 0, rentals: !r.error && !!r.data?.enabled };
 }
 
 // Oct 21 (per Mely): the Rates table shows the price per foot for each slip type, straight
