@@ -164,7 +164,7 @@ export type AccountData = {
     launch: { id: string; launch_at: string; return_at: string | null; status: string } | null;
   }[];
   invoices: AccountInvoice[];
-  payments: { id: string; invoice_number: string; amount: number; method: string; received_at: string }[];
+  payments: { id: string; invoice_id: string; invoice_number: string; description: string; category: string; amount: number; method: string; received_at: string }[];
   totalDue: number;
 };
 
@@ -234,6 +234,7 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
   });
 
   const numberById = new Map(list.map((i) => [i.id, i.invoice_number]));
+  const invById = new Map(list.map((i) => [i.id, i]));
 
   // Open dry-stack trips for this boater's boats (table may not exist yet on older databases).
   const launchByBoat = new Map<string, { id: string; launch_at: string; return_at: string | null; status: string }>();
@@ -269,7 +270,10 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
       .filter((p) => !p.returned_at)
       .map((p) => ({
         id: p.id,
+        invoice_id: p.invoice_id,
         invoice_number: numberById.get(p.invoice_id) || "",
+        description: invById.get(p.invoice_id)?.description || "",
+        category: invById.get(p.invoice_id)?.category || "",
         amount: round2(Number(p.amount)),
         method: p.method,
         received_at: p.received_at,

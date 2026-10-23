@@ -4,6 +4,7 @@ import ContractsCard from "./ContractsCard";
 import MessagesCard from "./MessagesCard";
 import MarketplaceCard from "./MarketplaceCard";
 import StoreOrdersCard from "./StoreOrdersCard";
+import PaymentHistory from "./PaymentHistory";
 import type { AccountData } from "@/lib/marina/data";
 
 type Account = AccountData & { demo: boolean; companyName: string };
@@ -189,7 +190,7 @@ export default function AccountClient() {
           <div className="mr-inv" key={i.id}>
             <div>
               {i.description}
-              <small>{i.invoice_number} · due {day(i.due_date)} {i.overdue && <span className="mr-overdue">Overdue</span>}</small>
+              <small>{i.invoice_number} · due {day(i.due_date)} {i.overdue && <span className="mr-overdue">Overdue</span>} · <a href={`/marina/account/invoice/${i.id}`}>View (PDF)</a></small>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <span className="mr-money">{money(i.balance)}</span>
@@ -246,15 +247,7 @@ export default function AccountClient() {
         ))}
       </div>
 
-      <div className="mr-card">
-        <h3>Payment history</h3>
-        {acct.payments.length === 0 ? <p className="mr-note">No payments yet.</p> : acct.payments.map((p) => (
-          <div className="mr-inv" key={p.id}>
-            <div>{p.invoice_number}<small>{day(p.received_at)} · {p.method}</small></div>
-            <span className="mr-money">{money(p.amount)}</span>
-          </div>
-        ))}
-      </div>
+      <PaymentHistory payments={acct.payments} />
     </div>
   );
 }
