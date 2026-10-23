@@ -30,7 +30,15 @@ export async function GET(req: Request) {
   }
   const { error: ready } = await supabaseAdmin.from("marina_store_orders").select("id", { head: true, count: "exact" }).eq("company_id", company.id);
   const st = await settingsFor(company.id);
-  return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery });
+  // Oct 23: the signed-in boater's own recent orders (shown in Boater login).
+  let orders: any[] = [];
+  if (signedIn && !ready) {
+    const { data } = await supabaseAdmin.from("marina_store_orders")
+      .select("order_number, created_at, lines, total, fulfillment, slip_name, wanted_at, payment, status")
+      .eq("company_id", company.id).eq("member_id", s!.memberId).order("created_at", { ascending: false }).limit(10);
+    orders = data || [];
+  }
+  return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery, storeName: st.name, orders });
 }
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);

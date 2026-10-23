@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import ContractsCard from "./ContractsCard";
 import MessagesCard from "./MessagesCard";
 import MarketplaceCard from "./MarketplaceCard";
+import StoreOrdersCard from "./StoreOrdersCard";
 import type { AccountData } from "@/lib/marina/data";
 
 type Account = AccountData & { demo: boolean; companyName: string };
@@ -177,6 +178,8 @@ export default function AccountClient() {
       <MessagesCard />
 
       <ContractsCard fullName={acct.member.full_name} marinaName={acct.companyName || "the Marina"} />
+
+      <StoreOrdersCard />
 
       <MarketplaceCard />
 
