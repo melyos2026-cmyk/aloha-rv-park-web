@@ -22,6 +22,12 @@ export default function Statements({ company, member, payments, openInvoices }: 
   const [month, setMonth] = useState("all");
   const [cat, setCat] = useState("all");
   const [q, setQ] = useState("");
+  // Oct 23 (per Mely): each month is a card that opens and closes; the newest month starts open.
+  const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
+  const toggle = (ym: string, def: boolean) => setOpenMonths((m) => ({ ...m, [ym]: !(m[ym] ?? def) }));
+  const [printing, setPrinting] = useState(false);
+  // When printing, every month is shown open so the statement is complete.
+  function printAll() { setPrinting(true); setTimeout(() => { window.print(); setPrinting(false); }, 150); }
 
   const list = useMemo(() => payments
     .filter((p) => year === "all" || p.received_at.startsWith(year))
@@ -44,7 +50,7 @@ export default function Statements({ company, member, payments, openInvoices }: 
     <div className="mr-doc-page">
       <div className="mr-doc-actions">
         <a className="mr-btn ghost" href="/marina/account">← My account</a>
-        <button className="mr-btn dark" onClick={() => window.print()}>Print statement / PDF</button>
+        <button className="mr-btn dark" onClick={printAll}>Print statement / PDF</button>
       </div>
 
       <div className="mr-noprint" style={{ display: "grid", gap: 8, marginBottom: 14 }}>
@@ -99,12 +105,16 @@ export default function Statements({ company, member, payments, openInvoices }: 
         )}
 
         {groups.length === 0 && <p className="mr-note" style={{ marginTop: 16 }}>No payments in this period.</p>}
-        {groups.map(([ym, rows]) => (
-          <section key={ym} style={{ marginTop: 18 }}>
-            <div className="mr-stmt-month">
-              <span>{MONTHS[Number(ym.slice(5, 7)) - 1]} {ym.slice(0, 4)}</span>
+        {groups.map(([ym, rows], idx) => {
+          const isOpen = printing || (openMonths[ym] ?? idx === 0);
+          return (
+          <section key={ym} style={{ marginTop: 14 }} className={isOpen ? "mr-stmt-open" : ""}>
+            <button type="button" className="mr-stmt-month" aria-expanded={isOpen} onClick={() => toggle(ym, idx === 0)}>
+              <span className="mr-stmt-chev" aria-hidden>{isOpen ? "▾" : "▸"}</span>
+              <span style={{ flex: 1 }}>{MONTHS[Number(ym.slice(5, 7)) - 1]} {ym.slice(0, 4)} <small>· {rows.length} payment{rows.length === 1 ? "" : "s"}</small></span>
               <span>{money(rows.reduce((a, p) => a + p.amount, 0))}</span>
-            </div>
+            </button>
+            {isOpen && (
             <table className="mr-doc-table">
               <thead><tr><th>Date</th><th>Description</th><th className="num">Amount</th></tr></thead>
               <tbody>{rows.map((p) => (
@@ -115,8 +125,10 @@ export default function Statements({ company, member, payments, openInvoices }: 
                 </tr>
               ))}</tbody>
             </table>
+            )}
           </section>
-        ))}
+          );
+        })}
         <footer className="mr-doc-foot">{company.name} · {company.domain} · Statement printed {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</footer>
       </article>
     </div>
