@@ -14,9 +14,15 @@ export async function generateMetadata() {
   return { title: `${s.name} · ${company.company_name}`, description: s.tagline };
 }
 
-export default async function MarinaStorePage() {
+// Oct 24 (per Mely): the category and sub-category live in the address (?cat=Groceries&sub=Bakery), so a
+// refresh or a shared link opens right where the customer was — no flash of another category.
+export default async function MarinaStorePage({ searchParams }: { searchParams: Promise<{ cat?: string; sub?: string }> }) {
   const company = await getMarinaForPage();
   if (!company) notFound();
-  const [settings, cats, first] = await Promise.all([loadStoreSettings(company.id), storeCategories(company.id), searchStoreItems(company.id, {})]);
-  return <MarinaStore name={settings.name} tagline={settings.tagline} categories={cats} initial={first} />;
+  const sp = await searchParams;
+  const [settings, cats] = await Promise.all([loadStoreSettings(company.id), storeCategories(company.id)]);
+  const c = cats.find((x) => x.name === sp.cat) || cats[0];
+  const sub = c?.subs?.length ? (c.subs.find((x) => x.name === sp.sub) || c.subs[0]).name : "";
+  const first = await searchStoreItems(company.id, c ? { category: c.name, subcategory: sub || undefined } : {});
+  return <MarinaStore name={settings.name} tagline={settings.tagline} categories={cats} initial={first} initialCat={c?.name || "All"} initialSub={sub} />;
 }

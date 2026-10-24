@@ -8,17 +8,16 @@ import { kitPrice, kitLineKey } from "@/lib/marina/store-kit";
 // "Load more" for big catalogs, and a detail window for each item.
 const money = (n: number) => "$" + n.toFixed(2);
 
-export default function MarinaStore({ name, tagline, categories, initial }: {
+export default function MarinaStore({ name, tagline, categories, initial, initialCat, initialSub }: {
   name: string; tagline: string; categories: { name: string; count: number; subs?: { name: string; count: number }[] }[]; initial: { items: StoreItem[]; total: number };
+  initialCat?: string; initialSub?: string;
 }) {
   // Oct 24 (per Mely): no "All" chip — the store opens on its first category; a search looks across every category.
-  const [cat, setCatRaw] = useState(categories[0]?.name || "All");
-  const [subCat, setSubCat] = useState("");
+  const [cat, setCatRaw] = useState(initialCat || categories[0]?.name || "All");
+  const [subCat, setSubCat] = useState(initialSub || "");
   const subsOf = (c: string) => categories.find((x) => x.name === c)?.subs || [];
   const setCat = (c: string) => { setCatRaw(c); setSubCat(subsOf(c)[0]?.name || ""); };
   const subs = subsOf(cat);
-  const [subInit, setSubInit] = useState(false);
-  if (!subInit && subs.length && !subCat) { setSubInit(true); setSubCat(subs[0].name); }
   const [q, setQ] = useState("");
   const [items, setItems] = useState<StoreItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
@@ -27,7 +26,9 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
   const [open, setOpen] = useState<StoreItem | null>(null);
   // Oct 24 (per Mely): build-your-own kit — parts the customer keeps (all of them to start).
   const [keep, setKeep] = useState<string[]>([]);
-  useEffect(() => { if (open?.kit) setKeep(open.variants.filter((v) => !v.soldOut).map((v) => v.key)); }, [open]);
+  // Oct 24 (per Mely): how many to add (ice: 1, 2, 5 bags…) — type it or use − / +.
+  const [sheetQty, setSheetQty] = useState(1);
+  useEffect(() => { setSheetQty(1); if (open?.kit) setKeep(open.variants.filter((v) => !v.soldOut).map((v) => v.key)); }, [open]);
   const first = useRef(true);
   // Oct 23 (per Mely): online orders — a cart kept in this browser, then checkout.
   type CartLine = { id: string; variant?: string; name: string; price: number; qty: number; photo: string | null };
@@ -49,15 +50,15 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     if (u.get("order") && u.get("paid") === "1") { setDone({ order: u.get("order")!, total: 0 }); try { localStorage.removeItem("mr_cart"); } catch {} setCart([]); }
   }, []);
   function saveCart(next: CartLine[]) { setCart(next); try { localStorage.setItem("mr_cart", JSON.stringify(next)); } catch {} }
-  function add(i: StoreItem, variantKey?: string) {
+  function add(i: StoreItem, variantKey?: string, n = 1) {
     // Oct 24: items with choices (Corona / Heineken…) must be added from the sheet with a choice.
     if (i.variants.length && !variantKey) { setOpen(i); return; }
     const v = variantKey ? i.variants.find((x) => x.key === variantKey) : undefined;
     const key = i.id + (v ? "::" + v.key : "");
     const cur = cart.find((c) => lineKey(c) === key);
-    saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + 1) } : c)) : [...cart, { id: i.id, variant: v?.key, name: v ? `${i.name} — ${v.name}` : i.name, price: v ? v.price : i.price, qty: 1, photo: i.photo }]);
+    saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + n) } : c)) : [...cart, { id: i.id, variant: v?.key, name: v ? `${i.name} — ${v.name}` : i.name, price: v ? v.price : i.price, qty: Math.min(99, n), photo: i.photo }]);
   }
-  function addKit(i: StoreItem) {
+  function addKit(i: StoreItem, n = 1) {
     if (!keep.length) return;
     const parts = i.variants.filter((v) => keep.includes(v.key));
     const full = parts.length === i.variants.length;
@@ -65,7 +66,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     const key = i.id + "::" + variant;
     const price = kitPrice(i.price, i.variants, keep);
     const cur = cart.find((c) => lineKey(c) === key);
-    saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + 1) } : c)) : [...cart, { id: i.id, variant, name: `${i.name} — ${full ? "complete kit" : parts.map((v) => v.name).join(", ")}`, price, qty: 1, photo: i.photo }]);
+    saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + n) } : c)) : [...cart, { id: i.id, variant, name: `${i.name} — ${full ? "complete kit" : parts.map((v) => v.name).join(", ")}`, price, qty: Math.min(99, n), photo: i.photo }]);
   }
   function setQty(key: string, qty: number) { saveCart(qty <= 0 ? cart.filter((c) => lineKey(c) !== key) : cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, qty) } : c))); }
   const count = cart.reduce((n, c) => n + c.qty, 0);
@@ -89,8 +90,17 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     setItems((prev) => (append ? [...prev, ...(r.items || [])] : r.items || []));
     setTotal(r.total || 0); setPage(nextPage); setBusy(false);
   }
+  // Oct 24: keep the place in the address so a refresh stays on the same category / sub-category.
   useEffect(() => {
-    if (first.current) { first.current = false; if (cat !== "All") load(0, false); return; }
+    try {
+      const u = new URL(window.location.href);
+      if (cat && cat !== "All") u.searchParams.set("cat", cat); else u.searchParams.delete("cat");
+      if (subCat) u.searchParams.set("sub", subCat); else u.searchParams.delete("sub");
+      window.history.replaceState(null, "", u.toString());
+    } catch {}
+  }, [cat, subCat]);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; } // the server already loaded this category
     const t = setTimeout(() => load(0, false), 250);
     return () => clearTimeout(t);
   }, [cat, subCat, q]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -152,6 +162,16 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
               <div className="mr-store-price" style={{ fontSize: 20 }}>{open.soldOut ? "Sold out" : money(open.price)}</div>
               <div className="mr-note" style={{ margin: 0 }}>{open.category}</div>
               {open.description && <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{open.description}</p>}
+              {opts?.online && !open.soldOut && (
+                <div className="mr-sheet-qty">
+                  <span>How many?</span>
+                  <span className="mr-qty">
+                    <button type="button" aria-label="Less" onClick={() => setSheetQty(Math.max(1, sheetQty - 1))}>−</button>
+                    <input type="number" inputMode="numeric" min={1} max={99} aria-label="Quantity" value={sheetQty} onChange={(e) => setSheetQty(Math.max(1, Math.min(99, Math.round(Number(e.target.value) || 1))))} onFocus={(e) => e.target.select()} />
+                    <button type="button" aria-label="More" onClick={() => setSheetQty(Math.min(99, sheetQty + 1))}>+</button>
+                  </span>
+                </div>
+              )}
               {open.kit && (() => {
                 const parts = open.variants;
                 const sum = parts.filter((v) => keep.includes(v.key)).reduce((a, v) => a + v.price, 0);
@@ -173,7 +193,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
                     </div>
                     {full && sum > price && <div className="mr-note" style={{ margin: 0 }}>You save {money(sum - price)} with the complete kit.</div>}
                     {opts?.online
-                      ? <button className="mr-btn dark" disabled={!keep.length} onClick={() => { addKit(open); setOpen(null); }}>{keep.length ? `Add to cart · ${money(price)}` : "Choose at least one item"}</button>
+                      ? <button className="mr-btn dark" disabled={!keep.length} onClick={() => { addKit(open, sheetQty); setOpen(null); }}>{keep.length ? `Add ${sheetQty > 1 ? sheetQty + " " : ""}to cart · ${money(price * sheetQty)}` : "Choose at least one item"}</button>
                       : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>}
                   </div>
                 );
@@ -186,7 +206,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
                       <div key={v.key} className="mr-variant">
                         <span className="mr-variant-name">{v.name}</span>
                         <span className="mr-variant-price">{v.soldOut ? <span className="mr-overdue">Sold out</span> : money(v.price)}</span>
-                        {opts?.online && !v.soldOut && <button type="button" className="mr-btn" onClick={() => add(open, v.key)}>{inCart ? `Add (${inCart.qty})` : "Add"}</button>}
+                        {opts?.online && !v.soldOut && <button type="button" className="mr-btn" onClick={() => add(open, v.key, sheetQty)}>{sheetQty > 1 ? `Add ${sheetQty}` : "Add"}{inCart ? ` · ${inCart.qty} in cart` : ""}</button>}
                       </div>
                     );
                   })}
@@ -195,7 +215,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
               {open.kit ? null : open.variants.length > 0
                 ? (opts?.online ? <button className="mr-btn ghost" onClick={() => setOpen(null)}>Done</button> : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>)
                 : opts?.online && !open.soldOut
-                ? <button className="mr-btn dark" onClick={() => { add(open); setOpen(null); }}>Add to cart</button>
+                ? <button className="mr-btn dark" onClick={() => { add(open, undefined, sheetQty); setOpen(null); }}>Add {sheetQty > 1 ? `${sheetQty} ` : ""}to cart · {money(open.price * sheetQty)}</button>
                 : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>}
             </div>
           </div>

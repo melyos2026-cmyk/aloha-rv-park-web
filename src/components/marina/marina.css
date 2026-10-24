@@ -667,3 +667,7 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-kit-part { grid-template-columns: auto 1fr auto; cursor: pointer; }
 .mr-kit-part input { width: 18px; height: 18px; accent-color: var(--mr-ink); }
 .mr-kit-total { display: flex; justify-content: space-between; align-items: center; padding: 10px 2px 2px; font-size: 17px; border-top: 1px solid var(--mr-line); margin-top: 4px; }
+/* Oct 24 (per Mely): quantity in the item window */
+.mr-sheet-qty { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
+.mr-sheet-qty input { width: 48px; height: 34px; border: 0; border-left: 1px solid #b8c7d1; border-right: 1px solid #b8c7d1; text-align: center; font-size: 16px; font-weight: 700; -moz-appearance: textfield; }
+.mr-sheet-qty input::-webkit-outer-spin-button, .mr-sheet-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
