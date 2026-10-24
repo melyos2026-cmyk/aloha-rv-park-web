@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
-import { isDemoDomain } from "@/lib/marina/host";
 import { moduleOn } from "@/lib/concierge";
 import { loadCareersSettings } from "@/lib/careers";
-import { calculateProcessingFee } from "@/lib/platformFee";
 
-// Oct 23 (per Mely): Careers & Crew — a person applies (multipart: fields + license photo),
-// then PAYS THEIR OWN background check (same Checkr flow the RV parks use; the invitation is
-// sent by the Stripe webhook when the payment lands). The office approves or rejects in the admin.
-// POST multipart → { ok, applicantId, payUrl? }   ·   POST json { action:"pay", applicantId } → { url }
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+// Oct 23 (per Mely): Careers & Crew — a person applies (multipart: fields + license photo). The
+// applicant pays nothing: if the marina runs background checks, the office starts one from the
+// admin and MelyOS bills the marina. The office approves or rejects in the admin.
+// POST multipart → { ok, applicantId }
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 
 export async function POST(req: Request) {
@@ -19,16 +15,6 @@ export async function POST(req: Request) {
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
   if (!(await moduleOn(company.id, "careers"))) return NextResponse.json({ error: "We are not taking applications online right now." }, { status: 400 });
   const settings = await loadCareersSettings(company.id);
-  const ct = req.headers.get("content-type") || "";
-
-  if (ct.includes("application/json")) {
-    const b = await req.json().catch(() => ({}));
-    if (b.action !== "pay") return NextResponse.json({ error: "Unknown action." }, { status: 400 });
-    const { data: a } = await supabaseAdmin.from("crew_applicants").select("*").eq("id", String(b.applicantId || "")).eq("company_id", company.id).maybeSingle();
-    if (!a) return NextResponse.json({ error: "Application not found." }, { status: 404 });
-    if (a.bgc_status !== "not_started") return NextResponse.json({ error: "The background check was already started." }, { status: 400 });
-    return startBgcPayment(company, a, settings.bgcFee);
-  }
 
   const form = await req.formData().catch(() => null);
   if (!form) return NextResponse.json({ error: "Invalid form." }, { status: 400 });
@@ -37,7 +23,7 @@ export async function POST(req: Request) {
   const rate = Number(form.get("hourly_rate")) || null;
   if (!full_name || !roles) return NextResponse.json({ error: "Please enter your name and the roles you can do." }, { status: 400 });
   if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]{2,}$/.test(email)) return NextResponse.json({ error: "Please enter a valid email." }, { status: 400 });
-  if (!form.get("consent")) return NextResponse.json({ error: "Please agree to the background check and privacy terms." }, { status: 400 });
+  if (!form.get("consent")) return NextResponse.json({ error: "Please confirm your information and agree to the privacy terms." }, { status: 400 });
 
   const { count } = await supabaseAdmin.from("crew_applicants").select("id", { count: "exact", head: true }).eq("company_id", company.id).gte("created_at", new Date(Date.now() - 3600 * 1000).toISOString());
   if ((count || 0) >= 30) return NextResponse.json({ error: "Too many applications right now. Please try again later." }, { status: 429 });
@@ -60,33 +46,5 @@ export async function POST(req: Request) {
   if (error || !a) return NextResponse.json({ error: "Could not save your application. Please try again." }, { status: 500 });
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: full_name, update_type: "crew_application", message: `New crew application: ${full_name} (${roles})${settings.requireBgc ? " — background check pending" : ""}.` }).then(() => null, () => null);
 
-  if (!settings.requireBgc || a.bgc_status !== "not_started") return NextResponse.json({ ok: true, applicantId: a.id });
-  const pay = await startBgcPayment(company, a, settings.bgcFee);
-  const pj = await pay.json();
-  return NextResponse.json({ ok: true, applicantId: a.id, ...pj });
-}
-
-async function startBgcPayment(company: any, a: any, fee: number) {
-  if (isDemoDomain(company.domain)) {
-    // Demo: no card, no Checkr — mark as paid + in progress so the flow can be shown.
-    await supabaseAdmin.from("crew_applicants").update({ bgc_status: "in_progress", bgc_paid_at: new Date().toISOString(), bgc_stripe_session_id: `demo:${a.id}`, updated_at: new Date().toISOString() }).eq("id", a.id);
-    return NextResponse.json({ ok: true, demo: true });
-  }
-  const processing = calculateProcessingFee(fee);
-  // The applicant pays MelyOS directly (MelyOS pays Checkr); the marina is not charged and gets no share.
-  try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment", payment_method_types: ["card"], customer_email: a.email,
-      line_items: [
-        { quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(fee * 100), product_data: { name: `${company.company_name}: crew background check`, description: `Background check for ${a.full_name}` } } },
-        { quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(processing * 100), product_data: { name: "Card Processing Fee" } } },
-      ],
-      metadata: { type: "crew_background_check", company_id: company.id, applicant_id: a.id },
-      success_url: `https://${company.domain}/marina/careers?paid=1`,
-      cancel_url: `https://${company.domain}/marina/careers?paid=0`,
-    });
-    return NextResponse.json({ ok: true, url: session.url });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Could not start payment." }, { status: 500 });
-  }
+  return NextResponse.json({ ok: true, applicantId: a.id });
 }

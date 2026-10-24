@@ -5,7 +5,7 @@ import { loadCareersSettings } from "@/lib/careers";
 import { isDemoDomain } from "@/lib/marina/host";
 import MarinaCareers from "@/components/marina/MarinaCareers";
 
-// Oct 23 (per Mely): Careers & Crew — apply, upload license, pay your own background check.
+// Oct 23 (per Mely): Careers & Crew — apply and upload a license; background checks are run and paid by the marina if it wants them.
 export const dynamic = "force-dynamic";
 export async function generateMetadata() {
   const company = await getMarinaForPage();
