@@ -6,7 +6,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 import { round2 } from "@/lib/marina/data";
 import { moduleOn, loadConciergeSettings, toService } from "@/lib/concierge";
 import { accountChargesAllowed } from "@/lib/marina/payPolicy";
-import { startConciergePayment } from "@/lib/marina/conciergePay";
+import { startConciergePayment, voidUnpaidInvoice } from "@/lib/marina/conciergePay";
 
 // Oct 23 (per Mely): concierge requests from the marina website.
 // GET ?mine=1 → the signed-in boater's requests.   POST → new request.
@@ -95,6 +95,8 @@ export async function POST(req: Request) {
   if (!isQuote && payment === "card" && created) {
     const pay = await startConciergePayment(company, { ...created, service_name: svc.name }, memberId);
     if (!pay.ok) {
+      const { data: cur } = await supabaseAdmin.from("concierge_requests").select("invoice_id").eq("id", created.id).maybeSingle();
+      await voidUnpaidInvoice(company.id, cur?.invoice_id, `Concierge ${number}: payment could not start`);
       await supabaseAdmin.from("concierge_requests").update({ status: "cancelled", status_by_name: "Payment could not start" }).eq("id", created.id);
       return NextResponse.json({ error: pay.error }, { status: pay.status });
     }

@@ -64,8 +64,26 @@ export async function recordMarinaOnlinePayment(p: {
     .eq("id", p.invoiceId)
     .eq("company_id", p.companyId)
     .maybeSingle();
-  if (!invoice) return { ok: false, error: "Invoice not found." };
-  if (invoice.status === "void") return { ok: false, error: "This invoice was cancelled." };
+  // Oct 24: money taken by Stripe but not recordable must never be silent — flag it for a refund.
+  if (!invoice || invoice.status === "void") {
+    if (!p.demo) await logSystemHealthIssue({
+      companyId: p.companyId, issueType: "marina_online_payment_failed", source: "stripe",
+      message: `Online payment ${p.reference} of $${round2(p.amount).toFixed(2)} was received for an invoice that is ${invoice ? "cancelled (void)" : "missing"}. Refund it from Stripe or apply it by hand.`,
+    }).catch(() => null);
+    return { ok: false, error: invoice ? "This invoice was cancelled." : "Invoice not found." };
+  }
+  // Oct 24: paying an invoice that was already paid (e.g. "Pay balance" + a separate payment): record
+  // it (the money was taken) and flag the overpayment so the office refunds it.
+  {
+    const { data: prior } = await supabaseAdmin.from("marina_invoice_payments").select("amount, returned_at, reference").eq("company_id", p.companyId).eq("invoice_id", invoice.id);
+    const already = (prior || []).filter((x: any) => !x.returned_at && x.reference !== p.reference).reduce((a: number, x: any) => a + Number(x.amount), 0);
+    if (!p.demo && already > 0 && already + p.amount > Number(invoice.amount) + 0.005) {
+      await logSystemHealthIssue({
+        companyId: p.companyId, issueType: "marina_online_overpayment", source: "stripe",
+        message: `Invoice ${invoice.id} was paid more than once: $${round2(already + p.amount).toFixed(2)} received for $${Number(invoice.amount).toFixed(2)} (latest ${p.reference}). Refund the extra.`,
+      }).catch(() => null);
+    }
+  }
 
   const { error } = await supabaseAdmin.from("marina_invoice_payments").insert({
     company_id: p.companyId,

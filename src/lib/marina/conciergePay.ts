@@ -25,7 +25,15 @@ export async function startConciergePayment(company: MarinaCompany, r: any, memb
       else if (error?.code !== "23505") return { ok: false, status: 500, error: "Could not start the payment. Please try again." };
     }
     if (!invoiceId) return { ok: false, status: 500, error: "Could not start the payment. Please try again." };
-    await supabaseAdmin.from("concierge_requests").update({ invoice_id: invoiceId, payment: "card", updated_at: new Date().toISOString() }).eq("id", r.id).eq("company_id", company.id);
+    // Link it only if no other tap linked one first (double-click / two tabs) — never two invoices.
+    const { data: linked } = await supabaseAdmin.from("concierge_requests").update({ invoice_id: invoiceId, payment: "card", updated_at: new Date().toISOString() })
+      .eq("id", r.id).eq("company_id", company.id).is("invoice_id", null).select("id");
+    if (!linked?.length) {
+      await voidUnpaidInvoice(company.id, invoiceId, `Duplicate payment start for ${r.request_number}`);
+      const { data: cur } = await supabaseAdmin.from("concierge_requests").select("invoice_id").eq("id", r.id).eq("company_id", company.id).maybeSingle();
+      invoiceId = cur?.invoice_id || null;
+      if (!invoiceId) return { ok: false, status: 409, error: "Please try again." };
+    }
   }
   const origin = `https://${company.domain}`;
   return startInvoicePayment({
@@ -33,4 +41,13 @@ export async function startConciergePayment(company: MarinaCompany, r: any, memb
     successUrl: `${origin}/marina/concierge?request=${encodeURIComponent(r.request_number)}&paid=1`,
     cancelUrl: `${origin}/marina/concierge?request=${encodeURIComponent(r.request_number)}&paid=0`,
   });
+}
+
+// Voids a concierge invoice only while nothing has been paid on it (declined / payment never started).
+export async function voidUnpaidInvoice(companyId: string, invoiceId: string | null | undefined, reason: string) {
+  if (!invoiceId) return;
+  const { data: pays } = await supabaseAdmin.from("marina_invoice_payments").select("amount, returned_at").eq("company_id", companyId).eq("invoice_id", invoiceId);
+  if ((pays || []).some((p: any) => !p.returned_at && Number(p.amount) > 0)) return;
+  await supabaseAdmin.from("marina_invoices").update({ status: "void", voided_at: new Date().toISOString(), void_reason: reason.slice(0, 300) })
+    .eq("id", invoiceId).eq("company_id", companyId).eq("status", "open");
 }

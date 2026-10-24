@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
-import { startConciergePayment } from "@/lib/marina/conciergePay";
+import { startConciergePayment, voidUnpaidInvoice } from "@/lib/marina/conciergePay";
 
 // Oct 23 (per Mely): the boater approves (→ confirmed, the office then bills) or declines a quote.
 export async function POST(req: Request) {
@@ -20,6 +20,8 @@ export async function POST(req: Request) {
     return NextResponse.json("url" in pay ? { ok: true, url: pay.url } : { ok: true, status: "confirmed", demo: true });
   }
   const status = b.approve ? "confirmed" : "cancelled";
+  // Declined after starting "Approve & pay": the unpaid invoice goes away too.
+  if (!b.approve) await voidUnpaidInvoice(company.id, (r as any).invoice_id, `Concierge ${r.request_number}: quote declined`);
   await supabaseAdmin.from("concierge_requests").update({ status, status_by_name: "Customer", updated_at: new Date().toISOString() }).eq("id", r.id);
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: null, update_type: "concierge_request", message: `Quote for ${r.request_number} was ${b.approve ? "approved by the customer — go ahead" : "declined by the customer"}.` }).then(() => null, () => null);
   return NextResponse.json({ ok: true, status });
