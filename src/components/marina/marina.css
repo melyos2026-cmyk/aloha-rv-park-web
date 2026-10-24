@@ -671,3 +671,17 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-sheet-qty { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
 .mr-sheet-qty input { width: 48px; height: 34px; border: 0; border-left: 1px solid #b8c7d1; border-right: 1px solid #b8c7d1; text-align: center; font-size: 16px; font-weight: 700; -moz-appearance: textfield; }
 .mr-sheet-qty input::-webkit-outer-spin-button, .mr-sheet-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Oct 24 (per Mely): store cards on phones — every photo the same square (a tall photo no longer
+   stretches its card), tighter text, and room at the bottom so the Cart button doesn't cover items. */
+.mr-store-img { position: relative; overflow: hidden; min-height: 0; flex: 0 0 auto; }
+.mr-store-img img { position: absolute; inset: 0; }
+.mr-store-grid { padding-bottom: 88px; align-items: stretch; }
+@media (max-width: 520px) {
+  .mr-store-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .mr-store-body { padding: 8px 10px 4px; gap: 0; }
+  .mr-store-body .mr-store-name { font-size: 15px; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mr-store-cat { display: none; }
+  .mr-store-price { font-size: 15px; margin-top: 2px; }
+  .mr-store-card > .mr-store-add { margin: 6px 10px 10px; padding: 8px 6px; font-size: 14px; }
+  .mr-cart-fab { bottom: 14px; padding: 11px 18px; font-size: 15px; }
+}
