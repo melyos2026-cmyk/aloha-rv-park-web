@@ -608,3 +608,8 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-cr-submit { justify-self: start; min-width: 200px; }
 .mr-cr-check { width: 56px; height: 56px; border-radius: 50%; background: var(--mr-open); color: #fff; font-size: 28px; font-weight: 800; display: grid; place-items: center; margin: 0 auto; }
 @media (max-width: 860px) { .mr-cr-body { grid-template-columns: 1fr; margin-top: -10px; } .mr-cr-side { position: static; } .mr-cr-submit { justify-self: stretch; } .mr-cr-consent { margin-right: 64px; } }
+
+.mr-fld > span:first-child em { font-style: normal; font-weight: 500; color: #6b7a88; margin-left: 4px; }
+.mr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.mr-chips button { padding: 8px 12px; border: 1.5px solid var(--mr-line); background: #fff; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 600; color: var(--mr-ink); cursor: pointer; }
+.mr-chips button[aria-pressed="true"] { background: var(--mr-deep); border-color: var(--mr-deep); color: #fff; }

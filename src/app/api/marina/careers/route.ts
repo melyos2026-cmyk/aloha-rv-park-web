@@ -21,6 +21,9 @@ export async function POST(req: Request) {
   const full_name = text(form.get("name"), 120), email = text(form.get("email"), 160).toLowerCase(), phone = text(form.get("phone"), 40);
   const roles = text(form.get("roles"), 200), experience = text(form.get("experience"), 3000), certifications = text(form.get("certifications"), 1000), availability = text(form.get("availability"), 300);
   const rate = Number(form.get("hourly_rate")) || null;
+  const languages = text(form.get("languages"), 200) || null, vessel_types = text(form.get("vessel_types"), 300) || null, certs = text(form.get("certs"), 300) || null, references_text = text(form.get("references_text"), 1000) || null;
+  const exp = text(form.get("license_expires"), 10); const license_expires = /^\d{4}-\d{2}-\d{2}$/.test(exp) ? exp : null;
+  const wa = text(form.get("work_authorized"), 3); const work_authorized = wa === "yes" ? true : wa === "no" ? false : null;
   if (!full_name || !roles) return NextResponse.json({ error: "Please enter your name and the roles you can do." }, { status: 400 });
   if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]{2,}$/.test(email)) return NextResponse.json({ error: "Please enter a valid email." }, { status: 400 });
   if (!form.get("consent")) return NextResponse.json({ error: "Please confirm your information and agree to the privacy terms." }, { status: 400 });
@@ -41,7 +44,7 @@ export async function POST(req: Request) {
   }
 
   const { data: a, error } = await supabaseAdmin.from("crew_applicants")
-    .upsert({ company_id: company.id, full_name, email, phone: phone || null, roles, experience: experience || null, certifications: certifications || null, availability: availability || null, hourly_rate: rate, ...(license_photo_path ? { license_photo_path } : {}), updated_at: new Date().toISOString() }, { onConflict: "company_id,email" })
+    .upsert({ company_id: company.id, full_name, email, phone: phone || null, roles, experience: experience || null, certifications: certifications || null, availability: availability || null, hourly_rate: rate, languages, vessel_types, certs, references_text, license_expires, work_authorized, ...(license_photo_path ? { license_photo_path } : {}), updated_at: new Date().toISOString() }, { onConflict: "company_id,email" })
     .select("*").single();
   if (error || !a) return NextResponse.json({ error: "Could not save your application. Please try again." }, { status: 500 });
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: full_name, update_type: "crew_application", message: `New crew application: ${full_name} (${roles})${settings.requireBgc ? " — background check pending" : ""}.` }).then(() => null, () => null);

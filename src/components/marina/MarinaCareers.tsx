@@ -5,7 +5,16 @@ import { useState } from "react";
 // Oct 23 (per Mely): Careers & Crew application — roles, experience, license upload. The applicant
 // pays nothing; if the marina runs background checks, the office starts one from the admin.
 export default function MarinaCareers({ title, intro, roles, requireBgc, marina, demo }: { title: string; intro: string; roles: string[]; bgcFee?: number; requireBgc: boolean; marina: string; demo: boolean }) {
-  const [f, setF] = useState({ name: "", email: "", phone: "", experience: "", certifications: "", availability: "", hourly_rate: "" });
+  const [f, setF] = useState({ name: "", email: "", phone: "", experience: "", certifications: "", hourly_rate: "", license_expires: "", references_text: "", work_authorized: "" });
+  const [langs, setLangs] = useState<string[]>([]);
+  const [vessels, setVessels] = useState<string[]>([]);
+  const [certs, setCerts] = useState<string[]>([]);
+  const [avail, setAvail] = useState<string[]>([]);
+  const toggle = (list: string[], set: (v: string[]) => void, v: string) => set(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  const LANGS = ["English", "Spanish", "Portuguese", "French", "Other"];
+  const VESSELS = ["Up to 30 ft", "30–50 ft", "50+ ft", "Sail", "Sportfish / offshore", "Pontoon / deck boat", "Jet skis / PWC"];
+  const CERTS = ["USCG license", "STCW", "CPR / First Aid", "Towing endorsement", "Drug consortium", "TWIC", "Captain's medical"];
+  const AVAIL = ["Weekdays", "Weekends", "Nights", "Seasonal", "Full time", "Part time"];
   const [picked, setPicked] = useState<string[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [consent, setConsent] = useState(false);
@@ -22,6 +31,7 @@ export default function MarinaCareers({ title, intro, roles, requireBgc, marina,
     const fd = new FormData();
     Object.entries(f).forEach(([k, v]) => fd.append(k, v));
     fd.append("roles", picked.join(", ")); fd.append("consent", "1");
+    fd.append("languages", langs.join(", ")); fd.append("vessel_types", vessels.join(", ")); fd.append("certs", certs.join(", ")); fd.append("availability", avail.join(", "));
     if (file) fd.append("license", file);
     const res = await fetch("/api/marina/careers", { method: "POST", body: fd });
     const r = await res.json().catch(() => ({}));
@@ -88,11 +98,28 @@ export default function MarinaCareers({ title, intro, roles, requireBgc, marina,
           <div className="mr-cr-section">
             <div className="mr-cr-label">Experience</div>
             <label className="mr-fld"><span>Boats you've run, years, where</span><textarea style={input} rows={4} placeholder="e.g. 8 years running 30–50 ft sportfishers out of Islamorada; charter mate 2 seasons…" value={f.experience} onChange={(e) => setF({ ...f, experience: e.target.value })} /></label>
-            <label className="mr-fld"><span>Licenses and certifications</span><input style={input} placeholder="USCG license #, STCW, CPR / First Aid…" value={f.certifications} onChange={(e) => setF({ ...f, certifications: e.target.value })} /></label>
+            <div className="mr-fld"><span>Vessels you're comfortable with <em>pick all that apply</em></span><div className="mr-chips">{VESSELS.map((v) => <button key={v} type="button" aria-pressed={vessels.includes(v)} onClick={() => toggle(vessels, setVessels, v)}>{v}</button>)}</div></div>
+            <div className="mr-fld"><span>Languages</span><div className="mr-chips">{LANGS.map((v) => <button key={v} type="button" aria-pressed={langs.includes(v)} onClick={() => toggle(langs, setLangs, v)}>{v}</button>)}</div></div>
+          </div>
+          <div className="mr-cr-section">
+            <div className="mr-cr-label">Licenses &amp; certifications</div>
+            <div className="mr-fld"><span>What you hold <em>pick all that apply</em></span><div className="mr-chips">{CERTS.map((v) => <button key={v} type="button" aria-pressed={certs.includes(v)} onClick={() => toggle(certs, setCerts, v)}>{v}</button>)}</div></div>
             <div className="mr-fld-row">
-              <label className="mr-fld"><span>Availability</span><input style={input} placeholder="Weekends, full time…" value={f.availability} onChange={(e) => setF({ ...f, availability: e.target.value })} /></label>
-              <label className="mr-fld"><span>Hourly rate ($, optional)</span><input style={input} type="number" inputMode="decimal" placeholder="35" value={f.hourly_rate} onChange={(e) => setF({ ...f, hourly_rate: e.target.value })} /></label>
+              <label className="mr-fld"><span>License / credential numbers (optional)</span><input style={input} placeholder="USCG license #, other certificate numbers" value={f.certifications} onChange={(e) => setF({ ...f, certifications: e.target.value })} /></label>
+              <label className="mr-fld"><span>License expiration date</span><input style={input} type="date" value={f.license_expires} onChange={(e) => setF({ ...f, license_expires: e.target.value })} /></label>
             </div>
+          </div>
+          <div className="mr-cr-section">
+            <div className="mr-cr-label">Availability &amp; pay</div>
+            <div className="mr-fld"><span>When can you work? <em>pick all that apply</em></span><div className="mr-chips">{AVAIL.map((v) => <button key={v} type="button" aria-pressed={avail.includes(v)} onClick={() => toggle(avail, setAvail, v)}>{v}</button>)}</div></div>
+            <div className="mr-fld-row">
+              <label className="mr-fld"><span>Hourly rate ($, optional)</span><input style={input} type="number" inputMode="decimal" placeholder="35" value={f.hourly_rate} onChange={(e) => setF({ ...f, hourly_rate: e.target.value })} /></label>
+              <label className="mr-fld"><span>Legally authorized to work in the U.S.?</span><select style={input} value={f.work_authorized} onChange={(e) => setF({ ...f, work_authorized: e.target.value })} required><option value="">Select…</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+            </div>
+          </div>
+          <div className="mr-cr-section">
+            <div className="mr-cr-label">References <span>optional</span></div>
+            <label className="mr-fld"><span>One or two people we can call (name, relationship, phone)</span><textarea style={input} rows={2} placeholder="Capt. John Doe, former employer, (305) 555-0100" value={f.references_text} onChange={(e) => setF({ ...f, references_text: e.target.value })} /></label>
           </div>
           <div className="mr-cr-section">
             <div className="mr-cr-label">License or ID <span>photo or PDF</span></div>
