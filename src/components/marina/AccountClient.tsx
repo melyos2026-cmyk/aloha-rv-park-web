@@ -243,9 +243,9 @@ export default function AccountClient() {
               {i.pending_bank > 0 ? (
                 <span className="mr-note" style={{ margin: 0 }}>Bank payment of {money(i.pending_bank)} is clearing (3–5 business days)</span>
               ) : (<>
-                <button className="mr-btn" disabled={busy === i.id} onClick={() => pay(i.id, "card")}>{busy === i.id ? "Working…" : payable.length > 1 ? "Pay only this" : "Pay by card"}</button>
-                {(acct as any).ach?.enabled && i.balance >= ((acct as any).ach?.min ?? 100) && (
-                  <button className="mr-btn ghost" disabled={busy === i.id} onClick={() => pay(i.id, "ach")} title="Lower fee. Takes 3–5 business days to clear.">{payable.length > 1 ? "Only this by bank" : "Pay by bank (ACH)"}</button>
+                <button className={payable.length > 1 ? "mr-pay-one" : "mr-btn"} disabled={busy === i.id} onClick={() => pay(i.id, "card")}>{busy === i.id ? "Working…" : payable.length > 1 ? "Pay only this one" : "Pay by card"}</button>
+                {payable.length <= 1 && (acct as any).ach?.enabled && i.balance >= ((acct as any).ach?.min ?? 100) && (
+                  <button className="mr-btn ghost" disabled={busy === i.id} onClick={() => pay(i.id, "ach")} title="Lower fee. Takes 3–5 business days to clear.">Pay by bank (ACH)</button>
                 )}
               </>)}
             </div>
