@@ -87,7 +87,17 @@ export async function sendStoreOrderConfirmation(companyId: string, orderId: str
     .eq("id", orderId).eq("company_id", companyId).is("confirmed_email_at", null).neq("status", "cancelled")
     .select("*");
   const o: any = !error && claimed?.[0];
-  if (!o?.customer_email) return;
+  if (!o) return;
+  // Oct 24 (per Mely): signed-in boaters also get it in Boater login → Messages (works on the demo too).
+  if (o.member_id) {
+    const items = (o.lines || []).map((l: any) => `${Number(l.qty)} × ${l.name}`).join(", ");
+    await supabaseAdmin.from("marina_messages").insert({
+      company_id: companyId, member_id: o.member_id, direction: "office", sent_by_name: "Ship Store",
+      subject: `Order ${o.order_number} received`.slice(0, 200),
+      body: `We have your order (${o.fulfillment === "slip" ? `delivery to slip ${o.slip_name}` : "pickup at the store"}${o.pickup_code ? `, pickup code ${o.pickup_code}` : ""}): ${items}. Total $${Number(o.total).toFixed(2)}${o.payment === "account" ? ", charged to your account" : ", paid"}. We'll message you when it's ${o.fulfillment === "slip" ? "on the way" : "ready"}.`.slice(0, 2000),
+    }).then(() => null, () => null);
+  }
+  if (!o.customer_email) return;
   const [{ data: company }, { data: st }] = await Promise.all([
     supabaseAdmin.from("companies").select("company_name, domain, contact_phone").eq("id", companyId).maybeSingle(),
     supabaseAdmin.from("marina_store_settings").select("store_name").eq("company_id", companyId).maybeSingle(),
