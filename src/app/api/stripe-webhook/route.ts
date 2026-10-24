@@ -9,7 +9,7 @@ import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
-import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment } from "@/lib/marina/payments";
+import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment } from "@/lib/marina/payments";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
 
@@ -419,6 +419,17 @@ async function handleWebhook(req: Request) {
   if (event.type === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
     const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
+    // Oct 24 (per Mely): marina invoice payments refunded in Stripe.
+    if (pi) {
+      try {
+        const sessions = await stripe.checkout.sessions.list({ payment_intent: pi, limit: 1 });
+        const s = sessions.data[0];
+        if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id) {
+          if (charge.refunded) await returnMarinaOnlinePayment(s.metadata.company_id, s.id, "Refunded in Stripe");
+          else await logSystemHealthIssue({ companyId: s.metadata.company_id, issueType: "marina_online_payment_returned", source: "stripe_webhook", message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on a marina online payment. The invoice still shows the full amount paid — record the refund on the invoice.` });
+        }
+      } catch (e: any) { console.error("marina refund sync:", e?.message); }
+    }
     if (pi) {
       const { data: rows } = await supabase.from("rv_shift_payments").select("id, company_id, amount, payer_name")
         .eq("source_type", "stripe_online").eq("reference", pi).is("voided_at", null);
@@ -525,6 +536,15 @@ async function handleWebhook(req: Request) {
       if (!companyId || !charge) {
         console.error("charge.dispute.closed: could not find the company for dispute", dispute.id);
         return NextResponse.json({ received: true });
+      }
+      // Oct 24 (per Mely): a lost dispute on a marina payment reopens the invoice(s).
+      if (charge?.payment_intent) {
+        const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
+        const ss = await stripe.checkout.sessions.list({ payment_intent: piId, limit: 1 }).catch(() => null);
+        const s0 = ss?.data[0];
+        if (s0 && (s0.metadata?.type === "marina_invoice" || s0.metadata?.type === "marina_invoices") && s0.metadata.company_id) {
+          await returnMarinaOnlinePayment(s0.metadata.company_id, s0.id, `Lost card dispute ${dispute.id}`);
+        }
       }
       const source = `Stripe lost dispute ${dispute.id}`;
       const { data: done } = await supabase.from("melyos_billing_charges").select("id").eq("source", source).limit(1);

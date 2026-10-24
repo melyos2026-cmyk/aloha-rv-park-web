@@ -3,9 +3,18 @@ import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { calculateProcessingFee, calculateAchFee, resolveConnectSplit } from "@/lib/platformFee";
 import type { MarinaCompany } from "./company";
-import { isDemoDomain } from "./host";
+import { isDemoCompany } from "./host";
 import { round2 } from "./data";
 import { recordMarinaOnlinePayment } from "./payments";
+import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+
+// Oct 24 (per Mely — security run): a real marina must have its own connected Stripe account.
+// Without one the money would sit in MelyOS's balance (public money, for a city marina), so
+// online payment is refused and flagged instead.
+async function noConnectedAccount(company: MarinaCompany) {
+  await logSystemHealthIssue({ companyId: company.id, issueType: "marina_online_payment_failed", source: "stripe", message: `${company.company_name} tried to take an online payment but has no connected Stripe account. Finish Stripe Connect onboarding for this marina.` }).catch(() => null);
+  return { ok: false as const, status: 503, error: "Online payments aren't set up for this marina yet. Please pay at the office." };
+}
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -44,7 +53,7 @@ export async function startInvoicePayment(p: {
   const balance = round2(Number(invoice.amount) - paid);
   if (balance <= 0) return { ok: false, status: 400, error: "This invoice is already paid." };
 
-  if (isDemoDomain(company.domain)) {
+  if (isDemoCompany(company)) {
     const result = await recordMarinaOnlinePayment({
       companyId: company.id,
       invoiceId: invoice.id,
@@ -87,6 +96,7 @@ export async function startInvoicePayment(p: {
 
   const marinaShare = balance + (passFee ? 0 : -fee);
   const split = await resolveConnectSplit(company.id, chargeAmount, marinaShare);
+  if (!split) return noConnectedAccount(company);
 
   try {
     const checkout = await stripe.checkout.sessions.create({
@@ -112,6 +122,8 @@ export async function startInvoicePayment(p: {
         processing_fee_charged: passFee ? String(fee) : "0",
         payment_method: ach ? "ach" : "card",
       },
+      // Oct 24: short-lived checkout (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       success_url: p.successUrl,
       cancel_url: p.cancelUrl,
     });
@@ -156,7 +168,7 @@ export async function startMultiInvoicePayment(p: {
   if (rows.length === 1) return startInvoicePayment({ company, invoiceId: rows[0].id, memberId: p.memberId, successUrl: p.successUrl, cancelUrl: p.cancelUrl, method: p.method });
   const total = round2(rows.reduce((a, r) => a + r.balance, 0));
 
-  if (isDemoDomain(company.domain)) {
+  if (isDemoCompany(company)) {
     const ref = `demo:${crypto.randomUUID()}`;
     for (let i = 0; i < rows.length; i++) {
       const r = await recordMarinaOnlinePayment({ companyId: company.id, invoiceId: rows[i].id, amount: rows[i].balance, reference: `${ref}:${i + 1}`, demo: true, method: p.method === "ach" ? "ach" : "card" });
@@ -177,6 +189,7 @@ export async function startMultiInvoicePayment(p: {
   }));
   if (passFee) lineItems.push({ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(fee * 100), product_data: { name: ach ? "Bank Transfer Fee" : "Card Processing Fee" } } });
   const split = await resolveConnectSplit(company.id, chargeAmount, total + (passFee ? 0 : -fee));
+  if (!split) return noConnectedAccount(company);
   try {
     const checkout = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -193,6 +206,8 @@ export async function startMultiInvoicePayment(p: {
         processing_fee_charged: passFee ? String(fee) : "0",
         payment_method: ach ? "ach" : "card",
       },
+      // Oct 24: short-lived checkout (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       success_url: p.successUrl,
       cancel_url: p.cancelUrl,
     });

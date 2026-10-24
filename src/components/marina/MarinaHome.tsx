@@ -6,6 +6,7 @@ import { loadRestaurant, restaurantEnabled } from "@/lib/restaurant";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 import MarinaEventsCalendar from "./MarinaEventsCalendar";
+import { isDemoCompany } from "@/lib/marina/host";
 import { accountChargesAllowed } from "@/lib/marina/payPolicy";
 
 // Whole dollars show as $280; anything with cents always shows two decimals ($2,553.60).
@@ -244,7 +245,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
           <h2 className="mr-h2">Everything a marina office needs, online</h2>
           <p className="mr-lede">Built for private marinas and public ones: city, county and port authority.</p>
           {/* Oct 21 (per Mely): link to the office tour on demo marinas */}
-          {/melyos\.io$/i.test(company.domain || "") && (
+          {isDemoCompany(company) && (
             <p style={{ marginTop: 14 }}><Link className="mr-btn dark" href="/marina/tour">Take the office tour</Link></p>
           )}
           <div className="mr-caps">

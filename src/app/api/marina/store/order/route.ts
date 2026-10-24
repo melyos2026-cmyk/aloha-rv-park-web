@@ -8,7 +8,7 @@ import { round2, todayET } from "@/lib/marina/data";
 import { kitPrice, kitKeys, kitLineKey } from "@/lib/marina/store-kit";
 import { newOrderSecrets, sendStoreOrderConfirmation } from "@/lib/marina/storeOrders";
 import { accountChargesAllowed } from "@/lib/marina/payPolicy";
-import { isDemoDomain } from "@/lib/marina/host";
+import { isDemoCompany } from "@/lib/marina/host";
 
 // Oct 23 (per Mely): online orders from the marina's store page.
 // GET → what the checkout needs (signed in?, tax, options).
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   }
   // Oct 24 (per Mely): whether this marina lets boaters charge to their account (else: pay now).
   const accountAllowed = await accountChargesAllowed(company.id);
-  return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery, storeName: st.name, orders, accountAllowed, demo: isDemoDomain(company.domain) });
+  return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery, storeName: st.name, orders, accountAllowed, demo: isDemoCompany(company) });
 }
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);

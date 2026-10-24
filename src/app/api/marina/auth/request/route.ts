@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
-import { isDemoDomain } from "@/lib/marina/host";
+import { isDemoCompany } from "@/lib/marina/host";
 import { hashLoginCode, newLoginCode } from "@/lib/marina/session";
 import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
 
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   } catch {}
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
 
-  const demo = isDemoDomain(company.domain);
+  const demo = isDemoCompany(company);
   const generic = { ok: true };
 
   // Oct 20 (security review): exact (case-insensitive) email match only —

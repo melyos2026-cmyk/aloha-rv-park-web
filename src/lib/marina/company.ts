@@ -15,7 +15,8 @@ export type MarinaCompany = {
   hero_image_url: string | null;
   hero_headline: string | null;
   hero_subtext: string | null;
-  events_calendar_pdf_url?: string | null;   // Oct 24: monthly events calendar (PDF or image), same field as the RV parks
+  events_calendar_pdf_url?: string | null;
+  is_demo?: boolean;   // Oct 24: from companies (see isDemoCompany)   // Oct 24: monthly events calendar (PDF or image), same field as the RV parks
 };
 
 const COLUMNS =
@@ -28,7 +29,12 @@ async function byHostname(hostname: string): Promise<MarinaCompany | null> {
     .select(COLUMNS)
     .eq("domain", hostname)
     .maybeSingle();
-  return (data as MarinaCompany | null) || null;
+  const c = (data as MarinaCompany | null) || null;
+  if (!c) return null;
+  // Oct 24: the demo flag lives on companies (not in the public view). If it can't be read, the
+  // company counts as a demo — never charge a card on a guess.
+  const { data: flag, error } = await supabaseAdmin.from("companies").select("is_demo").eq("id", c.id).maybeSingle();
+  return { ...c, is_demo: error || !flag ? true : flag.is_demo === true };
 }
 
 // Returns the marina for this host, or null when the host is anything else

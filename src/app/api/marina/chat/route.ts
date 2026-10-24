@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
-import { isDemoDomain } from "@/lib/marina/host";
+import { isDemoCompany } from "@/lib/marina/host";
 import { loadPublicSlips, todayET } from "@/lib/marina/data";
 
 const LEAD_TO_FALLBACK = "melyos2026@gmail.com";
@@ -123,7 +123,7 @@ async function handle(req: Request) {
     }
   }
 
-  const demo = isDemoDomain(marina.domain);
+  const demo = isDemoCompany(marina);
   const { data: extra } = await supabaseAdmin.from("companies").select("ai_assistant_info").eq("id", marina.id).maybeSingle();
   const notes = extra?.ai_assistant_info
     ? `\n\nNotes written by this ${demo ? "demo" : "marina"}'s office (always current; follow them if they conflict with anything above):\n${extra.ai_assistant_info}`

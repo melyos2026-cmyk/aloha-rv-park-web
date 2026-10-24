@@ -172,7 +172,7 @@ export default function AccountClient() {
             </div>
           </form>
         )}
-        {typeof window !== "undefined" && /melyos\.io$/.test(window.location.hostname) && (
+        {typeof window !== "undefined" && /(^|\.)melyos\.io$/.test(window.location.hostname) && (
           <p className="mr-note">Demo: sign in with <b>boater@marinademo.melyos.io</b>. The code appears on screen.</p>
         )}
       </div>

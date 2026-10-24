@@ -2,7 +2,7 @@ import MarinaMely from "./MarinaMely";
 import Link from "next/link";
 import "./marina.css";
 import type { MarinaCompany } from "@/lib/marina/company";
-import { isDemoDomain } from "@/lib/marina/host";
+import { isDemoCompany } from "@/lib/marina/host";
 import MarinaNav from "./MarinaNav";
 import { loadMarinaServices } from "@/lib/marina/data";
 
@@ -18,7 +18,7 @@ function Emblem() {
 }
 
 export async function MarinaShell({ company, children }: { company: MarinaCompany; children: React.ReactNode }) {
-  const demo = isDemoDomain(company.domain);
+  const demo = isDemoCompany(company);
   const services = await loadMarinaServices(company.id);
   const style = {
   } as React.CSSProperties;

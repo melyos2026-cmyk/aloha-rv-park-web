@@ -31,3 +31,10 @@ export function hostnameFromRequest(req: Request): string {
 export function isDemoDomain(domain: string | null | undefined): boolean {
   return !!domain && /(^|\.)melyos\.io$/i.test(domain);
 }
+
+// Oct 24 (per Mely — security run before Toho goes live): a marina is a demo when the company is
+// marked is_demo OR it lives on a melyos.io address. Fail closed: if either says demo, no card is
+// charged. A real marina = is_demo false AND its own domain. Use this everywhere, not the domain alone.
+export function isDemoCompany(c: { domain?: string | null; is_demo?: boolean | null } | null | undefined): boolean {
+  return !!c && (c.is_demo === true || isDemoDomain(c.domain));
+}

@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { buildSignedContractPdf } from "@/lib/marina/contractPdf";
-import { isDemoDomain } from "@/lib/marina/host";
+import { isDemoCompany } from "@/lib/marina/host";
 
 // Oct 21 (per Mely): a boater's contracts (sent from the marina admin) and
 // electronic signing. Only the signed-in boater's own contracts, only on this
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
   // deposit gets its own invoice so it can be refunded at the end of the term.
   // Oct 21 (per Mely): on the DEMO marina every visitor shares one boater account, so
   // the previous demo signing's unpaid invoices are voided (the balance never piles up)…
-  const demo = isDemoDomain((w.company as any).domain);
+  const demo = isDemoCompany(w.company);
   if (demo) {
     const { data: old } = await supabaseAdmin.from("marina_invoices").select("id").eq("company_id", w.company.id)
       .eq("member_id", w.memberId).eq("status", "open").not("contract_id", "is", null).neq("contract_id", k.id);

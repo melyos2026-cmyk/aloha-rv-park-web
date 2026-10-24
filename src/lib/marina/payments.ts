@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { Resend } from "resend";
 import { round2, todayET } from "./data";
-import { isDemoDomain } from "./host";
+import { isDemoCompany } from "./host";
 import { confirmStoreOrderForInvoice } from "./storeOrders";
 import { conciergePaidForInvoice } from "./conciergePaid";
 
@@ -22,10 +22,10 @@ async function confirmReservationForInvoice(companyId: string, invoiceId: string
   const r = rows?.[0];
   if (!r) return;
   const [{ data: company }, { data: slip }] = await Promise.all([
-    supabaseAdmin.from("companies").select("company_name, domain, contact_phone").eq("id", companyId).maybeSingle(),
+    supabaseAdmin.from("companies").select("company_name, domain, contact_phone, is_demo").eq("id", companyId).maybeSingle(),
     supabaseAdmin.from("marina_slips").select("slip_name, dock").eq("id", r.slip_id).maybeSingle(),
   ]);
-  if (!company || isDemoDomain(company.domain) || !r.guest_email) return;
+  if (!company || isDemoCompany(company as any) || !r.guest_email) return;
   try {
     await resend.emails.send({
       from: `${company.company_name} <noreply@aloharvparkfl.com>`,
@@ -135,4 +135,21 @@ export async function failMarinaAchPayment(companyId: string, reference: string,
   await supabaseAdmin.from("marina_invoice_payments")
     .update({ pending_at: null, returned_at: new Date().toISOString(), return_reason: `Bank payment failed: ${reason}`.slice(0, 300), recorded_by_name: "Online bank transfer (failed)" })
     .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).is("returned_at", null);
+}
+
+// Oct 24 (per Mely — security run): money given back in Stripe (full refund, or a lost dispute)
+// reopens the marina invoice(s) it paid, so the books never show "paid" for money that left.
+// Covers single payments ("online:<session>") and Pay balance ("online:<session>:N").
+export async function returnMarinaOnlinePayment(companyId: string, sessionId: string, reason: string) {
+  const ref = `online:${sessionId}`;
+  const { data } = await supabaseAdmin.from("marina_invoice_payments")
+    .update({ returned_at: new Date().toISOString(), return_reason: reason.slice(0, 300), recorded_by_name: "Online payment (returned)" })
+    .eq("company_id", companyId).or(`reference.eq.${ref},reference.like.${ref}:%`).is("returned_at", null)
+    .select("invoice_id, amount");
+  if (data?.length) {
+    await logSystemHealthIssue({
+      companyId, issueType: "marina_online_payment_returned", source: "stripe",
+      message: `${reason}: $${data.reduce((a: number, r: any) => a + Number(r.amount || 0), 0).toFixed(2)} on ${data.length} marina invoice(s) was marked returned; the invoice(s) are open again.`,
+    }).catch(() => null);
+  }
 }

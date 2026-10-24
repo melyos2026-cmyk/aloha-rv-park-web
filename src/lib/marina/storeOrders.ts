@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { isDemoDomain } from "./host";
+import { isDemoCompany } from "./host";
 
 // Oct 24 (per Mely): online store orders, Walmart-style pickup. Each order has a private link
 // (order page + QR code) and a 4-digit pickup code. The customer gets an email when the order is
@@ -99,10 +99,10 @@ export async function sendStoreOrderConfirmation(companyId: string, orderId: str
   }
   if (!o.customer_email) return;
   const [{ data: company }, { data: st }] = await Promise.all([
-    supabaseAdmin.from("companies").select("company_name, domain, contact_phone").eq("id", companyId).maybeSingle(),
+    supabaseAdmin.from("companies").select("company_name, domain, contact_phone, is_demo").eq("id", companyId).maybeSingle(),
     supabaseAdmin.from("marina_store_settings").select("store_name").eq("company_id", companyId).maybeSingle(),
   ]);
-  if (!company?.domain || isDemoDomain(company.domain)) return;
+  if (!company?.domain || isDemoCompany(company as any)) return;
   const storeName = ((st as any)?.store_name || "").trim() || "Ship Store";
   try {
     await resend.emails.send({

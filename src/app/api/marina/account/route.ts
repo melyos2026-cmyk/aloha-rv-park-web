@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { loadAccount } from "@/lib/marina/data";
-import { isDemoDomain } from "@/lib/marina/host";
+import { isDemoCompany } from "@/lib/marina/host";
 import { rentalsEnabled } from "@/lib/rentals";
 import { moduleOn } from "@/lib/concierge";
 import { loadRestaurant } from "@/lib/restaurant";
@@ -28,5 +28,5 @@ export async function GET(req: Request) {
   const account = await loadAccount(company.id, session.memberId);
   if (!account) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  return NextResponse.json({ ...account, demo: isDemoDomain(company.domain), companyName: company.company_name, rentals: await rentalsEnabled(company.id), concierge: await moduleOn(company.id, "concierge"), restaurant: await moduleOn(company.id, "restaurant") ? (await loadRestaurant(company.id, company.company_name)).name : null, ach: await achSettings(company.id) });
+  return NextResponse.json({ ...account, demo: isDemoCompany(company), companyName: company.company_name, rentals: await rentalsEnabled(company.id), concierge: await moduleOn(company.id, "concierge"), restaurant: await moduleOn(company.id, "restaurant") ? (await loadRestaurant(company.id, company.company_name)).name : null, ach: await achSettings(company.id) });
 }
