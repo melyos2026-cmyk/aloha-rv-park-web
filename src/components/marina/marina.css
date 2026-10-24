@@ -619,8 +619,11 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-chips button[aria-pressed="true"] { background: var(--mr-deep); border-color: var(--mr-deep); color: #fff; }
 
 /* Oct 24: Restaurant */
-.mr-rs-hero { background: linear-gradient(135deg, var(--mr-ink), var(--mr-deep)); background-size: cover; background-position: center; color: #fff; }
-.mr-rs-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.mr-rs-hero { background: linear-gradient(135deg, var(--mr-ink), var(--mr-deep)); background-size: cover; background-position: center; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.mr-rs-hero .mr-wrap { min-height: 320px; display: flex; flex-direction: column; justify-content: flex-end; }
+.mr-rs-hero .mr-lede { max-width: 48ch; }
+.mr-rs-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 190px)); gap: 10px; margin-top: 18px; text-shadow: none; }
+.mr-rs-actions .mr-btn { text-align: center; white-space: nowrap; }
 .mr-rs-ghost { color: #fff !important; border-color: rgba(255,255,255,.6) !important; background: rgba(255,255,255,.08) !important; }
 .mr-rs-grid { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
 .mr-rs-side { position: sticky; top: 90px; }
@@ -647,4 +650,6 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-rs-teaser { background: var(--mr-foam); }
 .mr-rs-teaser-in { display: grid; grid-template-columns: 1fr 1.2fr; gap: 28px; align-items: center; }
 .mr-rs-teaser-img { aspect-ratio: 4 / 3; border-radius: 16px; background: linear-gradient(135deg, #e7eef3, #d6e2ea) center/cover; display: grid; place-items: center; font-size: 56px; }
-@media (max-width: 860px) { .mr-rs-grid { grid-template-columns: 1fr; } .mr-rs-side { position: static; } .mr-rs-teaser-in { grid-template-columns: 1fr; } }
+@media (max-width: 1024px) { .mr-rs-grid { grid-template-columns: 1fr 320px; gap: 18px; } }
+@media (max-width: 860px) { .mr-rs-grid { grid-template-columns: 1fr; } .mr-rs-side { position: static; } .mr-rs-teaser-in { grid-template-columns: 1fr; } .mr-rs-actions { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 560px) { .mr-rs-actions { grid-template-columns: 1fr; max-width: 360px; } .mr-rs-hero .mr-wrap { min-height: 380px; padding-top: 32px !important; } .mr-rs-info { gap: 16px; } .mr-rs-menu { grid-template-columns: repeat(2, 1fr); } }

@@ -21,7 +21,7 @@ export default function MarinaRestaurant({ r, marina }: { r: Restaurant; marina:
 
   return (
     <div className="mr-rs">
-      <section className="mr-rs-hero" style={r.photo ? { backgroundImage: `linear-gradient(180deg, rgba(10,25,45,.35), rgba(10,25,45,.75)), url(${r.photo})` } : undefined}>
+      <section className="mr-rs-hero" style={r.photo ? { backgroundImage: `linear-gradient(180deg, rgba(10,25,45,.45) 0%, rgba(10,25,45,.55) 45%, rgba(10,25,45,.85) 100%), url(${r.photo})` } : undefined}>
         <div className="mr-wrap" style={{ padding: "56px 16px 44px" }}>
           <div className="mr-cr-kicker">Restaurant · {marina}</div>
           <h1 className="mr-h2" style={{ color: "#fff", marginBottom: 6 }}>{r.name}</h1>
