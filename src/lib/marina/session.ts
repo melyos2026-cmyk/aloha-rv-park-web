@@ -14,6 +14,8 @@ const COOKIE_NAME = "marina_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 
 function sign(payload: string): string {
+  // Oct 24 (security run): never sign with an empty key (anyone could forge a sign-in).
+  if (!SECRET) throw new Error("MARINA_SESSION_SECRET is not set.");
   return crypto.createHmac("sha256", SECRET).update(`marina:${payload}`).digest("hex");
 }
 
@@ -38,8 +40,10 @@ export function getMarinaSession(req: Request): { memberId: string; companyId: s
     .split(";")
     .map((c) => c.trim())
     .find((c) => c.startsWith(`${COOKIE_NAME}=`));
-  if (!cookie) return null;
-  const parts = decodeURIComponent(cookie.slice(COOKIE_NAME.length + 1)).split(".");
+  if (!cookie || !SECRET) return null;
+  let raw = "";
+  try { raw = decodeURIComponent(cookie.slice(COOKIE_NAME.length + 1)); } catch { return null; }
+  const parts = raw.split(".");
   if (parts.length !== 4) return null;
   const [memberId, companyId, expiresAtStr, signature] = parts;
   const expected = sign(`${memberId}.${companyId}.${expiresAtStr}`);
@@ -52,6 +56,7 @@ export function getMarinaSession(req: Request): { memberId: string; companyId: s
 
 // One-time sign-in codes are stored hashed, never in clear text.
 export function hashLoginCode(memberId: string, code: string): string {
+  if (!SECRET) throw new Error("MARINA_SESSION_SECRET is not set.");
   return crypto.createHmac("sha256", SECRET).update(`code:${memberId}:${code}`).digest("hex");
 }
 

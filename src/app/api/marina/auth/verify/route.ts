@@ -43,17 +43,32 @@ export async function POST(req: Request) {
     .maybeSingle();
   if (!row || row.attempts >= 5) return bad;
 
+  // Oct 24 (security run): use up one attempt BEFORE checking the code, and only if nobody else
+  // used it at the same moment (compare-and-swap). Many requests sent at once can no longer all
+  // get a free guess — each one has to win its own attempt slot, and there are only 5.
+  const { data: slot } = await supabaseAdmin
+    .from("marina_login_codes")
+    .update({ attempts: row.attempts + 1 })
+    .eq("id", row.id)
+    .eq("attempts", row.attempts)
+    .is("used_at", null)
+    .select("id");
+  if (!slot?.length) return bad;
+
   const expected = hashLoginCode(member.id, code);
   const same =
     expected.length === row.code_hash.length &&
     crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(row.code_hash));
+  if (!same) return bad;
 
-  if (!same) {
-    await supabaseAdmin.from("marina_login_codes").update({ attempts: row.attempts + 1 }).eq("id", row.id);
-    return bad;
-  }
-
-  await supabaseAdmin.from("marina_login_codes").update({ used_at: new Date().toISOString() }).eq("id", row.id);
+  // A code works once: only the request that marks it used gets signed in.
+  const { data: used } = await supabaseAdmin
+    .from("marina_login_codes")
+    .update({ used_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .is("used_at", null)
+    .select("id");
+  if (!used?.length) return bad;
   const res = NextResponse.json({ ok: true });
   setMarinaSession(res, member.id, company.id);
   return res;

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { isDemoCompany } from "@/lib/marina/host";
 import { loadPublicSlips, todayET } from "@/lib/marina/data";
+import { tooManyFromIp as ipLimitDb } from "@/lib/marina/ipLimit";
 
 const LEAD_TO_FALLBACK = "melyos2026@gmail.com";
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
@@ -94,6 +95,12 @@ async function handle(req: Request) {
   const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
   if (tooManyFromIp(ip)) {
     return NextResponse.json({ reply: "You are sending messages very quickly. Please wait a few minutes and try again." }, { status: 429 });
+  }
+  // Oct 24 (security run): every chat has a session (so every message is counted toward the
+  // marina's hourly limit), and a per-device limit counted in the database across all servers.
+  if (!sessionId) return NextResponse.json({ error: "Please refresh the page and try again." }, { status: 400 });
+  if (await ipLimitDb(req, `chat:${marina.id}`, 60)) {
+    return NextResponse.json({ reply: "You are sending messages very quickly. Please wait a little while and try again." }, { status: 429 });
   }
   {
     const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();

@@ -7,6 +7,7 @@ import { round2 } from "@/lib/marina/data";
 import { moduleOn, loadConciergeSettings, toService } from "@/lib/concierge";
 import { accountChargesAllowed } from "@/lib/marina/payPolicy";
 import { startConciergePayment, voidUnpaidInvoice } from "@/lib/marina/conciergePay";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 // Oct 23 (per Mely): concierge requests from the marina website.
 // GET ?mine=1 → the signed-in boater's requests.   POST → new request.
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
   const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
   const { count } = await supabaseAdmin.from("concierge_requests").select("id", { count: "exact", head: true }).eq("company_id", company.id).gte("created_at", hourAgo);
   if ((count || 0) >= 60) return NextResponse.json({ error: "Too many requests right now. Please call the office." }, { status: 429 });
+  if (await tooManyFromIp(req, `concierge:${company.id}`, 8)) return NextResponse.json({ error: "Too many requests from this device. Please call the office." }, { status: 429 });
 
   const isQuote = svc.pricing === "quote" || svc.price == null;
   const subtotal = isQuote ? null : round2(svc.pricing === "fixed" ? svc.price! : svc.price! * units);
@@ -88,7 +90,9 @@ export async function POST(req: Request) {
   }).select("*").single();
   if (error) return NextResponse.json({ error: "Could not send your request. Please try again." }, { status: 500 });
   const when = wanted.toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  await supabaseAdmin.from("resident_update_notifications").insert({
+  // Oct 24 (security run): a fixed-price request paid by card reaches the office once it's paid
+  // (conciergePaidForInvoice); quotes and charge-to-account requests are announced now.
+  if (isQuote || payment === "account") await supabaseAdmin.from("resident_update_notifications").insert({
     company_id: company.id, resident_name: name, update_type: "concierge_request",
     message: `New request ${number}: ${svc.name}${units > 1 ? ` × ${units}` : ""}${choices ? ` (${choices})` : ""} for ${when}${b.slip ? ` at slip ${text(b.slip, 20)}` : ""}${isQuote ? " — needs a quote" : ` — $${total!.toFixed(2)}${payment === "card" ? " (paying online)" : " (charge to account)"}`}.`,
   }).then(() => null, () => null);

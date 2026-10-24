@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { isDemoCompany } from "./host";
+import { kitKeys } from "./store-kit";
 
 // Oct 24 (per Mely): online store orders, Walmart-style pickup. Each order has a private link
 // (order page + QR code) and a 4-digit pickup code. The customer gets an email when the order is
@@ -88,6 +89,11 @@ export async function sendStoreOrderConfirmation(companyId: string, orderId: str
     .select("*");
   const o: any = !error && claimed?.[0];
   if (!o) return;
+  // Oct 24 (security run): a card order is real only once paid — take its stock and tell the office now.
+  if (o.payment === "card") {
+    await adjustOrderStock(companyId, o.lines || [], -1);
+    await notifyOfficeOfOrder(companyId, o.id);
+  }
   // Oct 24 (per Mely): signed-in boaters also get it in Boater login → Messages (works on the demo too).
   if (o.member_id) {
     const items = (o.lines || []).map((l: any) => `${Number(l.qty)} × ${l.name}`).join(", ");
@@ -120,4 +126,53 @@ export async function sendStoreOrderConfirmation(companyId: string, orderId: str
 export async function confirmStoreOrderForInvoice(companyId: string, invoiceId: string) {
   const { data, error } = await supabaseAdmin.from("marina_store_orders").select("id").eq("company_id", companyId).eq("invoice_id", invoiceId).maybeSingle();
   if (!error && data?.id) await sendStoreOrderConfirmation(companyId, data.id);
+}
+
+// Oct 24 (security run): stock per item, or per chosen variant / kit part. dir = -1 takes stock,
+// +1 gives it back. Each item is updated only if it hasn't changed since we read it (retried a few
+// times), so two orders at the same moment can't both write over each other's count.
+export async function adjustOrderStock(companyId: string, lines: { item_id?: string; variant?: string; kit?: boolean; qty: number }[], dir: 1 | -1) {
+  const need = new Map<string, { plain: number; byVariant: Map<string, number> }>();
+  for (const l of lines || []) {
+    if (!l?.item_id) continue;
+    const e = need.get(l.item_id) || { plain: 0, byVariant: new Map<string, number>() };
+    const q = Math.max(0, Number(l.qty) || 0);
+    if (l.variant) for (const k of l.kit ? kitKeys(l.variant) : [l.variant]) e.byVariant.set(k, (e.byVariant.get(k) || 0) + q);
+    else e.plain += q;
+    need.set(l.item_id, e);
+  }
+  for (const [itemId, { plain, byVariant }] of need) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let r: any = await supabaseAdmin.from("marina_store_items").select("id, stock, variants, build_kit").eq("id", itemId).eq("company_id", companyId).maybeSingle();
+      if (r.error) r = await supabaseAdmin.from("marina_store_items").select("id, stock, variants").eq("id", itemId).eq("company_id", companyId).maybeSingle();
+      const item: any = r.data; if (!item) break;
+      const upd: any = {};
+      if (plain && item.stock !== null && item.stock !== undefined) upd.stock = Math.max(0, Number(item.stock) + dir * plain);
+      if (byVariant.size && Array.isArray(item.variants)) {
+        upd.variants = item.variants.map((v: any) => {
+          const q = byVariant.get(String(v?.key || v?.name)); if (!q || v.stock === null || v.stock === undefined) return v;
+          return { ...v, stock: Math.max(0, Number(v.stock) + dir * q) };
+        });
+      }
+      if (!Object.keys(upd).length) break;
+      let q = supabaseAdmin.from("marina_store_items").update(upd).eq("id", itemId).eq("company_id", companyId);
+      q = item.stock === null || item.stock === undefined ? q.is("stock", null) : q.eq("stock", item.stock);
+      const { data: done } = await q.select("id");
+      if (done?.length) break;
+    }
+  }
+}
+
+// Office alert ("New order …") — for card orders, sent only after the payment is recorded.
+export async function notifyOfficeOfOrder(companyId: string, orderId: string) {
+  const [{ data: o }, { data: st }] = await Promise.all([
+    supabaseAdmin.from("marina_store_orders").select("order_number, customer_name, total, payment, fulfillment, slip_name, wanted_at").eq("id", orderId).eq("company_id", companyId).maybeSingle(),
+    supabaseAdmin.from("marina_store_settings").select("store_name").eq("company_id", companyId).maybeSingle(),
+  ]);
+  if (!o) return;
+  const storeName = ((st as any)?.store_name || "").trim() || "Ship Store";
+  await supabaseAdmin.from("resident_update_notifications").insert({
+    company_id: companyId, resident_name: o.customer_name, update_type: "store_order",
+    message: `New ${storeName} order ${o.order_number}: $${Number(o.total).toFixed(2)} (${o.payment === "account" ? "charged to account" : "paid by card"}), ${o.fulfillment === "slip" ? `bring to slip ${o.slip_name}` : "pickup at the store"}${o.wanted_at ? `, ${o.wanted_at}` : ""}.`,
+  }).then(() => null, () => null);
 }

@@ -6,6 +6,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 import { loadRestaurant, restaurantEnabled } from "@/lib/restaurant";
 import { dayName, timeSlots } from "@/lib/restaurant-shared";
 import { localIso } from "@/lib/rentals";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 // Oct 24 (per Mely): table reservations. GET ?mine=1 → the boater's reservations. POST → reserve.
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
 
   const { count } = await supabaseAdmin.from("restaurant_reservations").select("id", { count: "exact", head: true }).eq("company_id", company.id).gte("created_at", new Date(Date.now() - 3600 * 1000).toISOString());
   if ((count || 0) >= 60) return NextResponse.json({ error: "Too many requests right now. Please call the restaurant." }, { status: 429 });
+  if (await tooManyFromIp(req, `restaurant:${company.id}`, 6)) return NextResponse.json({ error: "Too many requests from this device. Please call the restaurant." }, { status: 429 });
 
   const number = `RT-${date.slice(2).replace(/-/g, "")}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
   const status = r.auto_confirm ? "confirmed" : "requested";

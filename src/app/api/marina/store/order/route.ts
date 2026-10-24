@@ -6,9 +6,10 @@ import { getMarinaSession } from "@/lib/marina/session";
 import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
 import { kitPrice, kitKeys, kitLineKey } from "@/lib/marina/store-kit";
-import { newOrderSecrets, sendStoreOrderConfirmation } from "@/lib/marina/storeOrders";
+import { newOrderSecrets, sendStoreOrderConfirmation, adjustOrderStock, notifyOfficeOfOrder } from "@/lib/marina/storeOrders";
 import { accountChargesAllowed } from "@/lib/marina/payPolicy";
 import { isDemoCompany } from "@/lib/marina/host";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 // Oct 23 (per Mely): online orders from the marina's store page.
 // GET → what the checkout needs (signed in?, tax, options).
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
   const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
   const { count } = await supabaseAdmin.from("marina_store_orders").select("id", { count: "exact", head: true }).eq("company_id", company.id).gte("created_at", hourAgo);
   if ((count || 0) >= 80) return NextResponse.json({ error: "Too many orders right now. Please visit the store." }, { status: 429 });
+  if (await tooManyFromIp(req, `store:${company.id}`, 8)) return NextResponse.json({ error: "Too many orders from this device. Please visit the store." }, { status: 429 });
 
   const today = todayET();
   const orderNumber = `SO-${today.replace(/-/g, "").slice(2)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
@@ -158,14 +160,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Online orders are not ready yet. Please visit the store." }, { status: 500 });
   }
 
-  // Stock goes down when the order is placed (the office can cancel it to put it back).
-  await adjustStock(company.id, items, lines, -1);
-  await supabaseAdmin.from("resident_update_notifications").insert({
-    company_id: company.id, resident_name: name, update_type: "store_order",
-    message: `New ${st.name} order ${orderNumber}: $${total.toFixed(2)} (${payment === "account" ? "charged to account" : "card"}), ${fulfillment === "slip" ? `bring to slip ${slip}` : "pickup at the store"}${b.when ? `, ${text(b.when, 60)}` : ""}.`,
-  }).then(() => null, () => null);
-
+  // Oct 24 (security run): an order charged to the account takes stock and alerts the office now.
+  // A card order does both only once it's PAID (sendStoreOrderConfirmation), so an abandoned
+  // checkout never holds stock or shows the cashier an order to prepare.
   if (payment === "account") {
+    await adjustOrderStock(company.id, lines, -1);
+    await notifyOfficeOfOrder(company.id, order.id);
     await sendStoreOrderConfirmation(company.id, order.id);
     return NextResponse.json({ ok: true, order: orderNumber, token, total, charged: true });
   }
@@ -179,32 +179,7 @@ export async function POST(req: Request) {
   if (!pay.ok) {
     await supabaseAdmin.from("marina_store_orders").update({ status: "cancelled", status_by_name: "Payment could not start" }).eq("id", order.id);
     await supabaseAdmin.from("marina_invoices").update({ status: "void", voided_at: new Date().toISOString(), void_reason: "Payment could not be started" }).eq("id", invoice.id).eq("company_id", company.id);
-    await adjustStock(company.id, items, lines, +1);
     return NextResponse.json({ error: pay.error }, { status: pay.status });
   }
   return NextResponse.json("url" in pay ? { url: pay.url, order: orderNumber, token, total } : { ok: true, demo: true, order: orderNumber, token, total });
-}
-
-// Oct 24: stock per item, or per chosen variant. dir = -1 takes stock, +1 gives it back.
-async function adjustStock(companyId: string, items: any[], lines: { item_id: string; variant?: string; qty: number }[], dir: 1 | -1) {
-  const byItem = new Map<string, { item: any; plain: number; byVariant: Map<string, number> }>();
-  for (const l of lines) {
-    const it = items.find((i: any) => i.id === l.item_id); if (!it) continue;
-    const e = byItem.get(it.id) || { item: it, plain: 0, byVariant: new Map<string, number>() };
-    // Oct 24: a kit line takes stock from each part it includes.
-    if (l.variant) for (const k of it.build_kit ? kitKeys(l.variant) : [l.variant]) e.byVariant.set(k, (e.byVariant.get(k) || 0) + l.qty);
-    else e.plain += l.qty;
-    byItem.set(it.id, e);
-  }
-  for (const { item, plain, byVariant } of byItem.values()) {
-    const upd: any = {};
-    if (plain && item.stock !== null && item.stock !== undefined) upd.stock = Math.max(0, Number(item.stock) + dir * plain);
-    if (byVariant.size && Array.isArray(item.variants)) {
-      upd.variants = item.variants.map((v: any) => {
-        const q = byVariant.get(String(v?.key || v?.name)); if (!q || v.stock === null || v.stock === undefined) return v;
-        return { ...v, stock: Math.max(0, Number(v.stock) + dir * q) };
-      });
-    }
-    if (Object.keys(upd).length) await supabaseAdmin.from("marina_store_items").update(upd).eq("id", item.id).eq("company_id", companyId);
-  }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 const CONTRACTS = ["annual", "seasonal", "monthly", "transient"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
   if ((count || 0) >= 100) {
     return NextResponse.json({ error: "Too many requests right now. Please call the marina office." }, { status: 429 });
   }
+  if (await tooManyFromIp(req, `waitlist:${company.id}`, 5)) return NextResponse.json({ error: "Too many requests from this device. Please call the marina office." }, { status: 429 });
 
   // Already waiting under this email: confirm without creating a duplicate.
   // Oct 20 (security review): exact (case-insensitive) email match only —

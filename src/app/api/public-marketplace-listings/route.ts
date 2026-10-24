@@ -32,5 +32,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ listings: listings || [] });
+  // Oct 24 (security run): RV-park listings only (marina listings have their own page), and no
+  // internal fields (boater id, moderation notes) in the public answer.
+  const clean = (listings || [])
+    .filter((l: any) => !l.member_id)
+    .map(({ member_id, moderation_note, resident_id, ...rest }: any) => rest);
+  return NextResponse.json({ listings: clean });
 }

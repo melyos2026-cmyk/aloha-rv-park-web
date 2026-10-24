@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -117,6 +118,7 @@ export async function POST(req: Request) {
     .eq("company_id", company.id)
     .gte("created_at", hourAgo);
   if ((count || 0) >= 60) return NextResponse.json({ error: "Too many requests right now. Please call the dock office." }, { status: 429 });
+  if (await tooManyFromIp(req, `reserve:${company.id}`, 6)) return NextResponse.json({ error: "Too many requests from this device. Please call the dock office." }, { status: 429 });
 
   const holdSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { data: clashes } = await supabaseAdmin

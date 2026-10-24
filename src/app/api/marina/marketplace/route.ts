@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { moderateListing } from "@/lib/marketplaceModeration";
+import { sniff } from "@/lib/marina/fileType";
 
 // Oct 22 (per Mely): Marketplace for boaters — the same idea as the RV residents' Marketplace.
 // Public GET lists this marina's active items (seller's first name only). Signed-in boaters
@@ -65,13 +66,15 @@ export async function POST(req: Request) {
     const file = form?.get("file");
     if (!listingId || !file || typeof file === "string") return NextResponse.json({ error: "Choose a photo." }, { status: 400 });
     if (!(await ownListing(company.id, memberId, listingId))) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
-    if (!/^image\//.test(file.type || "")) return NextResponse.json({ error: "Only photos can be added." }, { status: 400 });
     if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "That photo is too large (max 10 MB)." }, { status: 400 });
+    // Oct 24 (security run): real type from the file's bytes; photos only (no SVG, no PDF).
+    const buf = Buffer.from(await file.arrayBuffer());
+    const kind = sniff(buf, { pdf: false });
+    if (!kind) return NextResponse.json({ error: "Only photos can be added (JPG, PNG, WebP, HEIC)." }, { status: 400 });
     const { count } = await supabaseAdmin.from("marketplace_listing_photos").select("id", { count: "exact", head: true }).eq("listing_id", listingId);
     if ((count || 0) >= 8) return NextResponse.json({ error: "Up to 8 photos per item." }, { status: 400 });
-    const ext = (file.name.split(".").pop() || "jpg").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "jpg";
-    const path = `marketplace/${company.id}/${listingId}/${Date.now()}.${ext}`;
-    const up = await supabaseAdmin.storage.from(BUCKET).upload(path, Buffer.from(await file.arrayBuffer()), { contentType: file.type });
+    const path = `marketplace/${company.id}/${listingId}/${Date.now()}.${kind.ext}`;
+    const up = await supabaseAdmin.storage.from(BUCKET).upload(path, buf, { contentType: kind.type });
     if (up.error) return NextResponse.json({ error: "Could not upload the photo." }, { status: 500 });
     const url = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
     await supabaseAdmin.from("marketplace_listing_photos").insert({ listing_id: listingId, photo_url: url, sort_order: count || 0 });

@@ -68,9 +68,21 @@ export function dayName(date: string) { return DAYS[new Date(date + "T12:00:00")
 
 // How many units are still free for an item in a time window.
 export async function unitsFree(item: RentalItem, startsIso: string, endsIso: string): Promise<number> {
-  const { data } = await supabaseAdmin.from("rental_bookings").select("units")
+  const { data } = await supabaseAdmin.from("rental_bookings").select("units, payment, created_at, invoice_id")
     .eq("item_id", item.id).in("status", ["requested", "confirmed", "checked_out"]).lt("starts_at", endsIso).gt("ends_at", startsIso);
-  const used = (data || []).reduce((a: number, b: any) => a + Number(b.units || 1), 0);
+  // Oct 24 (security run): an online card booking that was never paid stops holding its units
+  // 40 minutes after it was made (Stripe checkout expires after 31), so nobody can block every
+  // cart or seat with unpaid bookings.
+  const rows: any[] = data || [];
+  const cutoff = Date.now() - 40 * 60_000;
+  const toCheck = rows.filter((r) => r.payment === "card" && r.invoice_id && Date.parse(r.created_at) < cutoff).map((r) => r.invoice_id);
+  const paidInv = new Set<string>();
+  if (toCheck.length) {
+    const { data: pays } = await supabaseAdmin.from("marina_invoice_payments").select("invoice_id").in("invoice_id", toCheck).is("returned_at", null);
+    (pays || []).forEach((p: any) => paidInv.add(p.invoice_id));
+  }
+  const holding = rows.filter((r) => !(r.payment === "card" && r.invoice_id && Date.parse(r.created_at) < cutoff && !paidInv.has(r.invoice_id)));
+  const used = holding.reduce((a: number, b: any) => a + Number(b.units || 1), 0);
   return Math.max(0, item.quantity - used);
 }
 

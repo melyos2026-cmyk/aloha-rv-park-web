@@ -7,6 +7,7 @@ import { round2, todayET } from "@/lib/marina/data";
 import { loadRentalSettings, rentalsEnabled, toItem, unitsFree, priceRental, localIso, to24, dayName, bookingNumber } from "@/lib/rentals";
 import crypto from "crypto";
 import { accountChargesAllowed } from "@/lib/marina/payPolicy";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 // Oct 23 (per Mely): Rentals & Experiences on the marina website.
 // GET ?item=&date=        → free units/seats for that item on that date (per hour / per departure)
@@ -61,6 +62,10 @@ export async function POST(req: Request) {
   const s = getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   const settings = await loadRentalSettings(company.id);
+  // Oct 24 (security run): flood guards — per marina and per device.
+  const { count: lastHour } = await supabaseAdmin.from("rental_bookings").select("id", { count: "exact", head: true }).eq("company_id", company.id).gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+  if ((lastHour || 0) >= 80) return NextResponse.json({ error: "Too many bookings right now. Please call the office." }, { status: 429 });
+  if (await tooManyFromIp(req, `rentals:${company.id}`, 8)) return NextResponse.json({ error: "Too many bookings from this device. Please call the office." }, { status: 429 });
 
   const { data: row } = await supabaseAdmin.from("rental_items").select("*").eq("id", String(b.item || "")).eq("company_id", company.id).eq("active", true).maybeSingle();
   if (!row) return NextResponse.json({ error: "That item is no longer available." }, { status: 404 });
@@ -133,9 +138,10 @@ export async function POST(req: Request) {
     await supabaseAdmin.from("marina_invoices").update({ status: "void", voided_at: new Date().toISOString(), void_reason: "Rental booking could not be saved" }).eq("id", invoice.id).eq("company_id", company.id);
     return NextResponse.json({ error: "Could not create the booking. Please try again." }, { status: 500 });
   }
-  await supabaseAdmin.from("resident_update_notifications").insert({
+  // Oct 24 (security run): the office hears about a card booking once it's paid (rentalPaidForInvoice).
+  if (payment === "account") await supabaseAdmin.from("resident_update_notifications").insert({
     company_id: company.id, resident_name: name, update_type: "rental_booking",
-    message: `New booking ${number}: ${desc} — $${total.toFixed(2)} (${payment === "account" ? "charged to account" : "card"}).`,
+    message: `New booking ${number}: ${desc} — $${total.toFixed(2)} (charged to account).`,
   }).then(() => null, () => null);
 
   if (payment === "account") return NextResponse.json({ ok: true, booking: number, total, charged: true });

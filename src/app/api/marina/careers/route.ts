@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { moduleOn } from "@/lib/concierge";
 import { loadCareersSettings } from "@/lib/careers";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
+import { sniff } from "@/lib/marina/fileType";
 
 // Oct 23 (per Mely): Careers & Crew — a person applies (multipart: fields + license photo). The
 // applicant pays nothing: if the marina runs background checks, the office starts one from the
@@ -30,24 +32,36 @@ export async function POST(req: Request) {
 
   const { count } = await supabaseAdmin.from("crew_applicants").select("id", { count: "exact", head: true }).eq("company_id", company.id).gte("created_at", new Date(Date.now() - 3600 * 1000).toISOString());
   if ((count || 0) >= 30) return NextResponse.json({ error: "Too many applications right now. Please try again later." }, { status: 429 });
+  if (await tooManyFromIp(req, `careers:${company.id}`, 4)) return NextResponse.json({ error: "Too many applications from this device. Please try again later." }, { status: 429 });
 
-  // License / ID photo → private bucket
+  // Oct 24 (security run): an application is never overwritten from the public form (anyone who
+  // knew the email could have replaced it, even during a background check). A second application
+  // with the same email just tells the office.
+  const { data: existing } = await supabaseAdmin.from("crew_applicants").select("id").eq("company_id", company.id).ilike("email", email.replace(/[%_\\]/g, "\\$&")).maybeSingle();
+  if (existing) {
+    await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: full_name, update_type: "crew_application", message: `${full_name} (${email}) sent the crew application again. The first one is kept; contact them if something changed.` }).then(() => null, () => null);
+    return NextResponse.json({ ok: true, already: true });
+  }
+
+  // License / ID photo → private bucket. Type checked from the file itself (photo or PDF only).
   let license_photo_path: string | null = null;
   const file = form.get("license");
   if (file && typeof file !== "string" && file.size > 0) {
-    if (!/^image\/|application\/pdf$/.test(file.type || "")) return NextResponse.json({ error: "Upload a photo or PDF of your license." }, { status: 400 });
     if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: "That file is too large (max 10 MB)." }, { status: 400 });
-    const ext = (file.name.split(".").pop() || "jpg").replace(/[^a-z0-9]/gi, "").slice(0, 5) || "jpg";
-    license_photo_path = `crew/${company.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const up = await supabaseAdmin.storage.from("resident-documents").upload(license_photo_path, Buffer.from(await file.arrayBuffer()), { contentType: file.type });
+    const buf = Buffer.from(await file.arrayBuffer());
+    const kind = sniff(buf);
+    if (!kind) return NextResponse.json({ error: "Upload a photo (JPG, PNG, WebP, HEIC) or PDF of your license." }, { status: 400 });
+    license_photo_path = `crew/${company.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${kind.ext}`;
+    const up = await supabaseAdmin.storage.from("resident-documents").upload(license_photo_path, buf, { contentType: kind.type });
     if (up.error) return NextResponse.json({ error: "Could not upload your license. Please try again." }, { status: 500 });
   }
 
   const { data: a, error } = await supabaseAdmin.from("crew_applicants")
-    .upsert({ company_id: company.id, full_name, email, phone: phone || null, roles, experience: experience || null, certifications: certifications || null, availability: availability || null, hourly_rate: rate, languages, vessel_types, certs, references_text, license_expires, work_authorized, ...(license_photo_path ? { license_photo_path } : {}), updated_at: new Date().toISOString() }, { onConflict: "company_id,email" })
-    .select("*").single();
+    .insert({ company_id: company.id, full_name, email, phone: phone || null, roles, experience: experience || null, certifications: certifications || null, availability: availability || null, hourly_rate: rate, languages, vessel_types, certs, references_text, license_expires, work_authorized, ...(license_photo_path ? { license_photo_path } : {}), updated_at: new Date().toISOString() })
+    .select("id").single();
+  if (error?.code === "23505") return NextResponse.json({ ok: true, already: true });
   if (error || !a) return NextResponse.json({ error: "Could not save your application. Please try again." }, { status: 500 });
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: full_name, update_type: "crew_application", message: `New crew application: ${full_name} (${roles})${settings.requireBgc ? " — background check pending" : ""}.` }).then(() => null, () => null);
 
-  return NextResponse.json({ ok: true, applicantId: a.id });
+  return NextResponse.json({ ok: true });
 }
