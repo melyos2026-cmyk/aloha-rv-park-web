@@ -749,3 +749,4 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
   .mr-inv-due .mr-inv-actions .mr-money { font-size: 18px; margin-right: auto; }
   .mr-inv-due:not(.many) .mr-inv-actions .mr-btn { flex: 1 1 140px; }
 }
+@media (max-width: 640px) { .mr-inv-due:not(.many) .mr-inv-actions { padding-left: 0; } }
