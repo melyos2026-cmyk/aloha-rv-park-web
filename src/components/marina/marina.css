@@ -653,3 +653,6 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 @media (max-width: 1024px) { .mr-rs-grid { grid-template-columns: 1fr 320px; gap: 18px; } }
 @media (max-width: 860px) { .mr-rs-grid { grid-template-columns: 1fr; } .mr-rs-side { position: static; } .mr-rs-teaser-in { grid-template-columns: 1fr; } .mr-rs-actions { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 560px) { .mr-rs-actions { grid-template-columns: 1fr; max-width: 360px; } .mr-rs-hero .mr-wrap { min-height: 380px; padding-top: 32px !important; } .mr-rs-info { gap: 16px; } .mr-rs-menu { grid-template-columns: repeat(2, 1fr); } }
+
+.mr-store-subs { margin-top: -6px; padding-left: 6px; }
+.mr-store-subs .mr-store-chip { font-size: 13px; padding: 6px 10px; }

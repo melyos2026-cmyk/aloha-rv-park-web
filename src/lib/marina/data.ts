@@ -305,10 +305,10 @@ export async function loadFuelPrices(companyId: string): Promise<{ label: string
 // Oct 21 (per Mely): ship store items shown on the marina's website (active items only;
 // shows "sold out" instead of stock counts). Empty if the marina has no store yet.
 // Oct 23 (per Mely): items can have a photo, a description and be featured on the homepage.
-export type StoreItem = { id: string; name: string; category: string; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean };
-const STORE_COLS = "id, name, category, price, stock, photo_url, description, featured";
+export type StoreItem = { id: string; name: string; category: string; subcategory: string | null; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean };
+const STORE_COLS = "id, name, category, subcategory, price, stock, photo_url, description, featured";
 function toStoreItem(i: any): StoreItem {
-  return { id: i.id, name: i.name, category: i.category || "Other", price: Number(i.price), soldOut: i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
+  return { id: i.id, name: i.name, category: i.category || "Other", subcategory: i.subcategory || null, price: Number(i.price), soldOut: i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
 }
 export async function loadStoreItems(companyId: string): Promise<StoreItem[]> {
   const q = (cols: string) => supabaseAdmin
@@ -337,12 +337,13 @@ export async function loadStoreSettings(companyId: string): Promise<{ name: stri
 }
 
 // Oct 23: one page of the store (category, search), for the store page.
-export async function searchStoreItems(companyId: string, opts: { category?: string; q?: string; page?: number; size?: number }) {
+export async function searchStoreItems(companyId: string, opts: { category?: string; subcategory?: string; q?: string; page?: number; size?: number }) {
   const size = Math.min(48, Math.max(6, opts.size || 24));
   const page = Math.max(0, opts.page || 0);
   const build = (cols: string) => {
     let qy = supabaseAdmin.from("marina_store_items").select(cols, { count: "exact" }).eq("company_id", companyId).eq("active", true);
     if (opts.category && opts.category !== "All") qy = opts.category === "Other" ? qy.or("category.is.null,category.eq.Other") : qy.eq("category", opts.category);
+    if (opts.subcategory) qy = qy.eq("subcategory", opts.subcategory);   // Oct 24: sub-categories (Groceries → Dairy, Produce…)
     const term = String(opts.q || "").trim().replace(/[%,()]/g, " ").slice(0, 60);
     if (term) qy = qy.ilike("name", `%${term}%`);
     return qy.order("featured", { ascending: false }).order("sort").order("name").range(page * size, page * size + size - 1);
@@ -362,11 +363,16 @@ export async function searchStoreItems(companyId: string, opts: { category?: str
   return { items: (res.data || []).map(toStoreItem), total: res.count || 0 };
 }
 
-export async function storeCategories(companyId: string): Promise<{ name: string; count: number }[]> {
-  const { data } = await supabaseAdmin.from("marina_store_items").select("category").eq("company_id", companyId).eq("active", true).limit(10000);
-  const m = new Map<string, number>();
-  (data || []).forEach((r: any) => { const c = r.category || "Other"; m.set(c, (m.get(c) || 0) + 1); });
-  return Array.from(m.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
+export async function storeCategories(companyId: string): Promise<{ name: string; count: number; subs: { name: string; count: number }[] }[]> {
+  let res: any = await supabaseAdmin.from("marina_store_items").select("category, subcategory").eq("company_id", companyId).eq("active", true).limit(10000);
+  if (res.error) res = await supabaseAdmin.from("marina_store_items").select("category").eq("company_id", companyId).eq("active", true).limit(10000);
+  const data: any[] = res.data || [];
+  const m = new Map<string, { count: number; subs: Map<string, number> }>();
+  (data || []).forEach((r: any) => {
+    const c = r.category || "Other"; const e = m.get(c) || { count: 0, subs: new Map<string, number>() };
+    e.count += 1; if (r.subcategory) e.subs.set(r.subcategory, (e.subs.get(r.subcategory) || 0) + 1); m.set(c, e);
+  });
+  return Array.from(m.entries()).map(([name, e]) => ({ name, count: e.count, subs: Array.from(e.subs.entries()).map(([n, c]) => ({ name: n, count: c })).sort((a, b) => a.name.localeCompare(b.name)) })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // Oct 21 (per Mely): which services the marina really has, for the top menu.

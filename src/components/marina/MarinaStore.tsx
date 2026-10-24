@@ -8,10 +8,13 @@ import type { StoreItem } from "@/lib/marina/data";
 const money = (n: number) => "$" + n.toFixed(2);
 
 export default function MarinaStore({ name, tagline, categories, initial }: {
-  name: string; tagline: string; categories: { name: string; count: number }[]; initial: { items: StoreItem[]; total: number };
+  name: string; tagline: string; categories: { name: string; count: number; subs?: { name: string; count: number }[] }[]; initial: { items: StoreItem[]; total: number };
 }) {
   // Oct 24 (per Mely): no "All" chip — the store opens on its first category; a search looks across every category.
-  const [cat, setCat] = useState(categories[0]?.name || "All");
+  const [cat, setCatRaw] = useState(categories[0]?.name || "All");
+  const [subCat, setSubCat] = useState("");
+  const setCat = (c: string) => { setCatRaw(c); setSubCat(""); };
+  const subs = categories.find((c) => c.name === cat)?.subs || [];
   const [q, setQ] = useState("");
   const [items, setItems] = useState<StoreItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
@@ -58,6 +61,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     setBusy(true);
     const u = new URLSearchParams({ page: String(nextPage) });
     if (cat !== "All" && !q.trim()) u.set("cat", cat);
+    if (subCat && !q.trim()) u.set("sub", subCat);
     if (q.trim()) u.set("q", q.trim());
     const r = await fetch(`/api/marina/store?${u}`, { cache: "no-store" }).then((x) => x.json()).catch(() => ({ items: [], total: 0 }));
     setItems((prev) => (append ? [...prev, ...(r.items || [])] : r.items || []));
@@ -67,7 +71,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     if (first.current) { first.current = false; if (cat !== "All") load(0, false); return; }
     const t = setTimeout(() => load(0, false), 250);
     return () => clearTimeout(t);
-  }, [cat, q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cat, subCat, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const chip = (label: string, count: number) => (
     <button key={label} type="button" onClick={() => setCat(label)} className="mr-store-chip" aria-pressed={cat === label}>
@@ -84,6 +88,12 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
       <div className="mr-store-chips" role="group" aria-label="Categories">
         {categories.map((c) => chip(c.name, c.count))}
       </div>
+      {subs.length > 0 && !q.trim() && (
+        <div className="mr-store-chips mr-store-subs" role="group" aria-label="Sub-categories">
+          <button type="button" className="mr-store-chip" aria-pressed={subCat === ""} onClick={() => setSubCat("")}>All {cat}</button>
+          {subs.map((x) => <button key={x.name} type="button" className="mr-store-chip" aria-pressed={subCat === x.name} onClick={() => setSubCat(x.name)}>{x.name} <span>{x.count}</span></button>)}
+        </div>
+      )}
 
       {!busy && items.length === 0 && <p className="mr-note">Nothing found. Try another word or category.</p>}
       <div className="mr-store-grid">

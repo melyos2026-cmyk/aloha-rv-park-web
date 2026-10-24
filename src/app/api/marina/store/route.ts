@@ -7,6 +7,6 @@ export async function GET(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const u = new URL(req.url).searchParams;
-  const r = await searchStoreItems(company.id, { category: u.get("cat") || undefined, q: u.get("q") || undefined, page: Number(u.get("page") || 0) });
+  const r = await searchStoreItems(company.id, { category: u.get("cat") || undefined, subcategory: u.get("sub") || undefined, q: u.get("q") || undefined, page: Number(u.get("page") || 0) });
   return NextResponse.json(r);
 }
