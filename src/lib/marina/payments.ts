@@ -53,6 +53,8 @@ export async function recordMarinaOnlinePayment(p: {
   amount: number;
   reference: string;
   demo?: boolean;
+  method?: "card" | "ach";
+  pending?: boolean;   // Oct 24: a bank transfer that has not cleared yet
 }): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
   const { data: invoice } = await supabaseAdmin
     .from("marina_invoices")
@@ -67,14 +69,16 @@ export async function recordMarinaOnlinePayment(p: {
     company_id: p.companyId,
     invoice_id: p.invoiceId,
     amount: round2(p.amount),
-    method: "card",
+    method: p.method === "ach" ? "ach" : "card",
     reference: p.reference,
     received_at: todayET(),
-    recorded_by_name: p.demo ? "Online payment (demo)" : "Online payment",
+    recorded_by_name: p.demo ? "Online payment (demo)" : p.method === "ach" ? (p.pending ? "Online bank transfer (pending)" : "Online bank transfer") : "Online payment",
     shift_id: null,
+    ...(p.pending ? { pending_at: new Date().toISOString() } : {}),
   });
 
-  if (!error || error.code === "23505") {
+  // A pending bank transfer does not confirm a reservation yet; the settle call below does.
+  if ((!error || error.code === "23505") && !p.pending) {
     await confirmReservationForInvoice(p.companyId, p.invoiceId);
   }
   if (error) {
@@ -88,4 +92,22 @@ export async function recordMarinaOnlinePayment(p: {
     return { ok: false, error: error.message };
   }
   return { ok: true };
+}
+
+// Oct 24: the bank confirmed an ACH payment that was recorded as pending.
+export async function settleMarinaAchPayment(companyId: string, reference: string) {
+  const { data } = await supabaseAdmin.from("marina_invoice_payments")
+    .update({ pending_at: null, recorded_by_name: "Online bank transfer" })
+    .eq("company_id", companyId).eq("reference", reference).not("pending_at", "is", null)
+    .select("invoice_id");
+  const inv = data?.[0]?.invoice_id;
+  if (inv) await confirmReservationForInvoice(companyId, inv);
+}
+
+// Oct 24: the bank rejected an ACH payment (insufficient funds, closed account…). The payment is
+// marked returned, so the invoice goes back to open — the same as a bounced check.
+export async function failMarinaAchPayment(companyId: string, reference: string, reason: string) {
+  await supabaseAdmin.from("marina_invoice_payments")
+    .update({ pending_at: null, returned_at: new Date().toISOString(), return_reason: `Bank payment failed: ${reason}`.slice(0, 300), recorded_by_name: "Online bank transfer (failed)" })
+    .eq("company_id", companyId).eq("reference", reference).is("returned_at", null);
 }

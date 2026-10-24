@@ -153,6 +153,7 @@ export type AccountInvoice = {
   due_date: string;
   status: "open" | "void";
   overdue: boolean;
+  pending_bank: number;   // Oct 24: bank (ACH) payments still clearing
 };
 
 export type AccountData = {
@@ -164,7 +165,7 @@ export type AccountData = {
     launch: { id: string; launch_at: string; return_at: string | null; status: string } | null;
   }[];
   invoices: AccountInvoice[];
-  payments: { id: string; invoice_id: string; invoice_number: string; description: string; category: string; amount: number; method: string; received_at: string }[];
+  payments: { id: string; invoice_id: string; invoice_number: string; description: string; category: string; amount: number; method: string; received_at: string; pending: boolean }[];
   totalDue: number;
 };
 
@@ -201,16 +202,18 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
   const { data: pays } = invoiceIds.length
     ? await supabaseAdmin
         .from("marina_invoice_payments")
-        .select("id, invoice_id, amount, method, received_at, returned_at")
+        .select("id, invoice_id, amount, method, received_at, returned_at, pending_at")
         .eq("company_id", companyId)
         .in("invoice_id", invoiceIds)
         .order("received_at", { ascending: false })
     : { data: [] as any[] };
 
   const paidBy = new Map<string, number>();
+  const pendingBy = new Map<string, number>();
   for (const p of pays || []) {
     if (p.returned_at) continue;
     paidBy.set(p.invoice_id, (paidBy.get(p.invoice_id) || 0) + Number(p.amount));
+    if (p.pending_at) pendingBy.set(p.invoice_id, (pendingBy.get(p.invoice_id) || 0) + Number(p.amount));
   }
 
   const today = todayET();
@@ -230,6 +233,7 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
       due_date: i.due_date,
       status: i.status,
       overdue: balance > 0 && i.due_date < today,
+      pending_bank: round2(pendingBy.get(i.id) || 0),
     };
   });
 
@@ -277,6 +281,7 @@ export async function loadAccount(companyId: string, memberId: string): Promise<
         amount: round2(Number(p.amount)),
         method: p.method,
         received_at: p.received_at,
+        pending: !!p.pending_at,
       })),
     totalDue: round2(list.reduce((s, i) => s + i.balance, 0)),
   };

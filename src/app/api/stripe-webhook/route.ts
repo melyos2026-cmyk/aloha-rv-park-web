@@ -9,7 +9,7 @@ import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
-import { recordMarinaOnlinePayment } from "@/lib/marina/payments";
+import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment } from "@/lib/marina/payments";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
 
@@ -79,12 +79,18 @@ async function handleWebhook(req: Request) {
     // Oct 15: marina boaters paying an invoice. Handled on its own and
     // returned right away so none of the RV-park logic below ever runs for it.
     if (session.metadata?.type === "marina_invoice") {
-      if (session.payment_status === "paid" && session.metadata.company_id && session.metadata.invoice_id) {
+      const ach = session.metadata.payment_method === "ach";
+      // Oct 24: a bank (ACH) payment completes the session before the money clears
+      // (payment_status "unpaid"); it is recorded as pending and settled by the
+      // async_payment_succeeded event below.
+      if ((session.payment_status === "paid" || (ach && session.payment_status === "unpaid")) && session.metadata.company_id && session.metadata.invoice_id) {
         await recordMarinaOnlinePayment({
           companyId: session.metadata.company_id,
           invoiceId: session.metadata.invoice_id,
           amount: Number(session.metadata.invoice_amount || 0),
           reference: `online:${session.id}`,
+          method: ach ? "ach" : "card",
+          pending: ach && session.payment_status !== "paid",
         });
       }
       return NextResponse.json({ received: true });
@@ -382,6 +388,16 @@ async function handleWebhook(req: Request) {
   // Oct 8 (per Mely — Shifts & Daily Close): a full refund voids the online payment in the daily close;
   // a partial refund cannot be split automatically, so it is flagged in System Health for review.
   // Requires the event "charge.refunded" to be enabled on this webhook endpoint in the Stripe dashboard.
+  // Oct 24: bank (ACH) payments clear or fail days after checkout.
+  if (event.type === "checkout.session.async_payment_succeeded" || event.type === "checkout.session.async_payment_failed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.type === "marina_invoice" && session.metadata.company_id) {
+      if (event.type === "checkout.session.async_payment_succeeded") await settleMarinaAchPayment(session.metadata.company_id, `online:${session.id}`);
+      else await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer");
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
     const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : null;

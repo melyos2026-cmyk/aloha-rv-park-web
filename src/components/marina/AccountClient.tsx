@@ -114,12 +114,12 @@ export default function AccountClient() {
     setBusy("");
   }
 
-  async function pay(id: string) {
+  async function pay(id: string, method: "card" | "ach" = "card") {
     setError(""); setNotice(""); setBusy(id);
     try {
-      const d = await post("/api/marina/pay", { invoice_id: id });
+      const d = await post("/api/marina/pay", { invoice_id: id, method });
       if (d.url) { window.location.href = d.url; return; }
-      setNotice("Demo payment recorded. No card was charged.");
+      setNotice(method === "ach" ? "Demo bank payment recorded. No bank account was debited." : "Demo payment recorded. No card was charged.");
       await load();
     } catch (err: any) { setError(err.message); }
     setBusy("");
@@ -194,15 +194,23 @@ export default function AccountClient() {
 
       <div className="mr-card">
         <h3>Invoices</h3>
+        {due.length > 0 && (acct as any).ach?.enabled && <p className="mr-note" style={{ marginTop: 0 }}>Bank (ACH) payment has a much lower fee than a card and is available on balances of {money((acct as any).ach?.min ?? 100)} or more. It takes 3–5 business days to clear.</p>}
         {due.length === 0 ? <p className="mr-note">Nothing due. You are all paid up.</p> : due.map((i) => (
           <div className="mr-inv" key={i.id}>
             <div>
               {i.description}
               <small>{i.invoice_number} · due {day(i.due_date)} {i.overdue && <span className="mr-overdue">Overdue</span>} · <a href={`/marina/account/invoice/${i.id}`}>View (PDF)</a></small>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <span className="mr-money">{money(i.balance)}</span>
-              <button className="mr-btn" disabled={busy === i.id} onClick={() => pay(i.id)}>{busy === i.id ? "Working…" : "Pay"}</button>
+              {i.pending_bank > 0 ? (
+                <span className="mr-note" style={{ margin: 0 }}>Bank payment of {money(i.pending_bank)} is clearing (3–5 business days)</span>
+              ) : (<>
+                <button className="mr-btn" disabled={busy === i.id} onClick={() => pay(i.id, "card")}>{busy === i.id ? "Working…" : "Pay by card"}</button>
+                {(acct as any).ach?.enabled && i.balance >= ((acct as any).ach?.min ?? 100) && (
+                  <button className="mr-btn ghost" disabled={busy === i.id} onClick={() => pay(i.id, "ach")} title="Lower fee. Takes 3–5 business days to clear.">Pay by bank (ACH)</button>
+                )}
+              </>)}
             </div>
           </div>
         ))}

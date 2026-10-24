@@ -17,6 +17,16 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 export const PROCESSING_FEE_PERCENT = 0.035;
 export const PROCESSING_FEE_MINIMUM = 2.25;
 
+// Oct 24 (per Mely): bank (ACH) payments. Stripe charges 0.8% capped at $5, so a $3,000
+// annual slip costs ~$5 instead of ~$105 by card. The surcharge shown to the payer is 1%,
+// at least $1 and at most $7.50 — cheap enough that big invoices move to ACH.
+export const ACH_FEE_PERCENT = 0.01;
+export const ACH_FEE_MINIMUM = 1.0;
+export const ACH_FEE_MAXIMUM = 7.5;
+export function calculateAchFee(amount: number): number {
+  return Math.min(Math.max(amount * ACH_FEE_PERCENT, ACH_FEE_MINIMUM), ACH_FEE_MAXIMUM);
+}
+
 export function calculateProcessingFee(amount: number): number {
   const percentFee = amount * PROCESSING_FEE_PERCENT;
   return Math.max(percentFee, PROCESSING_FEE_MINIMUM);

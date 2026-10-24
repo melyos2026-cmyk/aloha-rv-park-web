@@ -15,9 +15,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
   }
 
-  let invoiceId = "";
+  let invoiceId = ""; let method: "card" | "ach" = "card";
   try {
-    invoiceId = String((await req.json()).invoice_id || "");
+    const b = await req.json();
+    invoiceId = String(b.invoice_id || "");
+    if (b.method === "ach") method = "ach";   // Oct 24: bank transfer
   } catch {}
   if (!invoiceId) return NextResponse.json({ error: "Missing invoice." }, { status: 400 });
 
@@ -36,6 +38,7 @@ export async function POST(req: Request) {
     company,
     invoiceId,
     memberId: session.memberId,
+    method,
     successUrl: `${origin}/marina/account?paid=success`,
     cancelUrl: `${origin}/marina/account?paid=cancelled`,
   });

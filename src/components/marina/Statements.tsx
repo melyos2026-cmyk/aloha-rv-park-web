@@ -6,7 +6,7 @@ import { MARINA_CATEGORY, MARINA_METHOD } from "@/lib/marina/labels";
 // Oct 23 (per Mely): bank-statement style page. Filter by year / month / search; payments are
 // grouped by month with each month's total; every payment opens its receipt (PDF); "Print
 // statement" prints exactly what is filtered, with the marina's header.
-type P = { id: string; invoice_number: string; description: string; category: string; amount: number; method: string; received_at: string };
+type P = { id: string; invoice_number: string; description: string; category: string; amount: number; method: string; received_at: string; pending?: boolean };
 type Inv = { id: string; number: string; description: string; due: string; balance: number; overdue: boolean };
 const money = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (d: string) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -128,7 +128,7 @@ export default function Statements({ company, member, payments, openInvoices }: 
               <tbody>{rows.map((p) => (
                 <tr key={p.id}>
                   <td style={{ whiteSpace: "nowrap" }}>{day(p.received_at)}</td>
-                  <td>{p.description || p.invoice_number}<div className="mr-doc-muted">{MARINA_CATEGORY[p.category] || "Payment"} · {MARINA_METHOD[p.method] || p.method} · {p.invoice_number}</div></td>
+                  <td>{p.description || p.invoice_number}<div className="mr-doc-muted">{MARINA_CATEGORY[p.category] || "Payment"} · {MARINA_METHOD[p.method] || p.method}{p.pending ? " · clearing" : ""} · {p.invoice_number}</div></td>
                   <td className="num"><b>{money(p.amount)}</b><div className="mr-noprint"><a href={`/marina/account/receipt/${p.id}`} style={{ fontSize: 13 }}>Receipt</a></div></td>
                 </tr>
               ))}</tbody>
