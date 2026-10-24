@@ -171,7 +171,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                 <div className="mr-hover-body">
                   <div className="mr-pop-head"><b>{h.slip_name}</b><span className={`mr-status ${eff(h)}`}>{STATUS_TEXT[eff(h)]}</span></div>
                   <div className="mr-pop-sub">{[h.length_ft ? `Up to ${h.length_ft} ft` : null, h.has_power ? (h.power_amps ? h.power_amps.replace(/A/g, " amp") : "Power") : null, h.has_water ? "Water" : null].filter(Boolean).join(" · ")}</div>
-                  {(m != null || n != null) && <div className="mr-hover-price">{m != null ? <><b>${Number(m).toLocaleString("en-US")}</b>/mo</> : null}{m != null && n != null ? " · " : ""}{n != null ? <><b>${Number(n).toLocaleString("en-US")}</b>/night</> : null}</div>}
+                  {(m != null || n != null) && <div className="mr-hover-price">{m != null ? <><b>{usd(m)}</b>/mo</> : null}{m != null && n != null ? " · " : ""}{n != null ? <><b>{usd(n)}</b>/night</> : null}</div>}
                   <div className="mr-hover-cta">{canBook(h) ? "Click to reserve" : "Click for details"}</div>
                 </div>
               </div>
@@ -285,6 +285,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 
 // Oct 22 (per Mely): what a boater needs before renting — what fits, power and water,
 // the prices for each stay, and the slip's extras. Prices come from Slips & Rates.
+// $588 for whole dollars, $94.50 with cents.
+const usd = (v: number | string) => { const x = Number(v); return `$${x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 2 })}`; };
+
 function SlipFacts({ s }: { s: PublicSlip }) {
   const price = (t: "monthly" | "transient_weekly" | "transient_daily") => {
     const r = s.rates[t]; const v = r ? (r.non_resident ?? r.resident) : null;
