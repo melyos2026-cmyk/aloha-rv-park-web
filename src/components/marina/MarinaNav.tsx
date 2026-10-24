@@ -20,6 +20,15 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
   }, []);
+  // Oct 24 (per Mely): while the phone menu is open, the page behind it doesn't move —
+  // swiping scrolls the menu. Closing the menu gives the page its scroll back.
+  useEffect(() => {
+    if (open !== "all") return;
+    const html = document.documentElement, body = document.body;
+    const prev = [html.style.overflow, body.style.overflow];
+    html.style.overflow = "hidden"; body.style.overflow = "hidden";
+    return () => { html.style.overflow = prev[0]; body.style.overflow = prev[1]; };
+  }, [open]);
 
   const slips: Item[] = [
     { href: "/#slips", label: "Slip map", note: "See open slips and reserve" },
@@ -74,7 +83,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
             : <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>}
         </button>
         {open === "all" && (
-          <div className="mr-dd-menu mr-dd-right" role="menu">
+          <div className="mr-dd-menu mr-dd-right mr-mob-menu" role="menu">
             <Link className="mr-btn mr-menu-login" href="/marina/account" onClick={go}>Boater login</Link>
             {groups.map((g) => (
               <div key={g.key}>
