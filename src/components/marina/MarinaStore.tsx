@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { StoreItem } from "@/lib/marina/data";
+import { kitPrice, kitLineKey } from "@/lib/marina/store-kit";
 
 // Oct 23 (per Mely): online-shop style store page. Category chips, search, photo cards,
 // "Load more" for big catalogs, and a detail window for each item.
@@ -24,6 +25,9 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<StoreItem | null>(null);
+  // Oct 24 (per Mely): build-your-own kit — parts the customer keeps (all of them to start).
+  const [keep, setKeep] = useState<string[]>([]);
+  useEffect(() => { if (open?.kit) setKeep(open.variants.filter((v) => !v.soldOut).map((v) => v.key)); }, [open]);
   const first = useRef(true);
   // Oct 23 (per Mely): online orders — a cart kept in this browser, then checkout.
   type CartLine = { id: string; variant?: string; name: string; price: number; qty: number; photo: string | null };
@@ -52,6 +56,16 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     const key = i.id + (v ? "::" + v.key : "");
     const cur = cart.find((c) => lineKey(c) === key);
     saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + 1) } : c)) : [...cart, { id: i.id, variant: v?.key, name: v ? `${i.name} — ${v.name}` : i.name, price: v ? v.price : i.price, qty: 1, photo: i.photo }]);
+  }
+  function addKit(i: StoreItem) {
+    if (!keep.length) return;
+    const parts = i.variants.filter((v) => keep.includes(v.key));
+    const full = parts.length === i.variants.length;
+    const variant = kitLineKey(keep);
+    const key = i.id + "::" + variant;
+    const price = kitPrice(i.price, i.variants, keep);
+    const cur = cart.find((c) => lineKey(c) === key);
+    saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + 1) } : c)) : [...cart, { id: i.id, variant, name: `${i.name} — ${full ? "complete kit" : parts.map((v) => v.name).join(", ")}`, price, qty: 1, photo: i.photo }]);
   }
   function setQty(key: string, qty: number) { saveCart(qty <= 0 ? cart.filter((c) => lineKey(c) !== key) : cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, qty) } : c))); }
   const count = cart.reduce((n, c) => n + c.qty, 0);
@@ -110,11 +124,11 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
             <div className="mr-store-body">
               <div className="mr-store-name">{i.name}</div>
               <div className="mr-store-cat">{i.category}</div>
-              <div className="mr-store-price">{i.soldOut ? <span className="mr-overdue">Sold out</span> : i.variants.length ? `from ${money(i.price)}` : money(i.price)}</div>
+              <div className="mr-store-price">{i.soldOut ? <span className="mr-overdue">Sold out</span> : i.variants.length && !i.kit ? `from ${money(i.price)}` : money(i.price)}</div>
             </div>
             {opts?.online && !i.soldOut && (
               <span role="button" tabIndex={0} className="mr-store-add" onClick={(e) => { e.stopPropagation(); add(i); }} onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); add(i); } }}>
-                {i.variants.length ? "Choose" : cart.find((c) => c.id === i.id) ? `In cart (${cart.find((c) => c.id === i.id)!.qty}) · Add` : "Add to cart"}
+                {i.kit ? "Build your kit" : i.variants.length ? "Choose" : cart.find((c) => c.id === i.id) ? `In cart (${cart.find((c) => c.id === i.id)!.qty}) · Add` : "Add to cart"}
               </span>
             )}
           </button>
@@ -138,7 +152,33 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
               <div className="mr-store-price" style={{ fontSize: 20 }}>{open.soldOut ? "Sold out" : money(open.price)}</div>
               <div className="mr-note" style={{ margin: 0 }}>{open.category}</div>
               {open.description && <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{open.description}</p>}
-              {open.variants.length > 0 && (
+              {open.kit && (() => {
+                const parts = open.variants;
+                const sum = parts.filter((v) => keep.includes(v.key)).reduce((a, v) => a + v.price, 0);
+                const price = kitPrice(open.price, parts, keep);
+                const full = keep.length === parts.length;
+                return (
+                  <div className="mr-variants">
+                    <div className="mr-note" style={{ margin: 0 }}>Keep everything for the full-kit price, or uncheck what you don&apos;t need and pay only for what you keep.</div>
+                    {parts.map((v) => (
+                      <label key={v.key} className="mr-variant mr-kit-part">
+                        <input type="checkbox" disabled={v.soldOut} checked={keep.includes(v.key)} onChange={(e) => setKeep(e.target.checked ? [...keep, v.key] : keep.filter((k) => k !== v.key))} />
+                        <span className="mr-variant-name">{v.name}</span>
+                        <span className="mr-variant-price">{v.soldOut ? <span className="mr-overdue">Sold out</span> : money(v.price)}</span>
+                      </label>
+                    ))}
+                    <div className="mr-kit-total">
+                      <span>{full ? "Complete kit" : `${keep.length} of ${parts.length} items`}</span>
+                      <b>{money(price)}</b>
+                    </div>
+                    {full && sum > price && <div className="mr-note" style={{ margin: 0 }}>You save {money(sum - price)} with the complete kit.</div>}
+                    {opts?.online
+                      ? <button className="mr-btn dark" disabled={!keep.length} onClick={() => { addKit(open); setOpen(null); }}>{keep.length ? `Add to cart · ${money(price)}` : "Choose at least one item"}</button>
+                      : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>}
+                  </div>
+                );
+              })()}
+              {open.variants.length > 0 && !open.kit && (
                 <div className="mr-variants">
                   {open.variants.map((v) => {
                     const inCart = cart.find((c) => c.id === open.id && c.variant === v.key);
@@ -152,7 +192,7 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
                   })}
                 </div>
               )}
-              {open.variants.length > 0
+              {open.kit ? null : open.variants.length > 0
                 ? (opts?.online ? <button className="mr-btn ghost" onClick={() => setOpen(null)}>Done</button> : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>)
                 : opts?.online && !open.soldOut
                 ? <button className="mr-btn dark" onClick={() => { add(open); setOpen(null); }}>Add to cart</button>

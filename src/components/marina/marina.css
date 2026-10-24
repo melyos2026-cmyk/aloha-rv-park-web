@@ -663,3 +663,7 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-variant-name { font-weight: 600; }
 .mr-variant-price { font-weight: 700; color: var(--mr-ink); white-space: nowrap; }
 .mr-variant .mr-btn { padding: 6px 12px; font-size: 14px; }
+/* Oct 24 (per Mely): build-your-own kit */
+.mr-kit-part { grid-template-columns: auto 1fr auto; cursor: pointer; }
+.mr-kit-part input { width: 18px; height: 18px; accent-color: var(--mr-ink); }
+.mr-kit-total { display: flex; justify-content: space-between; align-items: center; padding: 10px 2px 2px; font-size: 17px; border-top: 1px solid var(--mr-line); margin-top: 4px; }

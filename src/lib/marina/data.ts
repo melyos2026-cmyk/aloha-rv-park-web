@@ -306,8 +306,11 @@ export async function loadFuelPrices(companyId: string): Promise<{ label: string
 // shows "sold out" instead of stock counts). Empty if the marina has no store yet.
 // Oct 23 (per Mely): items can have a photo, a description and be featured on the homepage.
 export type StoreVariant = { key: string; name: string; price: number; soldOut: boolean };
-export type StoreItem = { id: string; name: string; category: string; subcategory: string | null; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean; variants: StoreVariant[] };
+// Oct 24 (per Mely): kit = "build your own" — the choices are the kit's parts; the customer keeps or removes
+// parts, pays the full-kit price (item price) when they keep everything, or the sum of the parts they keep.
+export type StoreItem = { id: string; name: string; category: string; subcategory: string | null; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean; variants: StoreVariant[]; kit: boolean };
 const STORE_COLS = "id, name, category, subcategory, price, stock, photo_url, description, featured, variants";
+const STORE_COLS_KIT = STORE_COLS + ", build_kit"; // after scripts/marina_62_store_kits.sql
 // Oct 24 (per Mely): an item can offer choices with their own price and stock (Beer 12-pack → Corona, Heineken…).
 export function parseVariants(v: any): StoreVariant[] {
   if (!Array.isArray(v)) return [];
@@ -316,8 +319,9 @@ export function parseVariants(v: any): StoreVariant[] {
 }
 function toStoreItem(i: any): StoreItem {
   const variants = parseVariants(i.variants);
-  const minPrice = variants.length ? Math.min(...variants.map((v) => v.price)) : Number(i.price);
-  return { id: i.id, name: i.name, category: i.category || "Other", subcategory: i.subcategory || null, variants, price: minPrice, soldOut: variants.length ? variants.every((v) => v.soldOut) : i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
+  const kit = !!i.build_kit && variants.length > 0;
+  const minPrice = variants.length && !kit ? Math.min(...variants.map((v) => v.price)) : Number(i.price);
+  return { id: i.id, name: i.name, category: i.category || "Other", subcategory: i.subcategory || null, variants, kit, price: minPrice, soldOut: variants.length ? variants.every((v) => v.soldOut) : i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
 }
 export async function loadStoreItems(companyId: string): Promise<StoreItem[]> {
   const q = (cols: string) => supabaseAdmin
@@ -329,7 +333,8 @@ export async function loadStoreItems(companyId: string): Promise<StoreItem[]> {
     .order("sort")
     .order("name")
     .limit(200);
-  let { data, error } = await q(STORE_COLS);
+  let { data, error } = await q(STORE_COLS_KIT);
+  if (error) ({ data, error } = await q(STORE_COLS));
   if (error) ({ data, error } = await q("id, name, category, price, stock")); // before scripts/marina_39_store_page.sql
   if (error || !data) return [];
   return (data as any[]).map(toStoreItem);
@@ -357,7 +362,8 @@ export async function searchStoreItems(companyId: string, opts: { category?: str
     if (term) qy = qy.ilike("name", `%${term}%`);
     return qy.order("featured", { ascending: false }).order("sort").order("name").range(page * size, page * size + size - 1);
   };
-  let res: any = await build(STORE_COLS);
+  let res: any = await build(STORE_COLS_KIT);
+  if (res.error) res = await build(STORE_COLS);
   if (res.error) {
     const fb = (cols: string) => {
       let qy = supabaseAdmin.from("marina_store_items").select(cols, { count: "exact" }).eq("company_id", companyId).eq("active", true);

@@ -5,6 +5,7 @@ import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
+import { kitPrice, kitKeys, kitLineKey } from "@/lib/marina/store-kit";
 
 // Oct 23 (per Mely): online orders from the marina's store page.
 // GET → what the checkout needs (signed in?, tax, options).
@@ -57,18 +58,33 @@ export async function POST(req: Request) {
 
   // Lines: [{id, qty}] → priced from the database.
   const wanted = (Array.isArray(b.lines) ? b.lines : []).slice(0, 60)
-    .map((l: any) => ({ id: String(l?.id || ""), variant: l?.variant ? String(l.variant).slice(0, 60) : "", qty: Math.max(0, Math.min(99, Math.round(Number(l?.qty) || 0))) }))
+    .map((l: any) => ({ id: String(l?.id || ""), variant: l?.variant ? String(l.variant).slice(0, 800) : "", qty: Math.max(0, Math.min(99, Math.round(Number(l?.qty) || 0))) }))
     .filter((l: any) => l.id && l.qty > 0);
   if (!wanted.length) return NextResponse.json({ error: "Your cart is empty." }, { status: 400 });
-  let itemsRes: any = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active, variants")
-    .eq("company_id", company.id).in("id", wanted.map((w: any) => w.id));
+  const ids = wanted.map((w: any) => w.id);
+  let itemsRes: any = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active, variants, build_kit").eq("company_id", company.id).in("id", ids);
+  if (itemsRes.error) itemsRes = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active, variants").eq("company_id", company.id).in("id", ids);
   if (itemsRes.error) itemsRes = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active").eq("company_id", company.id).in("id", wanted.map((w: any) => w.id));
   const items: any[] = itemsRes.data || [];
-  const lines: { item_id: string; variant?: string; name: string; qty: number; price: number; taxable: boolean }[] = [];
+  const lines: { item_id: string; variant?: string; kit?: boolean; name: string; qty: number; price: number; taxable: boolean }[] = [];
   for (const w of wanted) {
     const it: any = items.find((i: any) => i.id === w.id);
     if (!it || !it.active) return NextResponse.json({ error: "An item in your cart is no longer for sale. Please refresh the page." }, { status: 409 });
     const variants: any[] = Array.isArray(it.variants) ? it.variants : [];
+    if (variants.length && it.build_kit) {
+      // Oct 24 (per Mely): build-your-own kit — the customer keeps the parts they want. Every part
+      // kept = the full-kit price; otherwise the sum of the kept parts (prices from the database).
+      const keep = [...new Set(kitKeys(w.variant))];
+      const parts = keep.map((k) => variants.find((x: any) => String(x?.key || x?.name) === k));
+      if (!keep.length || parts.some((x) => !x)) return NextResponse.json({ error: `Please choose what goes in your "${it.name}".` }, { status: 400 });
+      const short = parts.find((x: any) => x.stock !== null && x.stock !== undefined && Number(x.stock) < w.qty);
+      if (short) return NextResponse.json({ error: `Only ${Math.max(0, Number(short.stock))} left of "${short.name}" for the ${it.name}. Remove it or lower the quantity.` }, { status: 409 });
+      const all = variants.map((x: any) => ({ key: String(x?.key || x?.name), price: Number(x?.price) }));
+      const price = round2(kitPrice(Number(it.price), all, keep));
+      const full = keep.length === all.length;
+      lines.push({ item_id: it.id, variant: kitLineKey(keep), kit: true, name: `${it.name} — ${full ? "complete kit" : parts.map((x: any) => x.name).join(", ")}`.slice(0, 300), qty: w.qty, price, taxable: it.taxable !== false });
+      continue;
+    }
     if (variants.length) {
       // Oct 24: items with choices — price and stock come from the chosen variant.
       const v = variants.find((x: any) => String(x?.key || x?.name) === w.variant);
@@ -159,7 +175,9 @@ async function adjustStock(companyId: string, items: any[], lines: { item_id: st
   for (const l of lines) {
     const it = items.find((i: any) => i.id === l.item_id); if (!it) continue;
     const e = byItem.get(it.id) || { item: it, plain: 0, byVariant: new Map<string, number>() };
-    if (l.variant) e.byVariant.set(l.variant, (e.byVariant.get(l.variant) || 0) + l.qty); else e.plain += l.qty;
+    // Oct 24: a kit line takes stock from each part it includes.
+    if (l.variant) for (const k of it.build_kit ? kitKeys(l.variant) : [l.variant]) e.byVariant.set(k, (e.byVariant.get(k) || 0) + l.qty);
+    else e.plain += l.qty;
     byItem.set(it.id, e);
   }
   for (const { item, plain, byVariant } of byItem.values()) {
