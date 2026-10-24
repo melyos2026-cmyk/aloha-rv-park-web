@@ -5,6 +5,8 @@ import { loadRentalItems, loadRentalSettings, rentalsEnabled } from "@/lib/renta
 import { loadRestaurant, restaurantEnabled } from "@/lib/restaurant";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
+import MarinaEventsCalendar from "./MarinaEventsCalendar";
+import { accountChargesAllowed } from "@/lib/marina/payPolicy";
 
 // Whole dollars show as $280; anything with cents always shows two decimals ($2,553.60).
 const money = (n: number | null | undefined) => (n == null ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`);
@@ -27,6 +29,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
   const [rentals, rentalSettings] = rentalsOn ? await Promise.all([loadRentalItems(company.id), loadRentalSettings(company.id)]) : [[], null];
   // Oct 24 (per Mely): Restaurant teaser (menu, delivery, reserve) when the module is on.
   const restaurant = (await restaurantEnabled(company.id)) ? await loadRestaurant(company.id, company.company_name) : null;
+  const accountOk = await accountChargesAllowed(company.id);
   const rentalPick = (rentals.some((i) => i.featured) ? rentals.filter((i) => i.featured) : rentals).slice(0, 4);
   const rentalPrice = (i: (typeof rentals)[number]) => i.kind === "experience" ? (i.price_person != null ? `$${i.price_person.toFixed(2)} per person` : "") : i.price_hour != null ? `from $${i.price_hour.toFixed(2)}/hr` : i.price_day != null ? `$${i.price_day.toFixed(2)}/day` : "";
   // Oct 23 (per Mely): the homepage shows only a few items; the whole store has its own page.
@@ -140,7 +143,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
         <section className="mr-section" id="store">
           <div className="mr-wrap">
             <h2 className="mr-h2">{storeSettings.name}</h2>
-            <p className="mr-lede">{storeSettings.tagline} Members can charge purchases to their account.</p>
+            <p className="mr-lede">{storeSettings.tagline}{accountOk ? " Members can charge purchases to their account." : ""}</p>
             <div className="mr-feat-grid">
               {featured.map((i) => (
                 <a key={i.id} href="/marina/store" className="mr-store-card" style={{ textDecoration: "none" }}>
@@ -156,6 +159,17 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
             <div style={{ marginTop: 20 }}>
               <a className="mr-btn dark" href="/marina/store">Visit the {storeSettings.name} →</a>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Oct 24 (per Mely): this month's events calendar, big and printable (like Aloha's, bigger). */}
+      {company.events_calendar_pdf_url && (
+        <section className="mr-section alt" id="events">
+          <div className="mr-wrap">
+            <h2 className="mr-h2">Events this month</h2>
+            <p className="mr-lede">Dockside activities, community and on the water. Print it and keep it on the boat.</p>
+            <MarinaEventsCalendar url={company.events_calendar_pdf_url} title={`${company.company_name} events calendar`} />
           </div>
         </section>
       )}

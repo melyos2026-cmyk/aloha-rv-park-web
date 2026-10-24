@@ -15,10 +15,11 @@ export type MarinaCompany = {
   hero_image_url: string | null;
   hero_headline: string | null;
   hero_subtext: string | null;
+  events_calendar_pdf_url?: string | null;   // Oct 24: monthly events calendar (PDF or image), same field as the RV parks
 };
 
 const COLUMNS =
-  "id, company_name, domain, business_type, address, contact_phone, contact_email, logo_url, primary_color, secondary_color, hero_image_url, hero_headline, hero_subtext";
+  "id, company_name, domain, business_type, address, contact_phone, contact_email, logo_url, primary_color, secondary_color, hero_image_url, hero_headline, hero_subtext, events_calendar_pdf_url";
 
 async function byHostname(hostname: string): Promise<MarinaCompany | null> {
   if (!hostname) return null;

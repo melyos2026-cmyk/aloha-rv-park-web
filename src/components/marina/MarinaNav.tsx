@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // Oct 21 (per Mely): the marina website's top menu, organized in drop-downs
 // (Slips, Services). Services only lists what this marina really has (fuel
 // prices, ship store items, dry stack slips), so no menu link ever leads nowhere.
-export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean; concierge?: boolean; careers?: boolean; restaurant?: boolean };
+export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean; concierge?: boolean; careers?: boolean; restaurant?: boolean; events?: boolean };
 type Item = { href: string; label: string; note?: string };
 
 export default function MarinaNav({ services, demo }: { services: MarinaServices; demo: boolean }) {
@@ -58,6 +58,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
           )}
         </div>
       ))}
+      {services.events && <a className="mr-link mr-desk" href="/marina/events">Events</a>}
       <a className="mr-link mr-desk" href="/marina/marketplace">Marketplace</a>
       {restaurantLink && <a className="mr-link mr-desk" href={restaurantLink.href}>Restaurant</a>}
       {services.careers && <a className="mr-link mr-desk" href="/marina/careers">Careers</a>}
@@ -84,6 +85,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
               </div>
             ))}
             <div className="mr-dd-head">More</div>
+            {services.events && <a href="/marina/events" onClick={go}><b>Events</b></a>}
             <a href="/marina/marketplace" onClick={go}><b>Marketplace</b></a>
             {restaurantLink && <a href="/marina/restaurant" onClick={go}><b>Restaurant</b></a>}
             {services.careers && <a href="/marina/careers" onClick={go}><b>Careers</b></a>}

@@ -391,16 +391,17 @@ export async function storeCategories(companyId: string): Promise<{ name: string
 }
 
 // Oct 21 (per Mely): which services the marina really has, for the top menu.
-export async function loadMarinaServices(companyId: string): Promise<{ fuel: boolean; store: boolean; dry: boolean; rentals: boolean; concierge: boolean; careers: boolean; restaurant: boolean }> {
+export async function loadMarinaServices(companyId: string): Promise<{ fuel: boolean; store: boolean; dry: boolean; rentals: boolean; concierge: boolean; careers: boolean; restaurant: boolean; events: boolean }> {
   const head = { count: "exact" as const, head: true };
-  const [f, s, d, r] = await Promise.all([
+  const [f, s, d, r, ev] = await Promise.all([
     supabaseAdmin.from("marina_fuel_prices").select("id", head).eq("company_id", companyId).eq("active", true).eq("show_on_website", true),
     supabaseAdmin.from("marina_store_items").select("id", head).eq("company_id", companyId).eq("active", true),
     supabaseAdmin.from("marina_slips").select("id", head).eq("company_id", companyId).eq("slip_type", "dry"),
     supabaseAdmin.from("company_modules").select("module_name, enabled").eq("company_id", companyId).in("module_name", ["rentals", "concierge", "careers", "restaurant"]),
+    supabaseAdmin.from("public_company_profile").select("events_calendar_pdf_url").eq("id", companyId).maybeSingle(),   // Oct 24: Events
   ]);
   const on = (n: string) => !r.error && !!(r.data || []).find((m: any) => m.module_name === n && m.enabled);
-  return { fuel: !f.error && (f.count || 0) > 0, store: !s.error && (s.count || 0) > 0, dry: !d.error && (d.count || 0) > 0, rentals: on("rentals"), concierge: on("concierge"), careers: on("careers"), restaurant: on("restaurant") };
+  return { fuel: !f.error && (f.count || 0) > 0, store: !s.error && (s.count || 0) > 0, dry: !d.error && (d.count || 0) > 0, rentals: on("rentals"), concierge: on("concierge"), careers: on("careers"), restaurant: on("restaurant"), events: !ev.error && !!(ev.data as any)?.events_calendar_pdf_url };
 }
 
 // Oct 21 (per Mely): the Rates table shows the price per foot for each slip type, straight

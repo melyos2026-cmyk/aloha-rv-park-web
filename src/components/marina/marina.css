@@ -764,3 +764,17 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
   .mr-inv-due:not(.many) .mr-inv-actions { flex-wrap: wrap; }
   .mr-inv-due:not(.many) .mr-inv-actions .mr-money { flex-basis: 100%; }
 }
+/* Oct 24 (per Mely): events calendar — big and readable on every screen */
+.mr-cal-page { padding: 28px 16px 56px; }
+.mr-cal { display: grid; gap: 14px; }
+.mr-cal-frame { background: #fff; border: 1px solid var(--mr-line); border-radius: 14px; padding: 10px; box-shadow: 0 6px 24px rgba(15,37,64,.08); }
+.mr-cal-frame img { display: block; width: 100%; height: auto; border-radius: 8px; }
+.mr-cal-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.mr-btn.mr-btn-outline { background: #fff; color: var(--mr-ink); border: 1px solid var(--mr-ink); }
+.mr-btn.mr-btn-outline:hover { background: #eef3f6; }
+@media (max-width: 640px) {
+  .mr-cal-frame { padding: 4px; border-radius: 10px; overflow-x: auto; }
+  /* keep the calendar readable on a phone: never smaller than 640px wide — swipe sideways */
+  .mr-cal-frame img { min-width: 640px; }
+  .mr-cal-actions .mr-btn { flex: 1 1 140px; text-align: center; }
+}
