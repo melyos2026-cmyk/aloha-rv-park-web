@@ -6,6 +6,7 @@ import MarketplaceCard from "./MarketplaceCard";
 import StoreOrdersCard from "./StoreOrdersCard";
 import RentalsCard from "./RentalsCard";
 import ConciergeCard from "./ConciergeCard";
+import RestaurantCard from "./RestaurantCard";
 import PaymentsSummaryCard from "./PaymentsSummaryCard";
 import type { AccountData } from "@/lib/marina/data";
 
@@ -187,6 +188,7 @@ export default function AccountClient() {
       {(acct as any).rentals && <RentalsCard />}
 
       {(acct as any).concierge && <ConciergeCard />}
+      {(acct as any).restaurant && <RestaurantCard name={(acct as any).restaurant} />}
 
       <MarketplaceCard />
 

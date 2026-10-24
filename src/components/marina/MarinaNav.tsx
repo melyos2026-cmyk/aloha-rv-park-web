@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // Oct 21 (per Mely): the marina website's top menu, organized in drop-downs
 // (Slips, Services). Services only lists what this marina really has (fuel
 // prices, ship store items, dry stack slips), so no menu link ever leads nowhere.
-export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean; concierge?: boolean; careers?: boolean };
+export type MarinaServices = { fuel: boolean; store: boolean; dry: boolean; rentals?: boolean; concierge?: boolean; careers?: boolean; restaurant?: boolean };
 type Item = { href: string; label: string; note?: string };
 
 export default function MarinaNav({ services, demo }: { services: MarinaServices; demo: boolean }) {
@@ -33,6 +33,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
     ...(services.rentals ? [{ href: "/marina/rentals", label: "Rentals & experiences", note: "Golf carts, boats, tours and more" }] : []),
     ...(services.concierge ? [{ href: "/marina/concierge", label: "Concierge", note: "Ice, provisions, catering, crew to your slip" }] : []),
   ];
+  const restaurantLink = services.restaurant ? { href: "/marina/restaurant", label: "Restaurant" } : null;
   const groups: { key: string; label: string; items: Item[] }[] = [
     { key: "slips", label: "Slips", items: slips },
     ...(svc.length ? [{ key: "services", label: "Services", items: svc }] : []),
@@ -58,6 +59,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
         </div>
       ))}
       <a className="mr-link mr-desk" href="/marina/marketplace">Marketplace</a>
+      {restaurantLink && <a className="mr-link mr-desk" href={restaurantLink.href}>Restaurant</a>}
       {services.careers && <a className="mr-link mr-desk" href="/marina/careers">Careers</a>}
       <a className="mr-link mr-desk" href="/#contact">Contact</a>
       {demo && <Link className="mr-link mr-desk" href="/marina/tour">Office tour</Link>}
@@ -83,6 +85,7 @@ export default function MarinaNav({ services, demo }: { services: MarinaServices
             ))}
             <div className="mr-dd-head">More</div>
             <a href="/marina/marketplace" onClick={go}><b>Marketplace</b></a>
+            {restaurantLink && <a href="/marina/restaurant" onClick={go}><b>Restaurant</b></a>}
             {services.careers && <a href="/marina/careers" onClick={go}><b>Careers</b></a>}
             <a href="/#contact" onClick={go}><b>Contact</b></a>
             {demo && <Link href="/marina/tour" onClick={go}><b>Office tour</b></Link>}

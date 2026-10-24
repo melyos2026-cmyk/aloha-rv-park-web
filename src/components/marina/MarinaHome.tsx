@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
 import { loadPublicSlips, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems, loadStoreSettings } from "@/lib/marina/data";
 import { loadRentalItems, loadRentalSettings, rentalsEnabled } from "@/lib/rentals";
+import { loadRestaurant, restaurantEnabled } from "@/lib/restaurant";
 import SlipBoard from "./SlipBoard";
 import WaitlistForm from "./WaitlistForm";
 
@@ -24,6 +25,8 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
   const [slips, fuel, store, storeSettings, rentalsOn] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id), loadStoreSettings(company.id), rentalsEnabled(company.id)]);
   // Oct 23 (per Mely): Rentals & Experiences teaser (only when the module is on).
   const [rentals, rentalSettings] = rentalsOn ? await Promise.all([loadRentalItems(company.id), loadRentalSettings(company.id)]) : [[], null];
+  // Oct 24 (per Mely): Restaurant teaser (menu, delivery, reserve) when the module is on.
+  const restaurant = (await restaurantEnabled(company.id)) ? await loadRestaurant(company.id, company.company_name) : null;
   const rentalPick = (rentals.some((i) => i.featured) ? rentals.filter((i) => i.featured) : rentals).slice(0, 4);
   const rentalPrice = (i: (typeof rentals)[number]) => i.kind === "experience" ? (i.price_person != null ? `$${i.price_person.toFixed(2)} per person` : "") : i.price_hour != null ? `from $${i.price_hour.toFixed(2)}/hr` : i.price_day != null ? `$${i.price_day.toFixed(2)}/day` : "";
   // Oct 23 (per Mely): the homepage shows only a few items; the whole store has its own page.
@@ -175,6 +178,25 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
               ))}
             </div>
             <div style={{ marginTop: 20 }}><a className="mr-btn dark" href="/marina/rentals">Book online →</a></div>
+          </div>
+        </section>
+      )}
+
+      {restaurant && (
+        <section className="mr-section mr-rs-teaser" id="restaurant">
+          <div className="mr-wrap mr-rs-teaser-in">
+            <div className="mr-rs-teaser-img" style={restaurant.photo ? { backgroundImage: `url(${restaurant.photo})` } : undefined} aria-hidden={!restaurant.photo}>{!restaurant.photo && <span>🍽️</span>}</div>
+            <div>
+              <div className="mr-cr-kicker" style={{ color: "var(--mr-tide)" }}>Restaurant</div>
+              <h2 className="mr-h2" style={{ marginBottom: 6 }}>{restaurant.name}</h2>
+              {restaurant.tagline && <p className="mr-lede" style={{ marginTop: 0 }}>{restaurant.tagline}</p>}
+              {restaurant.hours_text && <p className="mr-note" style={{ marginTop: 0 }}>{restaurant.hours_text}</p>}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
+                {(restaurant.menu_photos.length > 0 || restaurant.menu_pdf) && <a className="mr-btn dark" href="/marina/restaurant#menu">View menu</a>}
+                {restaurant.reservations_on && <a className="mr-btn ghost" href="/marina/restaurant#reserve">Reserve a table</a>}
+                {restaurant.delivery.length > 0 && <a className="mr-btn ghost" href="/marina/restaurant#delivery">Order delivery</a>}
+              </div>
+            </div>
           </div>
         </section>
       )}
