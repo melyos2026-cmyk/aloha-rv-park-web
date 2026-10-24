@@ -780,3 +780,14 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 }
 /* Oct 24 (per Mely): the phone menu scrolls by itself (the page behind stays still) */
 .mr-nav .mr-dd-menu.mr-mob-menu { max-height: calc(100dvh - 110px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: 90px; }
+/* Oct 24 (per Mely): hover preview card on the slip map (computers) */
+.mr-hover { position: absolute; z-index: 4; width: 220px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 12px 32px -8px rgba(0,0,0,.55); border: 1.5px solid var(--mr-ink); pointer-events: none; animation: mrHoverIn .12s ease-out; }
+.mr-hover img { display: block; width: 100%; height: 96px; object-fit: cover; }
+.mr-hover-body { padding: 10px 12px; display: grid; gap: 4px; }
+.mr-hover .mr-pop-head b { font-size: 1.1rem; }
+.mr-hover-price { font-size: .9rem; color: var(--mr-muted); }
+.mr-hover-price b { color: var(--mr-ink); }
+.mr-hover-cta { font-size: .8rem; font-weight: 700; color: #0b6b4f; }
+@keyframes mrHoverIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (hover: none) { .mr-hover { display: none; } }
+@media (prefers-reduced-motion: reduce) { .mr-hover { animation: none; } }

@@ -25,6 +25,8 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   const [power, setPower] = useState(false);
   const [boat, setBoat] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
+  // Oct 24 (per Mely): on a computer, resting the mouse on a slip shows a small preview card.
+  const [hover, setHover] = useState<string | null>(null);
   const [booking, setBooking] = useState<PublicSlip | null>(null);
   const [onDate, setOnDate] = useState("");
   const [type, setType] = useState<SlipType | "all">("all");
@@ -143,7 +145,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
                 tabIndex={0}
                 aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[eff(s)]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}
                 aria-pressed={picked === s.id}
-                onClick={(e) => { e.stopPropagation(); setPicked(s.id); }}
+                onClick={(e) => { e.stopPropagation(); setPicked(s.id); setHover(null); }}
+                onPointerEnter={(e) => { if (e.pointerType === "mouse") setHover(s.id); }}
+                onPointerLeave={(e) => { if (e.pointerType === "mouse") setHover((h) => (h === s.id ? null : h)); }}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPicked(s.id); } }}
               />
             ))}
@@ -152,6 +156,27 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
             const c = centroid(s.map!.points);
             return <span key={s.id} className="mr-polylabel" data-dim={dim(s)} style={{ left: `${c[0]}%`, top: `${c[1]}%` }}>{s.slip_name}</span>;
           })}
+          {(() => {
+            const h = hover && hover !== picked ? slips.find((x) => x.id === hover) : null;
+            if (!h || !h.map) return null;
+            const xs = h.map.points.map((p) => p[0]), ys = h.map.points.map((p) => p[1]);
+            const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+            const v = minY > 40 ? { bottom: `${Math.max(100 - minY + 1, 2)}%` } : { top: `${Math.min(maxY + 1, 90)}%` };
+            const hz = minX > 50 ? { right: `${Math.max(100 - maxX, 1)}%` } : { left: `${Math.max(minX, 1)}%` };
+            const r = h.rates?.monthly; const m = r ? (r.non_resident ?? r.resident) : null;
+            const night = h.rates?.transient_daily; const n = night ? (night.non_resident ?? night.resident) : null;
+            return (
+              <div className="mr-hover" style={{ ...v, ...hz }} aria-hidden>
+                {h.photo && <img src={h.photo} alt="" />}
+                <div className="mr-hover-body">
+                  <div className="mr-pop-head"><b>{h.slip_name}</b><span className={`mr-status ${eff(h)}`}>{STATUS_TEXT[eff(h)]}</span></div>
+                  <div className="mr-pop-sub">{[h.length_ft ? `Up to ${h.length_ft} ft` : null, h.has_power ? (h.power_amps ? h.power_amps.replace(/A/g, " amp") : "Power") : null, h.has_water ? "Water" : null].filter(Boolean).join(" · ")}</div>
+                  {(m != null || n != null) && <div className="mr-hover-price">{m != null ? <><b>${Number(m).toLocaleString("en-US")}</b>/mo</> : null}{m != null && n != null ? " · " : ""}{n != null ? <><b>${Number(n).toLocaleString("en-US")}</b>/night</> : null}</div>}
+                  <div className="mr-hover-cta">{canBook(h) ? "Click to reserve" : "Click for details"}</div>
+                </div>
+              </div>
+            );
+          })()}
           {selected && selected.map && (
             <div
               className="mr-pop"
