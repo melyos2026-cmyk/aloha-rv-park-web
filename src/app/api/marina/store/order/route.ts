@@ -57,15 +57,26 @@ export async function POST(req: Request) {
 
   // Lines: [{id, qty}] → priced from the database.
   const wanted = (Array.isArray(b.lines) ? b.lines : []).slice(0, 60)
-    .map((l: any) => ({ id: String(l?.id || ""), qty: Math.max(0, Math.min(99, Math.round(Number(l?.qty) || 0))) }))
+    .map((l: any) => ({ id: String(l?.id || ""), variant: l?.variant ? String(l.variant).slice(0, 60) : "", qty: Math.max(0, Math.min(99, Math.round(Number(l?.qty) || 0))) }))
     .filter((l: any) => l.id && l.qty > 0);
   if (!wanted.length) return NextResponse.json({ error: "Your cart is empty." }, { status: 400 });
-  const { data: items } = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active")
+  let itemsRes: any = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active, variants")
     .eq("company_id", company.id).in("id", wanted.map((w: any) => w.id));
-  const lines: { item_id: string; name: string; qty: number; price: number; taxable: boolean }[] = [];
+  if (itemsRes.error) itemsRes = await supabaseAdmin.from("marina_store_items").select("id, name, price, taxable, stock, active").eq("company_id", company.id).in("id", wanted.map((w: any) => w.id));
+  const items: any[] = itemsRes.data || [];
+  const lines: { item_id: string; variant?: string; name: string; qty: number; price: number; taxable: boolean }[] = [];
   for (const w of wanted) {
-    const it: any = (items || []).find((i: any) => i.id === w.id);
+    const it: any = items.find((i: any) => i.id === w.id);
     if (!it || !it.active) return NextResponse.json({ error: "An item in your cart is no longer for sale. Please refresh the page." }, { status: 409 });
+    const variants: any[] = Array.isArray(it.variants) ? it.variants : [];
+    if (variants.length) {
+      // Oct 24: items with choices — price and stock come from the chosen variant.
+      const v = variants.find((x: any) => String(x?.key || x?.name) === w.variant);
+      if (!v) return NextResponse.json({ error: `Please choose an option for "${it.name}".` }, { status: 400 });
+      if (v.stock !== null && v.stock !== undefined && Number(v.stock) < w.qty) return NextResponse.json({ error: `Only ${Math.max(0, Number(v.stock))} left of "${it.name} — ${v.name}".` }, { status: 409 });
+      lines.push({ item_id: it.id, variant: String(v.key || v.name), name: `${it.name} — ${v.name}`, qty: w.qty, price: round2(Number(v.price)), taxable: it.taxable !== false });
+      continue;
+    }
     if (it.stock !== null && Number(it.stock) < w.qty) return NextResponse.json({ error: `Only ${Math.max(0, Number(it.stock))} left of "${it.name}".` }, { status: 409 });
     lines.push({ item_id: it.id, name: it.name, qty: w.qty, price: round2(Number(it.price)), taxable: it.taxable !== false });
   }
@@ -119,10 +130,7 @@ export async function POST(req: Request) {
   }
 
   // Stock goes down when the order is placed (the office can cancel it to put it back).
-  for (const l of lines) {
-    const it: any = (items || []).find((i: any) => i.id === l.item_id);
-    if (it && it.stock !== null) await supabaseAdmin.from("marina_store_items").update({ stock: Math.max(0, Number(it.stock) - l.qty) }).eq("id", it.id).eq("company_id", company.id);
-  }
+  await adjustStock(company.id, items, lines, -1);
   await supabaseAdmin.from("resident_update_notifications").insert({
     company_id: company.id, resident_name: name, update_type: "store_order",
     message: `New ${st.name} order ${orderNumber}: $${total.toFixed(2)} (${payment === "account" ? "charged to account" : "card"}), ${fulfillment === "slip" ? `bring to slip ${slip}` : "pickup at the store"}${b.when ? `, ${text(b.when, 60)}` : ""}.`,
@@ -139,11 +147,30 @@ export async function POST(req: Request) {
   if (!pay.ok) {
     await supabaseAdmin.from("marina_store_orders").update({ status: "cancelled", status_by_name: "Payment could not start" }).eq("id", order.id);
     await supabaseAdmin.from("marina_invoices").update({ status: "void", voided_at: new Date().toISOString(), void_reason: "Payment could not be started" }).eq("id", invoice.id).eq("company_id", company.id);
-    for (const l of lines) {
-      const it: any = (items || []).find((i: any) => i.id === l.item_id);
-      if (it && it.stock !== null) await supabaseAdmin.from("marina_store_items").update({ stock: Number(it.stock) }).eq("id", it.id).eq("company_id", company.id);
-    }
+    await adjustStock(company.id, items, lines, +1);
     return NextResponse.json({ error: pay.error }, { status: pay.status });
   }
   return NextResponse.json("url" in pay ? { url: pay.url, order: orderNumber, total } : { ok: true, demo: true, order: orderNumber, total });
+}
+
+// Oct 24: stock per item, or per chosen variant. dir = -1 takes stock, +1 gives it back.
+async function adjustStock(companyId: string, items: any[], lines: { item_id: string; variant?: string; qty: number }[], dir: 1 | -1) {
+  const byItem = new Map<string, { item: any; plain: number; byVariant: Map<string, number> }>();
+  for (const l of lines) {
+    const it = items.find((i: any) => i.id === l.item_id); if (!it) continue;
+    const e = byItem.get(it.id) || { item: it, plain: 0, byVariant: new Map<string, number>() };
+    if (l.variant) e.byVariant.set(l.variant, (e.byVariant.get(l.variant) || 0) + l.qty); else e.plain += l.qty;
+    byItem.set(it.id, e);
+  }
+  for (const { item, plain, byVariant } of byItem.values()) {
+    const upd: any = {};
+    if (plain && item.stock !== null && item.stock !== undefined) upd.stock = Math.max(0, Number(item.stock) + dir * plain);
+    if (byVariant.size && Array.isArray(item.variants)) {
+      upd.variants = item.variants.map((v: any) => {
+        const q = byVariant.get(String(v?.key || v?.name)); if (!q || v.stock === null || v.stock === undefined) return v;
+        return { ...v, stock: Math.max(0, Number(v.stock) + dir * q) };
+      });
+    }
+    if (Object.keys(upd).length) await supabaseAdmin.from("marina_store_items").update(upd).eq("id", item.id).eq("company_id", companyId);
+  }
 }

@@ -26,7 +26,8 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
   const [open, setOpen] = useState<StoreItem | null>(null);
   const first = useRef(true);
   // Oct 23 (per Mely): online orders — a cart kept in this browser, then checkout.
-  type CartLine = { id: string; name: string; price: number; qty: number; photo: string | null };
+  type CartLine = { id: string; variant?: string; name: string; price: number; qty: number; photo: string | null };
+  const lineKey = (c: { id: string; variant?: string }) => c.id + (c.variant ? "::" + c.variant : "");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [opts, setOpts] = useState<{ signedIn: boolean; member: any; taxRate: number; online: boolean; slipDelivery: boolean } | null>(null);
@@ -44,16 +45,20 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
     if (u.get("order") && u.get("paid") === "1") { setDone({ order: u.get("order")!, total: 0 }); try { localStorage.removeItem("mr_cart"); } catch {} setCart([]); }
   }, []);
   function saveCart(next: CartLine[]) { setCart(next); try { localStorage.setItem("mr_cart", JSON.stringify(next)); } catch {} }
-  function add(i: StoreItem) {
-    const cur = cart.find((c) => c.id === i.id);
-    saveCart(cur ? cart.map((c) => (c.id === i.id ? { ...c, qty: Math.min(99, c.qty + 1) } : c)) : [...cart, { id: i.id, name: i.name, price: i.price, qty: 1, photo: i.photo }]);
+  function add(i: StoreItem, variantKey?: string) {
+    // Oct 24: items with choices (Corona / Heineken…) must be added from the sheet with a choice.
+    if (i.variants.length && !variantKey) { setOpen(i); return; }
+    const v = variantKey ? i.variants.find((x) => x.key === variantKey) : undefined;
+    const key = i.id + (v ? "::" + v.key : "");
+    const cur = cart.find((c) => lineKey(c) === key);
+    saveCart(cur ? cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, c.qty + 1) } : c)) : [...cart, { id: i.id, variant: v?.key, name: v ? `${i.name} — ${v.name}` : i.name, price: v ? v.price : i.price, qty: 1, photo: i.photo }]);
   }
-  function setQty(id: string, qty: number) { saveCart(qty <= 0 ? cart.filter((c) => c.id !== id) : cart.map((c) => (c.id === id ? { ...c, qty: Math.min(99, qty) } : c))); }
+  function setQty(key: string, qty: number) { saveCart(qty <= 0 ? cart.filter((c) => lineKey(c) !== key) : cart.map((c) => (lineKey(c) === key ? { ...c, qty: Math.min(99, qty) } : c))); }
   const count = cart.reduce((n, c) => n + c.qty, 0);
   const sub = cart.reduce((n, c) => n + c.qty * c.price, 0);
   async function placeOrder() {
     setPlacing(true); setCoErr("");
-    const res = await fetch("/api/marina/store/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...co, lines: cart.map((c) => ({ id: c.id, qty: c.qty })) }) });
+    const res = await fetch("/api/marina/store/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...co, lines: cart.map((c) => ({ id: c.id, variant: c.variant, qty: c.qty })) }) });
     const r = await res.json().catch(() => ({}));
     if (!res.ok) { setPlacing(false); setCoErr(r.error || "Could not place your order."); return; }
     if (r.url) { window.location.href = r.url; return; }
@@ -105,11 +110,11 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
             <div className="mr-store-body">
               <div className="mr-store-name">{i.name}</div>
               <div className="mr-store-cat">{i.category}</div>
-              <div className="mr-store-price">{i.soldOut ? <span className="mr-overdue">Sold out</span> : money(i.price)}</div>
+              <div className="mr-store-price">{i.soldOut ? <span className="mr-overdue">Sold out</span> : i.variants.length ? `from ${money(i.price)}` : money(i.price)}</div>
             </div>
             {opts?.online && !i.soldOut && (
               <span role="button" tabIndex={0} className="mr-store-add" onClick={(e) => { e.stopPropagation(); add(i); }} onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); add(i); } }}>
-                {cart.find((c) => c.id === i.id) ? `In cart (${cart.find((c) => c.id === i.id)!.qty}) · Add` : "Add to cart"}
+                {i.variants.length ? "Choose" : cart.find((c) => c.id === i.id) ? `In cart (${cart.find((c) => c.id === i.id)!.qty}) · Add` : "Add to cart"}
               </span>
             )}
           </button>
@@ -133,7 +138,23 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
               <div className="mr-store-price" style={{ fontSize: 20 }}>{open.soldOut ? "Sold out" : money(open.price)}</div>
               <div className="mr-note" style={{ margin: 0 }}>{open.category}</div>
               {open.description && <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{open.description}</p>}
-              {opts?.online && !open.soldOut
+              {open.variants.length > 0 && (
+                <div className="mr-variants">
+                  {open.variants.map((v) => {
+                    const inCart = cart.find((c) => c.id === open.id && c.variant === v.key);
+                    return (
+                      <div key={v.key} className="mr-variant">
+                        <span className="mr-variant-name">{v.name}</span>
+                        <span className="mr-variant-price">{v.soldOut ? <span className="mr-overdue">Sold out</span> : money(v.price)}</span>
+                        {opts?.online && !v.soldOut && <button type="button" className="mr-btn" onClick={() => add(open, v.key)}>{inCart ? `Add (${inCart.qty})` : "Add"}</button>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {open.variants.length > 0
+                ? (opts?.online ? <button className="mr-btn ghost" onClick={() => setOpen(null)}>Done</button> : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>)
+                : opts?.online && !open.soldOut
                 ? <button className="mr-btn dark" onClick={() => { add(open); setOpen(null); }}>Add to cart</button>
                 : <p className="mr-note" style={{ margin: "6px 0 0" }}>Available at the store on the dock.</p>}
             </div>
@@ -162,12 +183,12 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
             </div>
             {cart.length === 0 && <p className="mr-note">Your cart is empty.</p>}
             {cart.map((c) => (
-              <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div key={lineKey(c)} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>{c.name}<div className="mr-note" style={{ margin: 0, fontSize: 13 }}>{money(c.price)} each</div></div>
                 <div className="mr-qty">
-                  <button type="button" onClick={() => setQty(c.id, c.qty - 1)} aria-label="One less">−</button>
+                  <button type="button" onClick={() => setQty(lineKey(c), c.qty - 1)} aria-label="One less">−</button>
                   <span>{c.qty}</span>
-                  <button type="button" onClick={() => setQty(c.id, c.qty + 1)} aria-label="One more">+</button>
+                  <button type="button" onClick={() => setQty(lineKey(c), c.qty + 1)} aria-label="One more">+</button>
                 </div>
               </div>
             ))}

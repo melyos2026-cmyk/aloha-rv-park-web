@@ -305,10 +305,19 @@ export async function loadFuelPrices(companyId: string): Promise<{ label: string
 // Oct 21 (per Mely): ship store items shown on the marina's website (active items only;
 // shows "sold out" instead of stock counts). Empty if the marina has no store yet.
 // Oct 23 (per Mely): items can have a photo, a description and be featured on the homepage.
-export type StoreItem = { id: string; name: string; category: string; subcategory: string | null; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean };
-const STORE_COLS = "id, name, category, subcategory, price, stock, photo_url, description, featured";
+export type StoreVariant = { key: string; name: string; price: number; soldOut: boolean };
+export type StoreItem = { id: string; name: string; category: string; subcategory: string | null; price: number; soldOut: boolean; photo: string | null; description: string | null; featured: boolean; variants: StoreVariant[] };
+const STORE_COLS = "id, name, category, subcategory, price, stock, photo_url, description, featured, variants";
+// Oct 24 (per Mely): an item can offer choices with their own price and stock (Beer 12-pack → Corona, Heineken…).
+export function parseVariants(v: any): StoreVariant[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x: any) => ({ key: String(x?.key || x?.name || "").trim(), name: String(x?.name || "").trim(), price: Number(x?.price), soldOut: x?.stock !== null && x?.stock !== undefined && Number(x.stock) <= 0 }))
+    .filter((x) => x.key && x.name && Number.isFinite(x.price) && x.price > 0).slice(0, 40);
+}
 function toStoreItem(i: any): StoreItem {
-  return { id: i.id, name: i.name, category: i.category || "Other", subcategory: i.subcategory || null, price: Number(i.price), soldOut: i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
+  const variants = parseVariants(i.variants);
+  const minPrice = variants.length ? Math.min(...variants.map((v) => v.price)) : Number(i.price);
+  return { id: i.id, name: i.name, category: i.category || "Other", subcategory: i.subcategory || null, variants, price: minPrice, soldOut: variants.length ? variants.every((v) => v.soldOut) : i.stock !== null && i.stock !== undefined && Number(i.stock) <= 0, photo: i.photo_url || null, description: i.description || null, featured: !!i.featured };
 }
 export async function loadStoreItems(companyId: string): Promise<StoreItem[]> {
   const q = (cols: string) => supabaseAdmin
