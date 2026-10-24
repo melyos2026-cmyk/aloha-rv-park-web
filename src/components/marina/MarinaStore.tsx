@@ -77,7 +77,10 @@ export default function MarinaStore({ name, tagline, categories, initial, initia
     const r = await res.json().catch(() => ({}));
     if (!res.ok) { setPlacing(false); setCoErr(r.error || "Could not place your order."); return; }
     if (r.url) { window.location.href = r.url; return; }
-    setPlacing(false); saveCart([]); setDone({ order: r.order, total: r.total, charged: !!r.charged, demo: !!r.demo });
+    saveCart([]);
+    // Oct 24 (per Mely): go to the order page (order number, pickup code, QR, status).
+    if (r.token) { window.location.href = `/marina/store/order/${encodeURIComponent(r.order)}?t=${encodeURIComponent(r.token)}&new=1`; return; }
+    setPlacing(false); setDone({ order: r.order, total: r.total, charged: !!r.charged, demo: !!r.demo });
   }
 
   async function load(nextPage: number, append: boolean) {

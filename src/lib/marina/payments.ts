@@ -3,6 +3,7 @@ import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { Resend } from "resend";
 import { round2, todayET } from "./data";
 import { isDemoDomain } from "./host";
+import { confirmStoreOrderForInvoice } from "./storeOrders";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const esc = (v: string) => v.replace(/[<>&"]/g, "");
@@ -80,6 +81,7 @@ export async function recordMarinaOnlinePayment(p: {
   // A pending bank transfer does not confirm a reservation yet; the settle call below does.
   if ((!error || error.code === "23505") && !p.pending) {
     await confirmReservationForInvoice(p.companyId, p.invoiceId);
+    await confirmStoreOrderForInvoice(p.companyId, p.invoiceId); // Oct 24: store order confirmation email
   }
   if (error) {
     if (error.code === "23505") return { ok: true, duplicate: true };
@@ -101,7 +103,7 @@ export async function settleMarinaAchPayment(companyId: string, reference: strin
     .eq("company_id", companyId).eq("reference", reference).not("pending_at", "is", null)
     .select("invoice_id");
   const inv = data?.[0]?.invoice_id;
-  if (inv) await confirmReservationForInvoice(companyId, inv);
+  if (inv) { await confirmReservationForInvoice(companyId, inv); await confirmStoreOrderForInvoice(companyId, inv); }
 }
 
 // Oct 24: the bank rejected an ACH payment (insufficient funds, closed account…). The payment is

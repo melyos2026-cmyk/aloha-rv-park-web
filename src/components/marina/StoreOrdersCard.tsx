@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 
 // Oct 23 (per Mely): the boater's own store orders in Boater login, with their status.
-type O = { order_number: string; created_at: string; lines: { name: string; qty: number }[]; total: number; fulfillment: string; slip_name: string | null; wanted_at: string | null; payment: string; status: string };
-const STATUS: Record<string, string> = { placed: "Received", ready: "Ready", completed: "Done", cancelled: "Cancelled" };
+type O = { order_number: string; created_at: string; lines: { name: string; qty: number }[]; total: number; fulfillment: string; slip_name: string | null; wanted_at: string | null; payment: string; status: string; access_token?: string | null };
+const STATUS: Record<string, string> = { placed: "Preparing", ready: "Ready", completed: "Done", cancelled: "Cancelled" };
+const statusFor = (o: O) => (o.status === "ready" && o.fulfillment === "slip" ? "On the way" : STATUS[o.status] || o.status);
 
 export default function StoreOrdersCard() {
   const [orders, setOrders] = useState<O[]>([]);
@@ -29,7 +30,9 @@ export default function StoreOrdersCard() {
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div className="mr-money">${Number(o.total).toFixed(2)}</div>
-            <small style={{ fontWeight: 700, color: o.status === "ready" ? "#0369a1" : o.status === "completed" ? "#047857" : o.status === "cancelled" ? "#64748b" : "#b45309" }}>{STATUS[o.status] || o.status}</small>
+            <small style={{ fontWeight: 700, color: o.status === "ready" ? "#0369a1" : o.status === "completed" ? "#047857" : o.status === "cancelled" ? "#64748b" : "#b45309" }}>{statusFor(o)}</small>
+            {/* Oct 24 (per Mely): open the order (pickup code + QR) */}
+            {o.access_token && o.status !== "cancelled" && <a href={`/marina/store/order/${encodeURIComponent(o.order_number)}?t=${encodeURIComponent(o.access_token)}`} style={{ display: "block", fontSize: 13, fontWeight: 700, marginTop: 2 }}>{o.status === "completed" ? "View" : "Show code"}</a>}
           </div>
         </div>
       ))}

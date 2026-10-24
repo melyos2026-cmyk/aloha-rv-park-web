@@ -6,6 +6,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
 import { kitPrice, kitKeys, kitLineKey } from "@/lib/marina/store-kit";
+import { newOrderSecrets, sendStoreOrderConfirmation } from "@/lib/marina/storeOrders";
 
 // Oct 23 (per Mely): online orders from the marina's store page.
 // GET → what the checkout needs (signed in?, tax, options).
@@ -34,10 +35,11 @@ export async function GET(req: Request) {
   // Oct 23: the signed-in boater's own recent orders (shown in Boater login).
   let orders: any[] = [];
   if (signedIn && !ready) {
-    const { data } = await supabaseAdmin.from("marina_store_orders")
-      .select("order_number, created_at, lines, total, fulfillment, slip_name, wanted_at, payment, status")
+    const sel = (cols: string) => supabaseAdmin.from("marina_store_orders").select(cols)
       .eq("company_id", company.id).eq("member_id", s!.memberId).order("created_at", { ascending: false }).limit(10);
-    orders = data || [];
+    let res: any = await sel("order_number, created_at, lines, total, fulfillment, slip_name, wanted_at, payment, status, access_token");
+    if (res.error) res = await sel("order_number, created_at, lines, total, fulfillment, slip_name, wanted_at, payment, status");
+    orders = res.data || [];
   }
   return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery, storeName: st.name, orders });
 }
@@ -134,12 +136,18 @@ export async function POST(req: Request) {
   }
   if (!invoice) return NextResponse.json({ error: "Could not place your order. Please try again." }, { status: 500 });
 
-  const { data: order, error: oErr } = await supabaseAdmin.from("marina_store_orders").insert({
+  const row = {
     company_id: company.id, order_number: orderNumber, member_id: memberId, invoice_id: invoice.id,
     customer_name: name, customer_email: email, customer_phone: phone || null, lines, subtotal, tax, total,
     fulfillment, slip_name: fulfillment === "slip" ? slip : null, wanted_at: text(b.when, 60) || null, notes: text(b.notes, 500) || null,
     payment, status: "placed",
-  }).select("id").single();
+  };
+  // Oct 24 (per Mely): private order link + 4-digit pickup code (after scripts/marina_65_store_order_pickup.sql).
+  const secrets = newOrderSecrets();
+  let ins: any = await supabaseAdmin.from("marina_store_orders").insert({ ...row, ...secrets }).select("id").single();
+  let token: string | null = secrets.access_token;
+  if (ins.error && /access_token|pickup_code/.test(ins.error.message || "")) { token = null; ins = await supabaseAdmin.from("marina_store_orders").insert(row).select("id").single(); }
+  const { data: order, error: oErr } = ins;
   if (oErr || !order) {
     await supabaseAdmin.from("marina_invoices").update({ status: "void", voided_at: new Date().toISOString(), void_reason: "Store order could not be saved" }).eq("id", invoice.id).eq("company_id", company.id);
     return NextResponse.json({ error: "Online orders are not ready yet. Please visit the store." }, { status: 500 });
@@ -152,12 +160,15 @@ export async function POST(req: Request) {
     message: `New ${st.name} order ${orderNumber}: $${total.toFixed(2)} (${payment === "account" ? "charged to account" : "card"}), ${fulfillment === "slip" ? `bring to slip ${slip}` : "pickup at the store"}${b.when ? `, ${text(b.when, 60)}` : ""}.`,
   }).then(() => null, () => null);
 
-  if (payment === "account") return NextResponse.json({ ok: true, order: orderNumber, total, charged: true });
+  if (payment === "account") {
+    await sendStoreOrderConfirmation(company.id, order.id);
+    return NextResponse.json({ ok: true, order: orderNumber, token, total, charged: true });
+  }
 
   const origin = `https://${company.domain}`;
   const pay = await startInvoicePayment({
     company, invoiceId: invoice.id, memberId,
-    successUrl: `${origin}/marina/store?order=${orderNumber}&paid=1`,
+    successUrl: token ? `${origin}/marina/store/order/${orderNumber}?t=${token}&paid=1` : `${origin}/marina/store?order=${orderNumber}&paid=1`,
     cancelUrl: `${origin}/marina/store?order=${orderNumber}&paid=0`,
   });
   if (!pay.ok) {
@@ -166,7 +177,7 @@ export async function POST(req: Request) {
     await adjustStock(company.id, items, lines, +1);
     return NextResponse.json({ error: pay.error }, { status: pay.status });
   }
-  return NextResponse.json("url" in pay ? { url: pay.url, order: orderNumber, total } : { ok: true, demo: true, order: orderNumber, total });
+  return NextResponse.json("url" in pay ? { url: pay.url, order: orderNumber, token, total } : { ok: true, demo: true, order: orderNumber, token, total });
 }
 
 // Oct 24: stock per item, or per chosen variant. dir = -1 takes stock, +1 gives it back.
