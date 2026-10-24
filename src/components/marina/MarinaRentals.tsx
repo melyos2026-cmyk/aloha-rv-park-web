@@ -16,7 +16,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 
 export default function MarinaRentals({ title, intro, items, taxRate, phone }: { title: string; intro: string; items: RentalItem[]; taxRate: number; phone: string | null }) {
   const cats = useMemo(() => Array.from(new Set(items.map((i) => i.category))), [items]);
-  const [cat, setCat] = useState("All");
+  const [cat, setCat] = useState<string>("__first");
   const [open, setOpen] = useState<RentalItem | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [member, setMember] = useState<any>(null);
@@ -26,7 +26,8 @@ export default function MarinaRentals({ title, intro, items, taxRate, phone }: {
     const u = new URLSearchParams(window.location.search);
     if (u.get("booked")) setDone({ booking: u.get("booked")!, total: 0 });
   }, []);
-  const shown = items.filter((i) => cat === "All" || i.category === cat);
+  const active = cat === "__first" ? (cats[0] || "All") : cat;
+  const shown = items.filter((i) => active === "All" || i.category === active);
 
   return (
     <div className="mr-wrap" style={{ padding: "28px 16px 56px" }}>
@@ -34,7 +35,7 @@ export default function MarinaRentals({ title, intro, items, taxRate, phone }: {
       <p className="mr-lede" style={{ marginTop: 0 }}>{intro}</p>
       {cats.length > 1 && (
         <div className="mr-store-chips" role="group" aria-label="Categories">
-          {["All", ...cats].map((c) => <button key={c} type="button" className="mr-store-chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}
+          {cats.map((c) => <button key={c} type="button" className="mr-store-chip" aria-pressed={active === c} onClick={() => setCat(c)}>{c}</button>)}
         </div>
       )}
       {shown.length === 0 && <p className="mr-note">Nothing to book online yet{phone ? ` — call ${phone}` : ""}.</p>}

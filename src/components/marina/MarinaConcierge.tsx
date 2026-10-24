@@ -10,21 +10,22 @@ const localNow = () => { const d = new Date(Date.now() + 3 * 3600 * 1000); d.set
 
 export default function MarinaConcierge({ title, intro, services, taxRate, phone, hasStore = false }: { title: string; intro: string; services: Service[]; taxRate: number; phone: string | null; hasStore?: boolean }) {
   const cats = useMemo(() => Array.from(new Set(services.map((s) => s.category))), [services]);
-  const [cat, setCat] = useState("All");
+  const [cat, setCat] = useState<string>("__first");
   const [open, setOpen] = useState<Service | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [member, setMember] = useState<any>(null);
   const [done, setDone] = useState<{ request: string; total: number | null; quote: boolean } | null>(null);
   useEffect(() => { fetch("/api/marina/store/order", { cache: "no-store" }).then((x) => x.json()).then((r) => { setSignedIn(!!r.signedIn); setMember(r.member || null); }).catch(() => {}); }, []);
-  const shown = services.filter((s) => cat === "All" || s.category === cat);
+  const active = cat === "__first" ? (cats[0] || "All") : cat;
+  const shown = services.filter((s) => active === "All" || s.category === active);
 
   return (
     <div className="mr-wrap" style={{ padding: "28px 16px 56px" }}>
       <h1 className="mr-h2" style={{ marginBottom: 4 }}>{title}</h1>
       <p className="mr-lede" style={{ marginTop: 0 }}>{intro}</p>
-      {cats.length > 1 && <div className="mr-store-chips">{["All", ...cats].map((c) => <button key={c} type="button" className="mr-store-chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}</div>}
+      {cats.length > 1 && <div className="mr-store-chips">{cats.map((c) => <button key={c} type="button" className="mr-store-chip" aria-pressed={active === c} onClick={() => setCat(c)}>{c}</button>)}</div>}
       {shown.length === 0 && <p className="mr-note">Nothing to request online yet{phone ? ` — call ${phone}` : ""}.</p>}
-      {hasStore && (cat === "All" || cat === "Provisioning") && (
+      {hasStore && active === "Provisioning" && (
         <p className="mr-note" style={{ marginTop: 0 }}>Prefer to pick the items yourself? <a href="/marina/store">Shop the Ship Store</a> — groceries, ice and drinks delivered to your slip.</p>
       )}
       <div className="mr-store-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
