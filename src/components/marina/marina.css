@@ -740,3 +740,12 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-paybal-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .mr-btn.ghost.mr-btn-ink { color: #0f2540; border-color: #0f2540; }
 @media (max-width: 520px) { .mr-paybal-btns, .mr-paybal-btns .mr-btn { width: 100%; } }
+/* Oct 24 (per Mely): invoice rows on phones — text full width, amount + buttons underneath */
+.mr-inv-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.mr-inv-due.many .mr-inv-actions .mr-btn { padding: 7px 12px; font-size: 14px; }
+@media (max-width: 640px) {
+  .mr-inv.mr-inv-due { flex-direction: column; align-items: stretch; gap: 8px; }
+  .mr-inv-due .mr-inv-actions { justify-content: flex-start; padding-left: 30px; }
+  .mr-inv-due .mr-inv-actions .mr-money { font-size: 18px; margin-right: auto; }
+  .mr-inv-due:not(.many) .mr-inv-actions .mr-btn { flex: 1 1 140px; }
+}

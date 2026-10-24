@@ -213,6 +213,7 @@ export default function AccountClient() {
 
       <div className="mr-card" id="invoices" style={{ scrollMarginTop: 110 }}>
         <h3>Invoices</h3>
+        {due.length > 0 && (acct as any).ach?.enabled && <p className="mr-note" style={{ marginTop: 0 }}>Bank (ACH) payment has a much lower fee than a card and is available on balances of {money((acct as any).ach?.min ?? 100)} or more. It takes 3–5 business days to clear.</p>}
         {payable.length > 1 && (
           <div className="mr-paybal">
             <div>
@@ -226,9 +227,8 @@ export default function AccountClient() {
             </div>
           </div>
         )}
-        {due.length > 0 && (acct as any).ach?.enabled && <p className="mr-note" style={{ marginTop: 0 }}>Bank (ACH) payment has a much lower fee than a card and is available on balances of {money((acct as any).ach?.min ?? 100)} or more. It takes 3–5 business days to clear.</p>}
         {due.length === 0 ? <p className="mr-note">Nothing due. You are all paid up.</p> : due.map((i) => (
-          <div className="mr-inv" key={i.id}>
+          <div className={`mr-inv mr-inv-due${payable.length > 1 ? " many" : ""}`} key={i.id}>
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
               {payable.length > 1 && !(i.pending_bank > 0) && (
                 <input type="checkbox" aria-label={`Include ${i.invoice_number}`} style={{ width: 20, height: 20, marginTop: 3, flex: "0 0 auto", accentColor: "#0f2540" }} checked={!unchecked[i.id]} onChange={(e) => setUnchecked({ ...unchecked, [i.id]: !e.target.checked })} />
@@ -238,14 +238,14 @@ export default function AccountClient() {
               <small>{i.invoice_number} · due {day(i.due_date)} {i.overdue && <span className="mr-overdue">Overdue</span>} · <a href={`/marina/account/invoice/${i.id}`}>View (PDF)</a></small>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <div className="mr-inv-actions">
               <span className="mr-money">{money(i.balance)}</span>
               {i.pending_bank > 0 ? (
                 <span className="mr-note" style={{ margin: 0 }}>Bank payment of {money(i.pending_bank)} is clearing (3–5 business days)</span>
               ) : (<>
-                <button className="mr-btn" disabled={busy === i.id} onClick={() => pay(i.id, "card")}>{busy === i.id ? "Working…" : "Pay by card"}</button>
+                <button className="mr-btn" disabled={busy === i.id} onClick={() => pay(i.id, "card")}>{busy === i.id ? "Working…" : payable.length > 1 ? "Pay only this" : "Pay by card"}</button>
                 {(acct as any).ach?.enabled && i.balance >= ((acct as any).ach?.min ?? 100) && (
-                  <button className="mr-btn ghost" disabled={busy === i.id} onClick={() => pay(i.id, "ach")} title="Lower fee. Takes 3–5 business days to clear.">Pay by bank (ACH)</button>
+                  <button className="mr-btn ghost" disabled={busy === i.id} onClick={() => pay(i.id, "ach")} title="Lower fee. Takes 3–5 business days to clear.">{payable.length > 1 ? "Only this by bank" : "Pay by bank (ACH)"}</button>
                 )}
               </>)}
             </div>
