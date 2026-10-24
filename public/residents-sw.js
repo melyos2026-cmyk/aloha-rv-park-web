@@ -21,6 +21,12 @@ self.addEventListener("push", (event) => {
         icon: "/residents-app-icon-aloha.png",
         badge: "/residents-app-icon-aloha.png",
         tag: data.tag,
+        // Oct 24 (per Mely — "que suene, no nada más vibrar"): a new notification with the same tag
+        // replaced the old one SILENTLY. renotify makes every one play the phone's notification
+        // sound and vibrate again; silent:false asks for the sound explicitly.
+        renotify: !!data.tag,
+        silent: false,
+        vibrate: [200, 100, 200],
         data: { url: data.url || "/residents/dashboard" },
       }),
       (self.navigator && self.navigator.setAppBadge && data.badge) ? self.navigator.setAppBadge(data.badge).catch(() => {}) : Promise.resolve(),
