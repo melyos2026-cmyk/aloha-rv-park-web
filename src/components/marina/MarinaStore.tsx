@@ -13,8 +13,11 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
   // Oct 24 (per Mely): no "All" chip — the store opens on its first category; a search looks across every category.
   const [cat, setCatRaw] = useState(categories[0]?.name || "All");
   const [subCat, setSubCat] = useState("");
-  const setCat = (c: string) => { setCatRaw(c); setSubCat(""); };
-  const subs = categories.find((c) => c.name === cat)?.subs || [];
+  const subsOf = (c: string) => categories.find((x) => x.name === c)?.subs || [];
+  const setCat = (c: string) => { setCatRaw(c); setSubCat(subsOf(c)[0]?.name || ""); };
+  const subs = subsOf(cat);
+  const [subInit, setSubInit] = useState(false);
+  if (!subInit && subs.length && !subCat) { setSubInit(true); setSubCat(subs[0].name); }
   const [q, setQ] = useState("");
   const [items, setItems] = useState<StoreItem[]>(initial.items);
   const [total, setTotal] = useState(initial.total);
@@ -90,7 +93,6 @@ export default function MarinaStore({ name, tagline, categories, initial }: {
       </div>
       {subs.length > 0 && !q.trim() && (
         <div className="mr-store-chips mr-store-subs" role="group" aria-label="Sub-categories">
-          <button type="button" className="mr-store-chip" aria-pressed={subCat === ""} onClick={() => setSubCat("")}>All {cat}</button>
           {subs.map((x) => <button key={x.name} type="button" className="mr-store-chip" aria-pressed={subCat === x.name} onClick={() => setSubCat(x.name)}>{x.name} <span>{x.count}</span></button>)}
         </div>
       )}
