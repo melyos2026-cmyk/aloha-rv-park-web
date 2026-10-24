@@ -8,7 +8,7 @@ import { priceLabel, type Service } from "@/lib/concierge-shared";
 const money = (n: number) => "$" + n.toFixed(2);
 const localNow = () => { const d = new Date(Date.now() + 3 * 3600 * 1000); d.setMinutes(0, 0, 0); const p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`; };
 
-export default function MarinaConcierge({ title, intro, services, taxRate, phone }: { title: string; intro: string; services: Service[]; taxRate: number; phone: string | null }) {
+export default function MarinaConcierge({ title, intro, services, taxRate, phone, hasStore = false }: { title: string; intro: string; services: Service[]; taxRate: number; phone: string | null; hasStore?: boolean }) {
   const cats = useMemo(() => Array.from(new Set(services.map((s) => s.category))), [services]);
   const [cat, setCat] = useState("All");
   const [open, setOpen] = useState<Service | null>(null);
@@ -24,6 +24,9 @@ export default function MarinaConcierge({ title, intro, services, taxRate, phone
       <p className="mr-lede" style={{ marginTop: 0 }}>{intro}</p>
       {cats.length > 1 && <div className="mr-store-chips">{["All", ...cats].map((c) => <button key={c} type="button" className="mr-store-chip" aria-pressed={cat === c} onClick={() => setCat(c)}>{c}</button>)}</div>}
       {shown.length === 0 && <p className="mr-note">Nothing to request online yet{phone ? ` — call ${phone}` : ""}.</p>}
+      {hasStore && (cat === "All" || cat === "Provisioning") && (
+        <p className="mr-note" style={{ marginTop: 0 }}>Prefer to pick the items yourself? <a href="/marina/store">Shop the Ship Store</a> — groceries, ice and drinks delivered to your slip.</p>
+      )}
       <div className="mr-store-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
         {shown.map((s) => (
           <button key={s.id} type="button" className="mr-store-card" onClick={() => setOpen(s)}>
