@@ -7,6 +7,8 @@ import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
 import { kitPrice, kitKeys, kitLineKey } from "@/lib/marina/store-kit";
 import { newOrderSecrets, sendStoreOrderConfirmation } from "@/lib/marina/storeOrders";
+import { accountChargesAllowed } from "@/lib/marina/payPolicy";
+import { isDemoDomain } from "@/lib/marina/host";
 
 // Oct 23 (per Mely): online orders from the marina's store page.
 // GET → what the checkout needs (signed in?, tax, options).
@@ -41,7 +43,9 @@ export async function GET(req: Request) {
     if (res.error) res = await sel("order_number, created_at, lines, total, fulfillment, slip_name, wanted_at, payment, status");
     orders = res.data || [];
   }
-  return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery, storeName: st.name, orders });
+  // Oct 24 (per Mely): whether this marina lets boaters charge to their account (else: pay now).
+  const accountAllowed = await accountChargesAllowed(company.id);
+  return NextResponse.json({ signedIn, member, taxRate: st.taxRate, online: st.online && !ready, slipDelivery: st.slipDelivery, storeName: st.name, orders, accountAllowed, demo: isDemoDomain(company.domain) });
 }
 
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
@@ -56,6 +60,7 @@ export async function POST(req: Request) {
   const s = getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   const payment = b.payment === "account" ? "account" : "card";
+  if (payment === "account" && !(await accountChargesAllowed(company.id))) return NextResponse.json({ error: "This marina asks you to pay when you order. Please pay by card." }, { status: 400 });
   if (payment === "account" && !memberId) return NextResponse.json({ error: "Sign in to your boater account to charge it to your account." }, { status: 401 });
 
   // Lines: [{id, qty}] → priced from the database.

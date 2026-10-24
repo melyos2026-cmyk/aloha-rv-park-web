@@ -5,12 +5,14 @@ import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { round2 } from "@/lib/marina/data";
 import { moduleOn, loadConciergeSettings, toService } from "@/lib/concierge";
+import { accountChargesAllowed } from "@/lib/marina/payPolicy";
+import { startConciergePayment } from "@/lib/marina/conciergePay";
 
 // Oct 23 (per Mely): concierge requests from the marina website.
 // GET ?mine=1 → the signed-in boater's requests.   POST → new request.
-// Fixed-price services are confirmed at once (charged to the account, or paid later at the
-// office for guests); "quote" services wait for the office to set the price. The invoice is
-// created by the admin when the request is confirmed (so quotes never bill before approval).
+// Oct 24 (per Mely): fixed prices are PAID when requested (or charged to the account where the
+// marina allows it); "quote" services wait for the office's price, then the boater approves and
+// pays. Quotes never bill before approval.
 const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 
 export async function GET(req: Request) {
@@ -19,9 +21,16 @@ export async function GET(req: Request) {
   const s = getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   if (!memberId) return NextResponse.json({ requests: [] });
-  const { data } = await supabaseAdmin.from("concierge_requests").select("id, request_number, wanted_at, units, slip_name, details, choices, quoted_price, total, payment, status, assigned_name, concierge_services(name, category, pricing, unit_label)")
+  const { data } = await supabaseAdmin.from("concierge_requests").select("id, request_number, wanted_at, units, slip_name, details, choices, quoted_price, total, payment, status, assigned_name, invoice_id, concierge_services(name, category, pricing, unit_label)")
     .eq("company_id", company.id).eq("member_id", memberId).order("wanted_at", { ascending: false }).limit(20);
-  return NextResponse.json({ requests: (data || []).map((r: any) => ({ ...r, service: r.concierge_services?.name, category: r.concierge_services?.category, pricing: r.concierge_services?.pricing, concierge_services: undefined })) });
+  // Oct 24: pay-first requests show "Paid" or "Waiting for payment".
+  const invIds = (data || []).map((r: any) => r.invoice_id).filter(Boolean);
+  const paidBy: Record<string, number> = {};
+  if (invIds.length) {
+    const { data: pays } = await supabaseAdmin.from("marina_invoice_payments").select("invoice_id, amount, returned_at").eq("company_id", company.id).in("invoice_id", invIds);
+    (pays || []).forEach((p: any) => { if (!p.returned_at) paidBy[p.invoice_id] = (paidBy[p.invoice_id] || 0) + Number(p.amount); });
+  }
+  return NextResponse.json({ requests: (data || []).map((r: any) => ({ ...r, paid: !!r.invoice_id && (paidBy[r.invoice_id] || 0) >= Number(r.total || 0) - 0.005, service: r.concierge_services?.name, category: r.concierge_services?.category, pricing: r.concierge_services?.pricing, concierge_services: undefined, invoice_id: undefined })) });
 }
 
 export async function POST(req: Request) {
@@ -67,19 +76,30 @@ export async function POST(req: Request) {
   const tax = subtotal != null && svc.taxable ? round2(subtotal * settings.taxRate / 100) : 0;
   const total = subtotal != null ? round2(subtotal + tax) : null;
   const number = `CR-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
-  const payment = memberId ? "account" : "office";
+  // Oct 24 (per Mely — "aquí no se fía"): charge to the account only where the marina allows it
+  // and the boater chose it; otherwise it's paid up front (fixed price now, a quote when approved).
+  const payment = b.payment === "account" && memberId && (await accountChargesAllowed(company.id)) ? "account" : "card";
 
-  const { error } = await supabaseAdmin.from("concierge_requests").insert({
+  const { data: created, error } = await supabaseAdmin.from("concierge_requests").insert({
     company_id: company.id, service_id: svc.id, request_number: number, member_id: memberId,
     customer_name: name, customer_email: email, customer_phone: phone || null, wanted_at: wanted.toISOString(), units,
     slip_name: text(b.slip, 20) || null, boat_name: text(b.boat, 80) || null, details: text(b.details, 1500) || null, choices,
     subtotal, tax, total, payment, status: "requested",
-  });
+  }).select("*").single();
   if (error) return NextResponse.json({ error: "Could not send your request. Please try again." }, { status: 500 });
   const when = wanted.toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   await supabaseAdmin.from("resident_update_notifications").insert({
     company_id: company.id, resident_name: name, update_type: "concierge_request",
-    message: `New request ${number}: ${svc.name}${units > 1 ? ` × ${units}` : ""}${choices ? ` (${choices})` : ""} for ${when}${b.slip ? ` at slip ${text(b.slip, 20)}` : ""}${isQuote ? " — needs a quote" : ` — $${total!.toFixed(2)}`}.`,
+    message: `New request ${number}: ${svc.name}${units > 1 ? ` × ${units}` : ""}${choices ? ` (${choices})` : ""} for ${when}${b.slip ? ` at slip ${text(b.slip, 20)}` : ""}${isQuote ? " — needs a quote" : ` — $${total!.toFixed(2)}${payment === "card" ? " (paying online)" : " (charge to account)"}`}.`,
   }).then(() => null, () => null);
-  return NextResponse.json({ ok: true, request: number, total, quote: isQuote });
+  if (!isQuote && payment === "card" && created) {
+    const pay = await startConciergePayment(company, { ...created, service_name: svc.name }, memberId);
+    if (!pay.ok) {
+      await supabaseAdmin.from("concierge_requests").update({ status: "cancelled", status_by_name: "Payment could not start" }).eq("id", created.id);
+      return NextResponse.json({ error: pay.error }, { status: pay.status });
+    }
+    if ("url" in pay) return NextResponse.json({ ok: true, request: number, total, url: pay.url });
+    return NextResponse.json({ ok: true, request: number, total, paid: true, demo: true });
+  }
+  return NextResponse.json({ ok: true, request: number, total, quote: isQuote, charged: payment === "account" && !isQuote });
 }

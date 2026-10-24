@@ -4,6 +4,7 @@ import { Resend } from "resend";
 import { round2, todayET } from "./data";
 import { isDemoDomain } from "./host";
 import { confirmStoreOrderForInvoice } from "./storeOrders";
+import { conciergePaidForInvoice } from "./conciergePaid";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const esc = (v: string) => v.replace(/[<>&"]/g, "");
@@ -82,6 +83,7 @@ export async function recordMarinaOnlinePayment(p: {
   if ((!error || error.code === "23505") && !p.pending) {
     await confirmReservationForInvoice(p.companyId, p.invoiceId);
     await confirmStoreOrderForInvoice(p.companyId, p.invoiceId); // Oct 24: store order confirmation email
+    await conciergePaidForInvoice(p.companyId, p.invoiceId);     // Oct 24: concierge paid up front
   }
   if (error) {
     if (error.code === "23505") return { ok: true, duplicate: true };
@@ -98,12 +100,15 @@ export async function recordMarinaOnlinePayment(p: {
 
 // Oct 24: the bank confirmed an ACH payment that was recorded as pending.
 export async function settleMarinaAchPayment(companyId: string, reference: string) {
+  // Oct 24: one bank payment can cover several invoices ("Pay balance": references "<ref>:1", "<ref>:2"…).
   const { data } = await supabaseAdmin.from("marina_invoice_payments")
     .update({ pending_at: null, recorded_by_name: "Online bank transfer" })
-    .eq("company_id", companyId).eq("reference", reference).not("pending_at", "is", null)
+    .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).not("pending_at", "is", null)
     .select("invoice_id");
-  const inv = data?.[0]?.invoice_id;
-  if (inv) { await confirmReservationForInvoice(companyId, inv); await confirmStoreOrderForInvoice(companyId, inv); }
+  for (const row of data || []) {
+    const inv = row.invoice_id;
+    await confirmReservationForInvoice(companyId, inv); await confirmStoreOrderForInvoice(companyId, inv); await conciergePaidForInvoice(companyId, inv);
+  }
 }
 
 // Oct 24: the bank rejected an ACH payment (insufficient funds, closed account…). The payment is
@@ -111,5 +116,5 @@ export async function settleMarinaAchPayment(companyId: string, reference: strin
 export async function failMarinaAchPayment(companyId: string, reference: string, reason: string) {
   await supabaseAdmin.from("marina_invoice_payments")
     .update({ pending_at: null, returned_at: new Date().toISOString(), return_reason: `Bank payment failed: ${reason}`.slice(0, 300), recorded_by_name: "Online bank transfer (failed)" })
-    .eq("company_id", companyId).eq("reference", reference).is("returned_at", null);
+    .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).is("returned_at", null);
 }

@@ -731,3 +731,12 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
   .mr-order-steps li { flex-direction: column; text-align: center; font-size: 12.5px; gap: 4px; }
 }
 @media print { .mr-order-back { display: none; } }
+/* Oct 24 (per Mely): demo-only explanation of a per-marina option */
+.mr-demo-note { margin: 0; font-size: 13px; line-height: 1.45; color: #5b4a12; background: #fff8e1; border: 1px dashed #d8b64a; border-radius: 8px; padding: 8px 10px; }
+/* Oct 24 (per Mely): Pay balance — several invoices in one payment */
+.mr-paybal { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; padding: 14px; margin: 4px 0 10px; border: 2px solid #0f2540; border-radius: 12px; background: #f4f8fb; }
+.mr-paybal-label { font-weight: 700; }
+.mr-paybal-amt { font-size: 26px; font-weight: 800; color: #0f2540; line-height: 1.2; }
+.mr-paybal-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.mr-btn.ghost.mr-btn-ink { color: #0f2540; border-color: #0f2540; }
+@media (max-width: 520px) { .mr-paybal-btns, .mr-paybal-btns .mr-btn { width: 100%; } }

@@ -78,6 +78,24 @@ async function handleWebhook(req: Request) {
 
     // Oct 15: marina boaters paying an invoice. Handled on its own and
     // returned right away so none of the RV-park logic below ever runs for it.
+    // Oct 24 (per Mely): "Pay balance" — one payment for several invoices; each gets its share.
+    if (session.metadata?.type === "marina_invoices") {
+      const ach = session.metadata.payment_method === "ach";
+      if ((session.payment_status === "paid" || (ach && session.payment_status === "unpaid")) && session.metadata.company_id) {
+        const allocs = String(session.metadata.allocs || "").split(";").map((x) => x.split(":")).filter((x) => x.length === 2 && x[0] && Number(x[1]) > 0);
+        for (let i = 0; i < allocs.length; i++) {
+          await recordMarinaOnlinePayment({
+            companyId: session.metadata.company_id,
+            invoiceId: allocs[i][0],
+            amount: Number(allocs[i][1]),
+            reference: `online:${session.id}:${i + 1}`,
+            method: ach ? "ach" : "card",
+            pending: ach && session.payment_status !== "paid",
+          });
+        }
+      }
+      return NextResponse.json({ received: true });
+    }
     if (session.metadata?.type === "marina_invoice") {
       const ach = session.metadata.payment_method === "ach";
       // Oct 24: a bank (ACH) payment completes the session before the money clears
@@ -391,7 +409,7 @@ async function handleWebhook(req: Request) {
   // Oct 24: bank (ACH) payments clear or fail days after checkout.
   if (event.type === "checkout.session.async_payment_succeeded" || event.type === "checkout.session.async_payment_failed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    if (session.metadata?.type === "marina_invoice" && session.metadata.company_id) {
+    if ((session.metadata?.type === "marina_invoice" || session.metadata?.type === "marina_invoices") && session.metadata.company_id) {
       if (event.type === "checkout.session.async_payment_succeeded") await settleMarinaAchPayment(session.metadata.company_id, `online:${session.id}`);
       else await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer");
     }

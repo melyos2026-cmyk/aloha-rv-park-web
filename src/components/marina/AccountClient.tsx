@@ -125,6 +125,20 @@ export default function AccountClient() {
     setBusy("");
   }
 
+  // Oct 24 (per Mely): "Pay balance" — pay the checked invoices in one payment (one fee).
+  const [unchecked, setUnchecked] = useState<Record<string, boolean>>({});
+  async function payMany(ids: string[], method: "card" | "ach") {
+    setError(""); setNotice(""); setBusy("many");
+    try {
+      const d = await post("/api/marina/pay", { invoice_ids: ids, method });
+      if (d.url) { window.location.href = d.url; return; }
+      setNotice(`Demo: ${ids.length} invoices paid in one ${method === "ach" ? "bank" : "card"} payment. Nothing was charged.`);
+      setUnchecked({});
+      await load();
+    } catch (err: any) { setError(err.message); }
+    setBusy("");
+  }
+
   async function logout() {
     await post("/api/marina/auth/logout", {});
     setAcct(null);
@@ -166,6 +180,10 @@ export default function AccountClient() {
   }
 
   const due = acct.invoices.filter((i) => i.balance > 0);
+  const payable = due.filter((i) => !(i.pending_bank > 0));
+  const picked = payable.filter((i) => !unchecked[i.id]);
+  const pickedTotal = Math.round(picked.reduce((a, i) => a + i.balance, 0) * 100) / 100;
+  const achOn = !!(acct as any).ach?.enabled; const achMin = Number((acct as any).ach?.min ?? 100);
   return (
     <div className="mr-acct">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -177,6 +195,7 @@ export default function AccountClient() {
       <div className="mr-balance">
         <div><div>Balance due</div><div className="big">{money(acct.totalDue)}</div></div>
         {acct.demo && <div style={{ maxWidth: 260, color: "#bcd5da" }}>Demo: paying here records a test payment. No card is charged.</div>}
+        {payable.length > 0 && <a className="mr-btn" href="#invoices" style={{ alignSelf: "center" }}>{payable.length > 1 ? "Pay balance" : "Pay now"}</a>}
       </div>
 
       <MessagesCard />
@@ -192,14 +211,32 @@ export default function AccountClient() {
 
       <MarketplaceCard />
 
-      <div className="mr-card">
+      <div className="mr-card" id="invoices" style={{ scrollMarginTop: 110 }}>
         <h3>Invoices</h3>
+        {payable.length > 1 && (
+          <div className="mr-paybal">
+            <div>
+              <div className="mr-paybal-label">Pay {picked.length === payable.length ? "everything" : `${picked.length} of ${payable.length}`} in one payment</div>
+              <div className="mr-paybal-amt">{money(pickedTotal)}</div>
+              <div className="mr-note" style={{ margin: 0 }}>Uncheck any invoice you want to pay later. One payment, one receipt per invoice.</div>
+            </div>
+            <div className="mr-paybal-btns">
+              <button className="mr-btn dark" disabled={busy === "many" || picked.length === 0} onClick={() => payMany(picked.map((i) => i.id), "card")}>{busy === "many" ? "Working…" : "Pay by card"}</button>
+              {achOn && pickedTotal >= achMin && <button className="mr-btn ghost mr-btn-ink" disabled={busy === "many" || picked.length === 0} onClick={() => payMany(picked.map((i) => i.id), "ach")} title="Lower fee. Takes 3–5 business days to clear.">Pay by bank (ACH)</button>}
+            </div>
+          </div>
+        )}
         {due.length > 0 && (acct as any).ach?.enabled && <p className="mr-note" style={{ marginTop: 0 }}>Bank (ACH) payment has a much lower fee than a card and is available on balances of {money((acct as any).ach?.min ?? 100)} or more. It takes 3–5 business days to clear.</p>}
         {due.length === 0 ? <p className="mr-note">Nothing due. You are all paid up.</p> : due.map((i) => (
           <div className="mr-inv" key={i.id}>
-            <div>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0 }}>
+              {payable.length > 1 && !(i.pending_bank > 0) && (
+                <input type="checkbox" aria-label={`Include ${i.invoice_number}`} style={{ width: 20, height: 20, marginTop: 3, flex: "0 0 auto", accentColor: "#0f2540" }} checked={!unchecked[i.id]} onChange={(e) => setUnchecked({ ...unchecked, [i.id]: !e.target.checked })} />
+              )}
+              <div style={{ minWidth: 0 }}>
               {i.description}
               <small>{i.invoice_number} · due {day(i.due_date)} {i.overdue && <span className="mr-overdue">Overdue</span>} · <a href={`/marina/account/invoice/${i.id}`}>View (PDF)</a></small>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <span className="mr-money">{money(i.balance)}</span>

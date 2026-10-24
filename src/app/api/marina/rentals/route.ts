@@ -6,6 +6,7 @@ import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
 import { loadRentalSettings, rentalsEnabled, toItem, unitsFree, priceRental, localIso, to24, dayName, bookingNumber } from "@/lib/rentals";
 import crypto from "crypto";
+import { accountChargesAllowed } from "@/lib/marina/payPolicy";
 
 // Oct 23 (per Mely): Rentals & Experiences on the marina website.
 // GET ?item=&date=        → free units/seats for that item on that date (per hour / per departure)
@@ -98,7 +99,8 @@ export async function POST(req: Request) {
   if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]{2,}$/.test(email)) return NextResponse.json({ error: "Please enter a valid email." }, { status: 400 });
   const waiverName = text(b.waiverName, 120);
   if (item.waiver_text && !waiverName) return NextResponse.json({ error: "Please type your full name to sign the rental agreement." }, { status: 400 });
-  const payment = b.payment === "account" && memberId ? "account" : "card";
+  // Oct 24 (per Mely): charge to account only where the marina allows it; otherwise pay now.
+  const payment = b.payment === "account" && memberId && (await accountChargesAllowed(company.id)) ? "account" : "card";
 
   const tax = item.taxable ? round2(subtotal * settings.taxRate / 100) : 0;
   const deposit = round2(item.deposit * (item.kind === "experience" ? 1 : units));

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { priceLabel, type Service } from "@/lib/concierge-shared";
+import PayChoice from "./PayChoice";
 
 // Oct 23 (per Mely): Concierge page — pick a service, say when, where (slip) and what; fixed
 // prices are charged to the boater's account; "price on request" gets a quote from the office.
@@ -14,8 +15,14 @@ export default function MarinaConcierge({ title, intro, services, taxRate, phone
   const [open, setOpen] = useState<Service | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [member, setMember] = useState<any>(null);
-  const [done, setDone] = useState<{ request: string; total: number | null; quote: boolean } | null>(null);
-  useEffect(() => { fetch("/api/marina/store/order", { cache: "no-store" }).then((x) => x.json()).then((r) => { setSignedIn(!!r.signedIn); setMember(r.member || null); }).catch(() => {}); }, []);
+  const [done, setDone] = useState<{ request: string; total: number | null; quote: boolean; paid?: boolean; charged?: boolean; demo?: boolean } | null>(null);
+  const [pay, setPay] = useState({ accountAllowed: false, demo: false });
+  useEffect(() => {
+    fetch("/api/marina/store/order", { cache: "no-store" }).then((x) => x.json()).then((r) => { setSignedIn(!!r.signedIn); setMember(r.member || null); setPay({ accountAllowed: !!r.accountAllowed, demo: !!r.demo }); }).catch(() => {});
+    // Oct 24: back from the card payment
+    const u = new URLSearchParams(window.location.search);
+    if (u.get("request") && u.get("paid") === "1") setDone({ request: u.get("request")!, total: null, quote: false, paid: true });
+  }, []);
   const active = cat === "__first" ? (cats[0] || "All") : cat;
   const shown = services.filter((s) => active === "All" || s.category === active);
 
@@ -41,13 +48,13 @@ export default function MarinaConcierge({ title, intro, services, taxRate, phone
           </button>
         ))}
       </div>
-      {open && <RequestSheet s={open} taxRate={taxRate} signedIn={signedIn} member={member} onClose={() => setOpen(null)} onDone={(d) => { setOpen(null); setDone(d); }} />}
+      {open && <RequestSheet s={open} taxRate={taxRate} signedIn={signedIn} member={member} pay={pay} onClose={() => setOpen(null)} onDone={(d) => { setOpen(null); setDone(d); }} />}
       {done && (
         <div className="mr-store-modal" onClick={() => setDone(null)}>
           <div className="mr-store-sheet" onClick={(e) => e.stopPropagation()} style={{ padding: 22, textAlign: "center" }}>
             <h3 style={{ marginTop: 0 }}>Request received</h3>
             <p style={{ margin: "6px 0" }}>Request <b>{done.request}</b>{done.total != null ? <> · <b>{money(done.total)}</b></> : null}</p>
-            <p className="mr-note">{done.quote ? "The office will send you a price shortly. You'll see it in your account and nothing is charged until you approve it." : "The office has your request. It will be charged to your account once it's confirmed."}</p>
+            <p className="mr-note">{done.quote ? "The office will send you a price shortly. You'll see it in your account; you approve and pay it before anything is booked." : done.paid ? `${done.demo ? "Demo: no card was charged. " : "Your payment was received. "}The office has your request and will confirm it.` : "The office has your request. It will be charged to your account once it's confirmed."}</p>
             <button className="mr-btn dark" onClick={() => setDone(null)}>Done</button>
           </div>
         </div>
@@ -56,8 +63,9 @@ export default function MarinaConcierge({ title, intro, services, taxRate, phone
   );
 }
 
-function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Service; taxRate: number; signedIn: boolean; member: any; onClose: () => void; onDone: (d: any) => void }) {
-  const [f, setF] = useState({ wanted_at: localNow(), units: s.min_units, slip: "", boat: "", details: "", name: member?.full_name || "", email: member?.email || "", phone: member?.phone || "" });
+function RequestSheet({ s, taxRate, signedIn, member, pay, onClose, onDone }: { s: Service; taxRate: number; signedIn: boolean; member: any; pay: { accountAllowed: boolean; demo: boolean }; onClose: () => void; onDone: (d: any) => void }) {
+  const [f, setF] = useState({ wanted_at: localNow(), units: s.min_units, slip: "", boat: "", details: "", name: member?.full_name || "", email: member?.email || "", phone: member?.phone || "", payment: "card" });
+  const onAccount = f.payment === "account" && signedIn && pay.accountAllowed;
   const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const perUnit = s.pricing === "per_unit";
   const [qty, setQty] = useState<Record<string, number>>({});
@@ -70,11 +78,12 @@ function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Se
   const tax = subtotal != null && s.taxable ? subtotal * taxRate / 100 : 0;
   async function send() {
     setBusy(true); setErr("");
-    const res = await fetch("/api/marina/concierge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service: s.id, ...f, units, choices: chosen }) });
+    const res = await fetch("/api/marina/concierge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service: s.id, ...f, payment: onAccount ? "account" : "card", units, choices: chosen }) });
     const r = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { setErr(r.error || "Could not send."); return; }
-    onDone({ request: r.request, total: r.total, quote: r.quote });
+    if (r.url) { window.location.href = r.url; return; }   // Oct 24: pay now
+    onDone({ request: r.request, total: r.total, quote: !!r.quote, paid: !!r.paid, charged: !!r.charged, demo: !!r.demo });
   }
   return (
     <div className="mr-store-modal" onClick={onClose}>
@@ -120,11 +129,12 @@ function RequestSheet({ s, taxRate, signedIn, member, onClose, onDone }: { s: Se
               <span>{s.name}{units > 1 ? ` × ${units}` : ""}</span><span style={{ textAlign: "right" }}>{money(subtotal)}</span>
               {tax > 0 && <><span>Sales tax</span><span style={{ textAlign: "right" }}>{money(tax)}</span></>}
               <b>Total</b><b style={{ textAlign: "right" }}>{money(subtotal + tax)}</b>
-              <span className="mr-note" style={{ gridColumn: "1 / -1", margin: 0 }}>{signedIn ? "Charged to your boater account when the office confirms." : "Pay at the office when the office confirms."}</span>
+              <span className="mr-note" style={{ gridColumn: "1 / -1", margin: 0 }}>{onAccount ? "Charged to your boater account when the office confirms." : "You pay now; the office then confirms the time with you."}</span>
             </div>
-          ) : <p className="mr-note" style={{ margin: 0 }}>The office will send you a price. Nothing is charged until you approve it.</p>}
+          ) : <p className="mr-note" style={{ margin: 0 }}>The office will send you a price. You approve {onAccount ? "it" : "and pay it"} before anything is booked.</p>}
+          <PayChoice value={f.payment} onChange={(v) => setF({ ...f, payment: v })} signedIn={signedIn} accountAllowed={pay.accountAllowed} demo={pay.demo} />
           {err && <div className="mr-error" role="alert">{err}</div>}
-          <button className="mr-btn dark" disabled={busy} onClick={send}>{busy ? "Sending…" : isQuote ? "Request a quote" : "Send request"}</button>
+          <button className="mr-btn dark" disabled={busy} onClick={send}>{busy ? "Sending…" : isQuote ? "Request a quote" : onAccount ? "Send request" : `Pay ${money((subtotal || 0) + tax)} and send`}</button>
         </div>
       </div>
     </div>

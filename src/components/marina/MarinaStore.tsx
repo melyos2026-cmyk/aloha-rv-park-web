@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { StoreItem } from "@/lib/marina/data";
 import { kitPrice, kitLineKey } from "@/lib/marina/store-kit";
+import PayChoice from "./PayChoice";
 
 // Oct 23 (per Mely): online-shop style store page. Category chips, search, photo cards,
 // "Load more" for big catalogs, and a detail window for each item.
@@ -35,7 +36,7 @@ export default function MarinaStore({ name, tagline, categories, initial, initia
   const lineKey = (c: { id: string; variant?: string }) => c.id + (c.variant ? "::" + c.variant : "");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
-  const [opts, setOpts] = useState<{ signedIn: boolean; member: any; taxRate: number; online: boolean; slipDelivery: boolean } | null>(null);
+  const [opts, setOpts] = useState<{ signedIn: boolean; member: any; taxRate: number; online: boolean; slipDelivery: boolean; accountAllowed?: boolean; demo?: boolean } | null>(null);
   const [co, setCo] = useState({ name: "", email: "", phone: "", fulfillment: "pickup", slip: "", when: "", notes: "", payment: "card" });
   const [placing, setPlacing] = useState(false);
   const [coErr, setCoErr] = useState("");
@@ -44,7 +45,7 @@ export default function MarinaStore({ name, tagline, categories, initial, initia
     try { const c = JSON.parse(localStorage.getItem("mr_cart") || "[]"); if (Array.isArray(c)) setCart(c); } catch {}
     fetch("/api/marina/store/order", { cache: "no-store" }).then((x) => x.json()).then((r) => {
       setOpts(r);
-      if (r?.member) setCo((c) => ({ ...c, name: r.member.full_name || "", email: r.member.email || "", phone: r.member.phone || "", payment: "account" }));
+      if (r?.member) setCo((c) => ({ ...c, name: r.member.full_name || "", email: r.member.email || "", phone: r.member.phone || "" }));
     }).catch(() => {});
     const u = new URLSearchParams(window.location.search);
     if (u.get("order") && u.get("paid") === "1") { setDone({ order: u.get("order")!, total: 0 }); try { localStorage.removeItem("mr_cart"); } catch {} setCart([]); }
@@ -73,7 +74,7 @@ export default function MarinaStore({ name, tagline, categories, initial, initia
   const sub = cart.reduce((n, c) => n + c.qty * c.price, 0);
   async function placeOrder() {
     setPlacing(true); setCoErr("");
-    const res = await fetch("/api/marina/store/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...co, lines: cart.map((c) => ({ id: c.id, variant: c.variant, qty: c.qty })) }) });
+    const res = await fetch("/api/marina/store/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...co, lines: cart.map((c) => ({ id: c.id, variant: c.variant, qty: c.qty })), payment: co.payment === "account" && opts?.accountAllowed ? "account" : "card" }) });
     const r = await res.json().catch(() => ({}));
     if (!res.ok) { setPlacing(false); setCoErr(r.error || "Could not place your order."); return; }
     if (r.url) { window.location.href = r.url; return; }
@@ -117,7 +118,7 @@ export default function MarinaStore({ name, tagline, categories, initial, initia
   return (
     <div className="mr-wrap" style={{ padding: "28px 16px 56px" }}>
       <h1 className="mr-h2" style={{ marginBottom: 4 }}>{name}</h1>
-      <p className="mr-lede" style={{ marginTop: 0 }}>{tagline} Members can charge purchases to their account. Prices before sales tax.</p>
+      <p className="mr-lede" style={{ marginTop: 0 }}>{tagline}{opts?.accountAllowed ? " Members can charge purchases to their account." : ""} Prices before sales tax.</p>
 
       <input className="mr-store-search" placeholder={`Search ${name}`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the store" />
       <div className="mr-store-chips" role="group" aria-label="Categories">
@@ -273,16 +274,9 @@ export default function MarinaStore({ name, tagline, categories, initial, initia
                   </>
                 )}
                 <textarea className="mr-store-search" style={{ margin: 0 }} rows={2} placeholder="Notes (optional)" value={co.notes} onChange={(e) => setCo({ ...co, notes: e.target.value })} />
-                {opts?.signedIn ? (
-                  <div className="mr-seg">
-                    <button type="button" aria-pressed={co.payment === "account"} onClick={() => setCo({ ...co, payment: "account" })}>Charge to my account</button>
-                    <button type="button" aria-pressed={co.payment === "card"} onClick={() => setCo({ ...co, payment: "card" })}>Pay by card now</button>
-                  </div>
-                ) : (
-                  <p className="mr-note" style={{ margin: 0 }}>Boaters can <a href="/marina/account">sign in</a> to charge it to their account.</p>
-                )}
+                <PayChoice value={co.payment} onChange={(v) => setCo({ ...co, payment: v })} signedIn={!!opts?.signedIn} accountAllowed={!!opts?.accountAllowed} demo={!!opts?.demo} payLabel="Pay by card now" />
                 {coErr && <div className="mr-error" role="alert">{coErr}</div>}
-                <button className="mr-btn dark" disabled={placing} onClick={placeOrder}>{placing ? "Placing your order…" : co.payment === "account" && opts?.signedIn ? "Place order" : "Continue to payment"}</button>
+                <button className="mr-btn dark" disabled={placing} onClick={placeOrder}>{placing ? "Placing your order…" : co.payment === "account" && opts?.signedIn && opts?.accountAllowed ? "Place order" : "Continue to payment"}</button>
               </>
             )}
           </div>

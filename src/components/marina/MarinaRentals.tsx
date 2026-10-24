@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { RentalItem } from "@/lib/rentals";
+import PayChoice from "./PayChoice";
 
 // Oct 23 (per Mely): the Rentals & Experiences page. Cards by category; booking window with
 // date, time (or departure), units/people, waiver signature and payment.
@@ -19,10 +20,11 @@ export default function MarinaRentals({ title, intro, items, taxRate, phone }: {
   const [cat, setCat] = useState<string>("__first");
   const [open, setOpen] = useState<RentalItem | null>(null);
   const [signedIn, setSignedIn] = useState(false);
+  const [pay, setPay] = useState({ accountAllowed: false, demo: false });
   const [member, setMember] = useState<any>(null);
   const [done, setDone] = useState<{ booking: string; total: number; charged?: boolean; demo?: boolean } | null>(null);
   useEffect(() => {
-    fetch("/api/marina/store/order", { cache: "no-store" }).then((x) => x.json()).then((r) => { setSignedIn(!!r.signedIn); setMember(r.member || null); }).catch(() => {});
+    fetch("/api/marina/store/order", { cache: "no-store" }).then((x) => x.json()).then((r) => { setSignedIn(!!r.signedIn); setMember(r.member || null); setPay({ accountAllowed: !!r.accountAllowed, demo: !!r.demo }); }).catch(() => {});
     const u = new URLSearchParams(window.location.search);
     if (u.get("booked")) setDone({ booking: u.get("booked")!, total: 0 });
   }, []);
@@ -54,7 +56,7 @@ export default function MarinaRentals({ title, intro, items, taxRate, phone }: {
         ))}
       </div>
 
-      {open && <BookingSheet item={open} taxRate={taxRate} signedIn={signedIn} member={member} onClose={() => setOpen(null)} onDone={(d) => { setOpen(null); setDone(d); }} />}
+      {open && <BookingSheet item={open} taxRate={taxRate} signedIn={signedIn} member={member} pay={pay} onClose={() => setOpen(null)} onDone={(d) => { setOpen(null); setDone(d); }} />}
 
       {done && (
         <div className="mr-store-modal" onClick={() => setDone(null)}>
@@ -70,7 +72,7 @@ export default function MarinaRentals({ title, intro, items, taxRate, phone }: {
   );
 }
 
-function BookingSheet({ item, taxRate, signedIn, member, onClose, onDone }: { item: RentalItem; taxRate: number; signedIn: boolean; member: any; onClose: () => void; onDone: (d: any) => void }) {
+function BookingSheet({ item, taxRate, signedIn, member, pay, onClose, onDone }: { item: RentalItem; taxRate: number; signedIn: boolean; member: any; pay: { accountAllowed: boolean; demo: boolean }; onClose: () => void; onDone: (d: any) => void }) {
   const [date, setDate] = useState(today());
   const [slots, setSlots] = useState<{ time: string; free: number }[] | null>(null);
   const [closed, setClosed] = useState(false);
@@ -78,7 +80,7 @@ function BookingSheet({ item, taxRate, signedIn, member, onClose, onDone }: { it
   const [hours, setHours] = useState(item.min_hours);
   const [units, setUnits] = useState(1);
   const [people, setPeople] = useState(2);
-  const [f, setF] = useState({ name: member?.full_name || "", email: member?.email || "", phone: member?.phone || "", waiverName: "", notes: "", payment: signedIn ? "account" : "card" });
+  const [f, setF] = useState({ name: member?.full_name || "", email: member?.email || "", phone: member?.phone || "", waiverName: "", notes: "", payment: "card" });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const input = { width: "100%", padding: 10, borderRadius: 8, border: "1px solid #b8c7d1", fontSize: 15, boxSizing: "border-box" as const };
@@ -165,14 +167,9 @@ function BookingSheet({ item, taxRate, signedIn, member, onClose, onDone }: { it
             {deposit > 0 && <><span>Refundable deposit</span><span style={{ textAlign: "right" }}>{money(deposit)}</span></>}
             <b>Total</b><b style={{ textAlign: "right" }}>{money(total)}</b>
           </div>
-          {signedIn && (
-            <div className="mr-seg">
-              <button type="button" aria-pressed={f.payment === "account"} onClick={() => setF({ ...f, payment: "account" })}>Charge to my account</button>
-              <button type="button" aria-pressed={f.payment === "card"} onClick={() => setF({ ...f, payment: "card" })}>Pay by card now</button>
-            </div>
-          )}
+          <PayChoice value={f.payment} onChange={(v) => setF({ ...f, payment: v })} signedIn={signedIn} accountAllowed={pay.accountAllowed} demo={pay.demo} payLabel="Pay by card now" />
           {err && <div className="mr-error" role="alert">{err}</div>}
-          <button className="mr-btn dark" disabled={busy || !pick} onClick={book}>{busy ? "Booking…" : f.payment === "account" && signedIn ? "Book now" : "Continue to payment"}</button>
+          <button className="mr-btn dark" disabled={busy || !pick} onClick={book}>{busy ? "Booking…" : f.payment === "account" && signedIn && pay.accountAllowed ? "Book now" : "Continue to payment"}</button>
         </div>
       </div>
     </div>
