@@ -3,7 +3,6 @@ import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import { useCompany } from "@/lib/CompanyContext";
 
 const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
@@ -190,21 +189,13 @@ export default function MarketplacePage() {
     if (listingId && photoFiles.length > 0) {
       for (let i = 0; i < photoFiles.length; i++) {
         const file = photoFiles[i];
-        const path = `marketplace/${listingId}/${Date.now()}-${i}-${file.name}`;
-        const { error: uploadError } = await supabase.storage.from("company-assets").upload(path, file);
-        if (!uploadError) {
-          const { data: urlData } = supabase.storage.from("company-assets").getPublicUrl(path);
-          await fetch("/api/portal/marketplace-add-photo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              residentId,
-              listingId,
-              photoUrl: urlData.publicUrl,
-              sortOrder: i,
-            }),
-          });
-        }
+        // Oct 24 (security run): the server uploads the photo.
+        const fd = new FormData();
+        fd.append("residentId", String(residentId));
+        fd.append("listingId", String(listingId));
+        fd.append("sortOrder", String(i));
+        fd.append("file", file);
+        await fetch("/api/portal/marketplace-add-photo", { method: "POST", body: fd }).catch(() => null);
       }
     }
 

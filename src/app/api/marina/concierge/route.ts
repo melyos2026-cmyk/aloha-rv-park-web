@@ -19,7 +19,7 @@ const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 export async function GET(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   if (!memberId) return NextResponse.json({ requests: [] });
   const { data } = await supabaseAdmin.from("concierge_requests").select("id, request_number, wanted_at, units, slip_name, details, choices, quoted_price, total, payment, status, assigned_name, invoice_id, concierge_services(name, category, pricing, unit_label)")
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
   if (!(await moduleOn(company.id, "concierge"))) return NextResponse.json({ error: "Requests are not available online right now. Please call the office." }, { status: 400 });
   const b = await req.json().catch(() => ({}));
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   const settings = await loadConciergeSettings(company.id);
 

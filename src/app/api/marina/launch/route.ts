@@ -11,7 +11,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 async function sessionFor(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) };
-  const session = getMarinaSession(req);
+  const session = await getMarinaSession(req);
   if (!session || session.companyId !== company.id) return { error: NextResponse.json({ error: "Please sign in again." }, { status: 401 }) };
   return { company, memberId: session.memberId };
 }

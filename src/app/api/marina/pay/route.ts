@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  const session = getMarinaSession(req);
+  const session = await getMarinaSession(req);
   if (!session || session.companyId !== company.id) {
     return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
   }

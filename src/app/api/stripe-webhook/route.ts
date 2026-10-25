@@ -25,6 +25,8 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
 // second destination gets added there), falling back to the Live one —
 // so real production payments are never at risk from this change.
 const sandboxWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET_SANDBOX as string | undefined;
+// Oct 24 (security run): optional second endpoint for events on CONNECTED accounts (account.updated).
+const connectWebhookSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET as string | undefined;
 
 // Oct 21 (per Mely — security hardening): every event is claimed once before it is
 // processed, so a retried or replayed Stripe event never records a payment twice.
@@ -33,7 +35,7 @@ export async function POST(req: Request) {
   const raw = await req.text();
   const sig = req.headers.get("stripe-signature") as string;
   let ev: Stripe.Event | null = null;
-  for (const secret of [webhookSecret, sandboxWebhookSecret]) {
+  for (const secret of [webhookSecret, sandboxWebhookSecret, connectWebhookSecret]) {
     if (!secret || ev) continue;
     try { ev = stripe.webhooks.constructEvent(raw, sig, secret); } catch { /* try the next secret */ }
   }
@@ -60,6 +62,9 @@ async function handleWebhook(req: Request) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (liveErr: any) {
+    let connectEv: Stripe.Event | null = null;
+    if (connectWebhookSecret) { try { connectEv = stripe.webhooks.constructEvent(body, signature, connectWebhookSecret); } catch {} }
+    if (connectEv) return handleConnectEvent(connectEv);
     if (sandboxWebhookSecret) {
       try {
         event = stripe.webhooks.constructEvent(body, signature, sandboxWebhookSecret);
@@ -1665,4 +1670,28 @@ async function handleCrewBackgroundCheckPaid(session: Stripe.Checkout.Session) {
     console.log(`Crew applicant ${a.id}: could not create Checkr invitation:`, err?.message);
     await logSystemHealthIssue({ companyId, issueType: "crew_checkr_invitation_failed", source: "checkr", message: `Crew applicant ${a.full_name} paid but the Checkr invitation failed: ${err?.message}` });
   }
+}
+
+// Oct 24 (security run): when a connected account's status changes in Stripe (payouts paused,
+// details missing, account disabled), keep park_settings in step right away, so checkout never
+// sends money to an account that can't take it, and the office sees why in System Health.
+async function handleConnectEvent(event: Stripe.Event) {
+  if (event.type === "account.updated") {
+    const acct = event.data.object as Stripe.Account;
+    const onboarded = !!acct.details_submitted && !!acct.charges_enabled;
+    const { data: rows } = await supabase.from("park_settings").select("company_id, stripe_connect_onboarded").eq("stripe_connect_account_id", acct.id);
+    for (const r of rows || []) {
+      if (r.stripe_connect_onboarded === onboarded) continue;
+      await supabase.from("park_settings").update({ stripe_connect_onboarded: onboarded }).eq("company_id", r.company_id).eq("stripe_connect_account_id", acct.id);
+      if (!onboarded) {
+        await logSystemHealthIssue({
+          companyId: r.company_id,
+          issueType: "stripe_account_restricted",
+          source: "stripe_webhook",
+          message: `Stripe paused online payments for this company's payout account (${acct.requirements?.disabled_reason || "details needed"}). Online payments are off until it's fixed in Settings → Stripe.`,
+        });
+      }
+    }
+  }
+  return NextResponse.json({ received: true });
 }

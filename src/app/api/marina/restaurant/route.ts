@@ -14,7 +14,7 @@ const text = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
 export async function GET(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   if (!memberId) return NextResponse.json({ reservations: [], signedIn: false });
   const { data } = await supabaseAdmin.from("restaurant_reservations").select("id, reservation_number, reserved_at, party_size, status, notes").eq("company_id", company.id).eq("member_id", memberId).order("reserved_at", { ascending: false }).limit(20);
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   const r = await loadRestaurant(company.id, company.company_name);
   if (!r.reservations_on) return NextResponse.json({ error: `Please call ${r.phone || "the restaurant"} to reserve.` }, { status: 400 });
   const b = await req.json().catch(() => ({}));
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
 
   const date = text(b.date, 10), time = text(b.time, 5);

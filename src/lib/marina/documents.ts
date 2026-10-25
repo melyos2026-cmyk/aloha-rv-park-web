@@ -48,7 +48,7 @@ async function cardLabel(reference: string | null): Promise<string | null> {
 // Who is signed in on this marina's website (server components).
 export async function currentBoater(companyId: string): Promise<string | null> {
   const h = await headers();
-  const s = getMarinaSession(new Request("https://x/", { headers: { cookie: h.get("cookie") || "" } }));
+  const s = await getMarinaSession(new Request("https://x/", { headers: { cookie: h.get("cookie") || "" } }));
   return s && s.companyId === companyId ? s.memberId : null;
 }
 

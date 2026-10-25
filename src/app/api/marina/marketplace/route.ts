@@ -17,7 +17,7 @@ const nowIso = () => new Date().toISOString();
 async function who(req: Request, needMember: boolean) {
   const company = await getMarinaForRequest(req);
   if (!company) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) } as const;
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   if (needMember && !memberId) return { error: NextResponse.json({ error: "Please sign in." }, { status: 401 }) } as const;
   return { company, memberId } as const;

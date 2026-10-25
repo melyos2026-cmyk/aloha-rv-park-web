@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // Signed, httpOnly sign-in cookie for boaters (marina customers). Same idea
 // as the resident portal cookie but a separate cookie name and a separate
@@ -35,7 +36,7 @@ export function clearMarinaSession(res: NextResponse) {
   res.cookies.set(COOKIE_NAME, "", { path: "/", maxAge: 0 });
 }
 
-export function getMarinaSession(req: Request): { memberId: string; companyId: string } | null {
+export function readMarinaSessionCookie(req: Request): { memberId: string; companyId: string } | null {
   const cookie = (req.headers.get("cookie") || "")
     .split(";")
     .map((c) => c.trim())
@@ -62,4 +63,13 @@ export function hashLoginCode(memberId: string, code: string): string {
 
 export function newLoginCode(): string {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+// Oct 24 (security run): the signed cookie alone isn't enough — the boater must still exist in
+// that marina. Removing a boater in the admin now signs them out everywhere right away.
+export async function getMarinaSession(req: Request): Promise<{ memberId: string; companyId: string } | null> {
+  const s = readMarinaSessionCookie(req);
+  if (!s) return null;
+  const { data, error } = await supabaseAdmin.from("marina_members").select("id").eq("id", s.memberId).eq("company_id", s.companyId).maybeSingle();
+  return !error && data ? s : null;
 }

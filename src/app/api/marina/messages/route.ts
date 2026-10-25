@@ -8,7 +8,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 async function who(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) };
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   if (!s || s.companyId !== company.id) return { error: NextResponse.json({ error: "Not signed in." }, { status: 401 }) };
   return { companyId: company.id, memberId: s.memberId };
 }

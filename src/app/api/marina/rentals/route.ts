@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const u = new URL(req.url).searchParams;
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
 
   if (u.get("mine") === "1") {
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
   if (!(await rentalsEnabled(company.id))) return NextResponse.json({ error: "Online booking is not available right now. Please call the office." }, { status: 400 });
   const b = await req.json().catch(() => ({}));
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   const settings = await loadRentalSettings(company.id);
   // Oct 24 (security run): flood guards — per marina and per device.

@@ -390,13 +390,15 @@ function ApplyPageInner() {
     slotId: string
   ): Promise<string> {
     if (!company) throw new Error("No company loaded");
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${company.id}/${crypto.randomUUID()}/${slotId}.${ext}`;
-    const { error } = await supabase.storage
-      .from("license-photos")
-      .upload(path, file);
-    if (error) throw error;
-    return path;
+    // Oct 24 (security run): uploaded by the server (private bucket), not from the browser.
+    const fd = new FormData();
+    fd.append("companyId", company.id);
+    fd.append("slot", slotId);
+    fd.append("file", file);
+    const res = await fetch("/api/apply/license-photo", { method: "POST", body: fd });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.path) throw new Error(j.error || "Could not upload the photo.");
+    return j.path as string;
   }
 
   async function handleSubmit(data: LeaseApplicationData, payInPerson?: boolean) {

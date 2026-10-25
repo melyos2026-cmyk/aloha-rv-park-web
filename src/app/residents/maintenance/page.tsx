@@ -2,7 +2,6 @@
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 export default function MaintenancePage() {
   const [requests, setRequests] = useState<any[]>([]);
@@ -98,34 +97,18 @@ export default function MaintenancePage() {
     }).catch(() => {});
 
     if (photoFile && requestData) {
-      const safeFileName = photoFile.name
-        .replace(/[^a-zA-Z0-9.-]/g, "-")
-        .toLowerCase();
-
-      const filePath = `${requestData.id}/${Date.now()}-${safeFileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("maintenance-photos")
-        .upload(filePath, photoFile);
-
-      if (uploadError) {
-        setMessage(uploadError.message);
+      // Oct 24 (security run): the server uploads the photo (private storage), not the browser.
+      const fd = new FormData();
+      fd.append("residentId", String(residentId));
+      fd.append("requestId", String(requestData.id));
+      fd.append("file", photoFile);
+      const up = await fetch("/api/portal/maintenance-add-photo", { method: "POST", body: fd });
+      if (!up.ok) {
+        const j = await up.json().catch(() => ({}));
+        setMessage(j.error || "Your request was sent, but the photo could not be uploaded.");
+        loadRequests();
         return;
       }
-
-      const { data: publicUrlData } = supabase.storage
-        .from("maintenance-photos")
-        .getPublicUrl(filePath);
-
-      await fetch("/api/portal/maintenance-add-photo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          residentId,
-          requestId: requestData.id,
-          fileUrl: publicUrlData.publicUrl,
-        }),
-      });
     }
 
     setSubject("");

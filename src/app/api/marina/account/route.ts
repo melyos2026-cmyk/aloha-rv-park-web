@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  const session = getMarinaSession(req);
+  const session = await getMarinaSession(req);
   // The cookie must belong to THIS marina's domain, never another company's.
   if (!session || session.companyId !== company.id) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });

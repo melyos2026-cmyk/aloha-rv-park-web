@@ -26,7 +26,7 @@ async function settingsFor(companyId: string) {
 export async function GET(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const signedIn = !!s && s.companyId === company.id;
   let member: any = null;
   if (signedIn) {
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
   const st = await settingsFor(company.id);
   if (!st.online) return NextResponse.json({ error: "Online orders are not available right now. Please visit the store." }, { status: 400 });
 
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   const memberId = s && s.companyId === company.id ? s.memberId : null;
   const payment = b.payment === "account" ? "account" : "card";
   if (payment === "account" && !(await accountChargesAllowed(company.id))) return NextResponse.json({ error: "This marina asks you to pay when you order. Please pay by card." }, { status: 400 });

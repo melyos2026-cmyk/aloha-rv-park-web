@@ -8,7 +8,7 @@ import { startConciergePayment, voidUnpaidInvoice } from "@/lib/marina/concierge
 export async function POST(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
-  const s = getMarinaSession(req);
+  const s = await getMarinaSession(req);
   if (!s || s.companyId !== company.id) return NextResponse.json({ error: "Please sign in." }, { status: 401 });
   const b = await req.json().catch(() => ({}));
   const { data: r } = await supabaseAdmin.from("concierge_requests").select("*, concierge_services(name)").eq("id", String(b.id || "")).eq("company_id", company.id).eq("member_id", s.memberId).maybeSingle();

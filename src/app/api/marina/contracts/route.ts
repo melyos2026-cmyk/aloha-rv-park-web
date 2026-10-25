@@ -40,7 +40,7 @@ const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest(
 async function who(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return { error: NextResponse.json({ error: "Not found." }, { status: 404 }) };
-  const session = getMarinaSession(req);
+  const session = await getMarinaSession(req);
   if (!session || session.companyId !== company.id) return { error: NextResponse.json({ error: "Not signed in." }, { status: 401 }) };
   return { company, memberId: session.memberId };
 }

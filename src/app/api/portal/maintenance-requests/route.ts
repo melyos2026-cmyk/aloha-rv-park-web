@@ -39,6 +39,22 @@ export async function GET(req: NextRequest) {
     ? await supabase.from("maintenance_request_notes").select("*").in("request_id", requestIds)
     : { data: [] as any[] };
 
+  // Oct 24 (security run): photos in private storage are shown through 10-minute signed links.
+  // Older photos were in the (now private) maintenance-photos bucket by public link — sign those too.
+  const photoRows: any[] = photos || [];
+  const OLD = "/storage/v1/object/public/maintenance-photos/";
+  const groups: Record<string, any[]> = { "resident-documents": [], "maintenance-photos": [] };
+  for (const p of photoRows) {
+    if (!p.file_url) continue;
+    if (!/^https?:\/\//.test(p.file_url)) groups["resident-documents"].push([p, p.file_url]);
+    else if (p.file_url.includes(OLD)) groups["maintenance-photos"].push([p, decodeURIComponent(p.file_url.split(OLD)[1].split("?")[0])]);
+  }
+  for (const [bucket, list] of Object.entries(groups)) {
+    if (!list.length) continue;
+    const { data: signed } = await supabase.storage.from(bucket).createSignedUrls(list.map((x: any) => x[1]), 600);
+    const byPath = new Map((signed || []).map((x: any) => [x.path, x.signedUrl]));
+    for (const [p, path] of list as any[]) p.file_url = byPath.get(path) || null;
+  }
   const result = (requests || []).map((r: any) => ({
     ...r,
     maintenance_request_photos: (photos || []).filter((p: any) => p.request_id === r.id),
