@@ -874,6 +874,7 @@ export default function ResidentDashboard() {
       } else {
         setRvMessage("RV info saved.");
         setEditingRvInfo(false);
+        loadResidentDashboard(); // Oct 26: refresh so the "add your home info" reminder clears right away
       }
     } catch (err: any) {
       setRvMessage("Could not save RV info (unexpected error): " + (err?.message || err));
@@ -1130,6 +1131,20 @@ export default function ResidentDashboard() {
           </nav>
 
           <div className="rp-main">
+            {/* Oct 26 (per Mely): inside a section, show what the red number means — tap one to go
+                straight to it. The number goes away by itself once it's done. */}
+            {section !== "home" && message === "" && attention.some((a) => a.go === section) && (
+              <div className="rp-attn">
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>To do here</h2>
+                {attention.filter((a) => a.go === section).map((a) => {
+                  const body = (<><span className={`rp-attn-dot ${a.tone}`} /><span className="rp-attn-text"><b>{a.text}</b>{a.sub && <small>{a.sub}</small>}</span><span className="rp-attn-go">→</span></>);
+                  return a.href
+                    ? <button key={a.key} type="button" className="rp-attn-row" onClick={() => router.push(a.href!)}>{body}</button>
+                    : <button key={a.key} type="button" className="rp-attn-row" onClick={() => goTo(a)}>{body}</button>;
+                })}
+                <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>The red number goes away as soon as each item is done.</p>
+              </div>
+            )}
             {section === "home" && (<>
               <div className="rp-balance">
                 <div>
