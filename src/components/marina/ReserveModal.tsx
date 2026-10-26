@@ -155,7 +155,7 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                   <b>{money(total)}</b>
                 </div>
                 {split.balance > 0 && (
-                  <div className="mr-split">
+                  <div className="mr-depsplit">
                     <div><span>Pay now (deposit)</span><b>{money(split.payNow)}</b></div>
                     <div><span>Balance by {fmtDate(split.balanceDue || start)}</span><span>{money(split.balance)}</span></div>
                   </div>
