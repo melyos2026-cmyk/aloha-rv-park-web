@@ -66,9 +66,9 @@ export default function SlipFinder({ slips, onPick }: { slips: PublicSlip[]; onP
     <section className="mr-finder" aria-label="Find the right slip">
       <div className="mr-finder-head"><h3>Find the right slip for my boat</h3><button type="button" className="mr-link" onClick={() => setOpen(false)}>Close</button></div>
       <div className="mr-finder-grid">
-        <label>Length (ft)*<input inputMode="decimal" value={len} onChange={(e) => setLen(e.target.value.replace(/[^\d.]/g, ""))} placeholder="e.g. 34" /></label>
-        <label>Beam (ft)<input inputMode="decimal" value={beam} onChange={(e) => setBeam(e.target.value.replace(/[^\d.]/g, ""))} placeholder="width" /></label>
-        <label>Draft (ft)<input inputMode="decimal" value={draft} onChange={(e) => setDraft(e.target.value.replace(/[^\d.]/g, ""))} placeholder="depth" /></label>
+        <label>Length (ft)*<input type="text" inputMode="decimal" value={len} onChange={(e) => setLen(e.target.value.replace(/[^\d.]/g, ""))} placeholder="e.g. 34" /></label>
+        <label>Beam (ft)<input type="text" inputMode="decimal" value={beam} onChange={(e) => setBeam(e.target.value.replace(/[^\d.]/g, ""))} placeholder="width" /></label>
+        <label>Draft (ft)<input type="text" inputMode="decimal" value={draft} onChange={(e) => setDraft(e.target.value.replace(/[^\d.]/g, ""))} placeholder="depth" /></label>
         <label>Shore power
           <select value={power} onChange={(e) => setPower(e.target.value)}><option value="">Not needed</option><option value="30A">30 amp</option><option value="50A">50 amp</option><option value="100A">100 amp</option></select>
         </label>

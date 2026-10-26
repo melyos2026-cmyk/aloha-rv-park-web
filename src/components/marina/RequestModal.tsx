@@ -46,22 +46,22 @@ export default function RequestModal({ slip, stay: stay0, units: units0, start: 
             </div>
             <div className="two">
               <label>Start date<input type="date" required value={start} onChange={(e) => setStart(e.target.value)} /></label>
-              {stay !== "annual" ? <label>Months<input type="number" min={1} max={stay === "seasonal" ? 9 : 11} value={months} onChange={(e) => setMonths(Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(e.target.value)) || 1)))} /></label> : <label>Length<input disabled value="12 months" /></label>}
+              {stay !== "annual" ? <label>Months<input type="number" min={1} max={stay === "seasonal" ? 9 : 11} value={months} onChange={(e) => setMonths(Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(e.target.value)) || 1)))} /></label> : <label>Length<input type="text" disabled value="12 months" /></label>}
             </div>
             <div className="two">
-              <label>Boat name<input name="boat_name" autoComplete="off" /></label>
-              <label>Make / model<input name="boat_make_model" autoComplete="off" /></label>
+              <label>Boat name<input type="text" name="boat_name" autoComplete="off" /></label>
+              <label>Make / model<input type="text" name="boat_make_model" autoComplete="off" /></label>
             </div>
             <div className="two">
-              <label>Length (ft)*<input required inputMode="decimal" value={len} onChange={(e) => setLen(e.target.value)} /></label>
-              <label>Beam (ft)<input inputMode="decimal" value={beam} onChange={(e) => setBeam(e.target.value)} /></label>
+              <label>Length (ft)*<input type="number" min="1" step="0.1" required inputMode="decimal" value={len} onChange={(e) => setLen(e.target.value)} /></label>
+              <label>Beam (ft)<input type="number" min="0" step="0.1" inputMode="decimal" value={beam} onChange={(e) => setBeam(e.target.value)} /></label>
             </div>
             <div className="two">
-              <label>Draft (ft)<input inputMode="decimal" value={draft} onChange={(e) => setDraft(e.target.value)} /></label>
+              <label>Draft (ft)<input type="number" min="0" step="0.1" inputMode="decimal" value={draft} onChange={(e) => setDraft(e.target.value)} /></label>
               <label>Shore power<select value={power} onChange={(e) => setPower(e.target.value)}><option value="">Not needed</option><option value="30A">30 amp</option><option value="50A">50 amp</option><option value="100A">100 amp</option></select></label>
             </div>
             {slip && <FitBox slip={slip} length={Number(len)} beam={Number(beam) || null} draft={Number(draft) || null} power={power || null} />}
-            <label>Full name<input name="full_name" required autoComplete="name" /></label>
+            <label>Full name<input type="text" name="full_name" required autoComplete="name" /></label>
             <div className="two">
               <label>Email<input type="email" name="email" required autoComplete="email" /></label>
               <label>Phone<input type="tel" name="phone" required autoComplete="tel" /></label>
