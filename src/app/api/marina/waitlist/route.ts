@@ -62,7 +62,8 @@ export async function POST(req: Request) {
   if (existing.length) return NextResponse.json({ ok: true });
 
   const contract = CONTRACTS.includes(body.desired_contract_type) ? body.desired_contract_type : null;
-  const { error } = await supabaseAdmin.from("marina_waitlist").insert({
+  const power = ["30A", "50A", "100A"].includes(String(body.power_needed)) ? String(body.power_needed) : null;
+  const row = {
     company_id: company.id,
     full_name: fullName,
     email,
@@ -75,7 +76,9 @@ export async function POST(req: Request) {
     desired_contract_type: contract,
     notes: text(body.notes, 1000) || null,
     status: "waiting",
-  });
+  };
+  let { error } = await supabaseAdmin.from("marina_waitlist").insert({ ...row, power_needed: power });
+  if (error && /power_needed/.test(error.message)) ({ error } = await supabaseAdmin.from("marina_waitlist").insert(row));
   if (error) return NextResponse.json({ error: "Could not save your request. Please try again." }, { status: 500 });
 
   return NextResponse.json({ ok: true });

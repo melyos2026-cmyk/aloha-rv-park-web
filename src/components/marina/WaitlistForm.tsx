@@ -61,6 +61,20 @@ export default function WaitlistForm() {
           </select>
         </label>
       </div>
+      {/* Oct 26 (per Mely): size and power so the automatic waitlist offers only slips that fit. */}
+      <div className="two">
+        <label>Beam (ft)<input type="number" name="boat_beam_ft" inputMode="decimal" min="0" step="0.1" /></label>
+        <label>Draft (ft)<input type="number" name="boat_draft_ft" inputMode="decimal" min="0" step="0.1" /></label>
+      </div>
+      <label>
+        Shore power you need
+        <select name="power_needed" defaultValue="">
+          <option value="">Not needed / not sure</option>
+          <option value="30A">30 amp</option>
+          <option value="50A">50 amp</option>
+          <option value="100A">100 amp</option>
+        </select>
+      </label>
       <label>Anything the office should know<textarea name="notes_visible" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
       <div className="mr-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label></div>
       {error && <div className="mr-error" role="alert">{error}</div>}
