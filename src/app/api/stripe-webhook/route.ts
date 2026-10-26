@@ -433,6 +433,11 @@ async function handleWebhook(req: Request) {
           if (charge.refunded) await returnMarinaOnlinePayment(s.metadata.company_id, s.id, "Refunded in Stripe");
           else await logSystemHealthIssue({ companyId: s.metadata.company_id, issueType: "marina_online_payment_returned", source: "stripe_webhook", message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on a marina online payment. The invoice still shows the full amount paid — record the refund on the invoice.` });
         }
+        // Oct 26: marina autopay charges (no checkout session) — metadata is on the charge.
+        if (!s && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id) {
+          if (charge.refunded) await failMarinaAchPayment(charge.metadata.company_id, `autopay:${pi}`, "refunded in Stripe");
+          else await logSystemHealthIssue({ companyId: charge.metadata.company_id, issueType: "marina_online_payment_returned", source: "stripe_webhook", message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on a marina autopay charge. Record the refund on the invoice.` });
+        }
       } catch (e: any) { console.error("marina refund sync:", e?.message); }
     }
     if (pi) {
@@ -626,6 +631,17 @@ async function handleWebhook(req: Request) {
         message: `Checkout session expired without completing — ${email}, $${amount} (${session.metadata?.type || "unknown charge type"}).`,
         source: "stripe_webhook",
       });
+    }
+  }
+
+  // Oct 26: marina autopay by bank — settle or fail as soon as Stripe tells us (the daily
+  // reconcile in /api/cron/marina-autopay does the same if these events are not sent).
+  if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
+    const intent = event.data.object as Stripe.PaymentIntent;
+    if (intent.metadata?.type === "marina_autopay" && intent.metadata.company_id) {
+      if (event.type === "payment_intent.succeeded") await settleMarinaAchPayment(intent.metadata.company_id, `autopay:${intent.id}`);
+      else await failMarinaAchPayment(intent.metadata.company_id, `autopay:${intent.id}`, intent.last_payment_error?.message || "the payment failed");
+      return NextResponse.json({ received: true });
     }
   }
 

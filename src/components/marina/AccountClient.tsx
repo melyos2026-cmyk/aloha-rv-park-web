@@ -12,6 +12,7 @@ import RentalsCard from "./RentalsCard";
 import ConciergeCard from "./ConciergeCard";
 import RestaurantCard from "./RestaurantCard";
 import PaymentsSummaryCard from "./PaymentsSummaryCard";
+import AutopayCard from "./AutopayCard";
 import type { AccountData } from "@/lib/marina/data";
 
 type Account = AccountData & { demo: boolean; companyName: string };
@@ -202,6 +203,7 @@ export default function AccountClient() {
         {payable.length > 0 && <a className="mr-btn" href="#invoices" style={{ alignSelf: "center" }}>{payable.length > 1 ? "Pay balance" : "Pay now"}</a>}
       </div>
 
+      <AutopayCard />
       <MessagesCard />
 
       <RequestsCard />

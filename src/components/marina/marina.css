@@ -867,3 +867,15 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-quote-btns .mr-btn { flex: 1 1 200px; text-align: center; }
 .mr-depsplit { border: 1px dashed var(--mr-line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; font-size: 14px; }
 .mr-depsplit > div { display: flex; justify-content: space-between; gap: 10px; }
+
+/* Oct 26: autopay card */
+.mr-autopay-on, .mr-autopay-off { font-size: 12px; font-weight: 800; letter-spacing: .08em; border-radius: 999px; padding: 3px 10px; }
+.mr-autopay-on { background: #dcfce7; color: #166534; }
+.mr-autopay-off { background: #f1f5f9; color: #475569; }
+.mr-autopay-hist { display: grid; gap: 4px; font-size: 14px; margin-top: 6px; }
+.mr-autopay-hist > div { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; border-bottom: 1px solid var(--mr-line); padding: 5px 0; }
+.mr-autopay-hist .succeeded { color: #166534; font-weight: 700; }
+.mr-autopay-hist .processing { color: #0369a1; font-weight: 700; }
+.mr-autopay-hist .failed { color: #b91c1c; font-weight: 700; }
+.mr-docs-form label.mr-autopay-agree { display: flex !important; flex-direction: row !important; gap: 10px; align-items: flex-start; font-weight: 500; font-size: 14px; line-height: 1.45; }
+.mr-autopay-agree input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 18px; }
