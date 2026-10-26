@@ -103,6 +103,13 @@ export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> 
     const end = new Date(`${c.end_date}T12:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
     bookedBySlip.set(c.slip_id, [...(bookedBySlip.get(c.slip_id) || []), [c.start_date, end.toISOString().slice(0, 10)]]);
   }
+  // An open price quote holds its slip too (Oct 26: quote before contract).
+  const { data: quotes } = await supabaseAdmin.from("marina_slip_requests").select("slip_id, start_date, end_date, status, quote_expires_at").eq("company_id", companyId).in("status", ["quoted", "quote_accepted"]).not("slip_id", "is", null).gte("end_date", todayET());
+  for (const q of quotes || []) {
+    if (q.status === "quoted" && q.quote_expires_at && Date.parse(q.quote_expires_at) < Date.now()) continue;
+    const end = new Date(`${q.end_date}T12:00:00Z`); end.setUTCDate(end.getUTCDate() + 1);
+    bookedBySlip.set(q.slip_id, [...(bookedBySlip.get(q.slip_id) || []), [q.start_date, end.toISOString().slice(0, 10)]]);
+  }
   const keptSet = new Set((kept || []).map((k: any) => k.slip_id));
 
   const ratesBySlip = new Map<string, SlipRates>();

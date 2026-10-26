@@ -65,7 +65,8 @@ export async function requestProgress(companyId: string, r: any) {
       depositDue = depositPaid ? 0 : Math.round((Number(dep.amount) - paid) * 100) / 100;
     }
   }
-  const step = r.status === "requested" ? 1 : r.status === "contract_sent" ? 2 : r.status === "signed" ? (depositPaid ? 4 : 3) : r.status === "confirmed" ? 5 : 0;
+  // Steps: Request sent · Price · Contract signed · Deposit paid · Confirmed (number of steps done)
+  const step = r.status === "requested" || r.status === "quoted" ? 1 : r.status === "quote_accepted" || r.status === "contract_sent" ? 2 : r.status === "signed" ? (depositPaid ? 4 : 3) : r.status === "confirmed" ? 5 : 0;
   return { slip: slip ? `${slip.slip_name}${slip.dock ? ` · ${slip.dock}` : ""}` : null, contractStatus: k?.status || null, amount: k?.amount ?? r.quoted_amount, deposit: k?.deposit ?? r.deposit_amount, depositPaid, depositDue, step };
 }
 
@@ -96,5 +97,8 @@ export async function slipRequestPaidForInvoice(companyId: string, invoiceId: st
     await supabaseAdmin.from("marina_boats").update({ slip_id: r.slip_id, contract_type: r.stay_type }).eq("id", r.boat_id).eq("company_id", companyId);
     await supabaseAdmin.from("marina_slips").update({ status: r.start_date <= new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }) ? "occupied" : "reserved" }).eq("id", r.slip_id).eq("company_id", companyId).neq("status", "maintenance");
   }
+  if (r.waitlist_id) await supabaseAdmin.from("marina_waitlist").update({ status: "assigned" }).eq("id", r.waitlist_id).eq("company_id", companyId).then(() => null, () => null);
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: companyId, resident_name: r.full_name, update_type: "slip_request", message: `Slip request ${r.request_number} confirmed: deposit paid by ${r.full_name}. The boat is assigned to its slip.` }).then(() => null, () => null);
 }
+
+export const quoteExpired = (r: any) => r.status === "quoted" && !!r.quote_expires_at && Date.parse(r.quote_expires_at) < Date.now();

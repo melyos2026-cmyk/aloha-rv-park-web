@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
 import FitBox from "./FitBox";
+import { useBookingTerms, unitPriceFor, splitFor } from "./useBookingTerms";
 
 type Stay = "transient_daily" | "transient_weekly" | "monthly";
 const STAYS: { key: Stay; title: string; unit: string; max: number }[] = [
@@ -15,7 +16,7 @@ const todayISO = () => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
-type Summary = { slip: string; dock: string | null; start: string; end: string; amount: number; invoice: string };
+type Summary = { slip: string; dock: string | null; start: string; end: string; amount: number; invoice: string; paidNow?: number; balance?: number; balanceDue?: string | null; page?: string | null; resident?: boolean };
 
 export type BoatPrefill = { name?: string; length?: string; beam?: string; draft?: string; power?: string };
 
@@ -37,6 +38,7 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
   const [error, setError] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [demo, setDemo] = useState(false);
+  const terms = useBookingTerms();
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -47,8 +49,10 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
 
   const cur = STAYS.find((s) => s.key === stay)!;
   const rate = slip.rates[stay];
-  const unitPrice = rate ? rate.non_resident ?? rate.resident ?? 0 : 0;
+  const resident = !!terms?.resident && rate?.resident != null;
+  const unitPrice = unitPriceFor(rate, !!terms?.resident);
   const total = unitPrice * units;
+  const split = splitFor(terms, total, unitPrice, stay, start);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -87,10 +91,12 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
               <div><dt>Arrive</dt><dd>{fmtDate(summary.start)}</dd></div>
               <div><dt>Depart</dt><dd>{fmtDate(summary.end)}</dd></div>
               <div><dt>Total</dt><dd>{money(summary.amount)}</dd></div>
+              {!!summary.balance && <div><dt>Paid now</dt><dd>{money(summary.paidNow || 0)}</dd></div>}
+              {!!summary.balance && <div><dt>Balance</dt><dd>{money(summary.balance)} by {fmtDate(summary.balanceDue || summary.start)}</dd></div>}
               <div><dt>Confirmation</dt><dd>{summary.invoice}</dd></div>
             </dl>
             <p className="mr-note">{demo ? "On a live marina site the guest receives a confirmation email and the dock office sees this booking right away." : "A confirmation email is on its way. The dock office will contact you with arrival details."}</p>
-            <button type="button" className="mr-btn dark" onClick={onClose}>Done</button>
+            {summary.page ? <a className="mr-btn dark" href={summary.page}>See my booking</a> : <button type="button" className="mr-btn dark" onClick={onClose}>Done</button>}
           </div>
         ) : (
           <form className="mr-modal-body" onSubmit={submit}>
@@ -145,12 +151,18 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                 </div>
                 <div className="mr-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label></div>
                 <div className="mr-total">
-                  <span>{units} {cur.unit}{units > 1 ? "s" : ""} × {money(unitPrice)}</span>
+                  <span>{units} {cur.unit}{units > 1 ? "s" : ""} × {money(unitPrice)}{resident ? " (resident rate)" : ""}</span>
                   <b>{money(total)}</b>
                 </div>
+                {split.balance > 0 && (
+                  <div className="mr-split">
+                    <div><span>Pay now (deposit)</span><b>{money(split.payNow)}</b></div>
+                    <div><span>Balance by {fmtDate(split.balanceDue || start)}</span><span>{money(split.balance)}</span></div>
+                  </div>
+                )}
                 {error && <div className="mr-error" role="alert">{error}</div>}
                 <button type="submit" className="mr-btn dark" disabled={state === "sending"}>
-                  {state === "sending" ? "Processing…" : `Pay ${money(total)} and reserve`}
+                  {state === "sending" ? "Processing…" : split.balance > 0 ? `Pay ${money(split.payNow)} deposit and reserve` : `Pay ${money(total)} and reserve`}
                 </button>
                 <p className="mr-note">Taxes and card fees, if any, are shown at checkout. Demo sites do not charge a card.</p>
               </>

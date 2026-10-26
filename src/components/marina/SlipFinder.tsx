@@ -1,4 +1,5 @@
 "use client";
+import { useBookingTerms, unitPriceFor } from "./useBookingTerms";
 import { useMemo, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
 import { rankSlips } from "@/lib/marina/fit";
@@ -25,6 +26,7 @@ const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T12:00:0
 const addMonths = (iso: string, n: number) => { const d = new Date(`${iso}T12:00:00Z`); const day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); d.setUTCDate(Math.min(day, last)); return d.toISOString().slice(0, 10); };
 
 export default function SlipFinder({ slips, onPick }: { slips: PublicSlip[]; onPick: (p: FinderPick) => void }) {
+  const terms = useBookingTerms();
   const [open, setOpen] = useState(false);
   const [len, setLen] = useState(""); const [beam, setBeam] = useState(""); const [draft, setDraft] = useState(""); const [power, setPower] = useState("");
   const [stay, setStay] = useState<Stay>("transient_daily");
@@ -51,7 +53,7 @@ export default function SlipFinder({ slips, onPick }: { slips: PublicSlip[]; onP
   const priceOf = (s: PublicSlip) => {
     const key = stay === "seasonal" || stay === "annual" ? stay : stay;
     const r = (s.rates as any)[key];
-    const unit = r ? r.non_resident ?? r.resident : null;
+    const unit = r ? unitPriceFor(r, !!terms?.resident) || null : null;
     if (unit == null) return null;
     return { unit, total: stay === "seasonal" || stay === "annual" ? unit : unit * units };
   };

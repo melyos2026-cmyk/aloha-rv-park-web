@@ -6,6 +6,8 @@ import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { fitCheck } from "@/lib/marina/fit";
+import { getMarinaSession } from "@/lib/marina/session";
+import { loadBookingSettings, splitPayment, residentPricingFor, newBookingToken } from "@/lib/marina/booking";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -107,7 +109,10 @@ export async function POST(req: Request) {
     supabaseAdmin.from("marina_boats").select("id").eq("company_id", company.id).eq("slip_id", slip.id).limit(1),
     supabaseAdmin.from("marina_contracts").select("id").eq("company_id", company.id).eq("slip_id", slip.id).in("status", ["sent", "viewed", "signed"]).lte("start_date", end).gte("end_date", start).limit(1),
   ]);
-  if ((keptBoat?.length && !(opensOn && start >= opensOn)) || kContracts?.length) {
+  // An open price quote for a slip request holds the slip too.
+  const { data: held } = await supabaseAdmin.from("marina_slip_requests").select("status, quote_expires_at").eq("company_id", company.id).eq("slip_id", slip.id).in("status", ["quoted", "quote_accepted"]).lte("start_date", end).gte("end_date", start);
+  const quoteHold = (held || []).some((h: any) => h.status === "quote_accepted" || !h.quote_expires_at || Date.parse(h.quote_expires_at) > Date.now());
+  if ((keptBoat?.length && !(opensOn && start >= opensOn)) || kContracts?.length || quoteHold) {
     return NextResponse.json({ error: "That slip is already taken for those dates. Try other dates or another slip." }, { status: 409 });
   }
 
@@ -118,9 +123,15 @@ export async function POST(req: Request) {
     .eq("company_id", company.id)
     .eq("rate_type", stay)
     .maybeSingle();
-  const unitPrice = Number(rate?.non_resident_rate ?? rate?.resident_rate ?? 0);
+  // Oct 26 (per Mely): a signed-in city/county resident gets the resident rate (when the marina uses them).
+  const session = await getMarinaSession(req);
+  const memberId = session && session.companyId === company.id ? session.memberId : null;
+  const resident = await residentPricingFor(company.id, memberId);
+  const unitPrice = Number((resident ? rate?.resident_rate ?? rate?.non_resident_rate : rate?.non_resident_rate ?? rate?.resident_rate) ?? 0);
   if (!(unitPrice > 0)) return NextResponse.json({ error: "This stay length is not offered online for this slip. Call the dock office." }, { status: 400 });
   const amount = round2(unitPrice * units);
+  // Oct 26 (per Mely): deposit now, balance later — when the marina chose it.
+  const split = splitPayment(await loadBookingSettings(company.id), amount, unitPrice, stay, start);
 
   // Flood guard, then date conflicts (a pending hold only counts for 30 minutes).
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -157,8 +168,9 @@ export async function POST(req: Request) {
         slip_id: slip.id,
         customer_name: name,
         customer_email: email,
-        description: `Slip ${slip.slip_name} reservation, ${start} to ${end}`,
-        amount,
+        description: split.balance ? `Deposit for slip ${slip.slip_name} reservation, ${start} to ${end}` : `Slip ${slip.slip_name} reservation, ${start} to ${end}`,
+        amount: split.payNow,
+        member_id: memberId,
         issue_date: today,
         due_date: today,
       })
@@ -196,11 +208,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Could not create your reservation. Please try again." }, { status: 500 });
   }
 
+  // Private booking page + deposit details (scripts/marina_73…; skipped quietly before it runs).
+  const token = newBookingToken();
+  const { error: extraErr } = await supabaseAdmin.from("marina_reservations").update({
+    access_token: token, member_id: memberId, power_needed: text(b.power_needed, 10) || null,
+    deposit_amount: split.balance ? split.payNow : null, balance_due_date: split.balanceDue,
+  }).eq("id", reservation.id).eq("company_id", company.id);
+  if (extraErr && split.balance) {
+    // Without the new columns a deposit can't be tracked: charge the full stay instead.
+    await supabaseAdmin.from("marina_invoices").update({ amount, description: `Slip ${slip.slip_name} reservation, ${start} to ${end}` }).eq("id", invoice.id).eq("company_id", company.id);
+    split.payNow = amount; split.balance = 0; split.balanceDue = null;
+  }
+  const page = extraErr ? null : `/marina/reservation/${reservation.id}?t=${token}`;
+
   const origin = `https://${company.domain}`;
   const pay = await startInvoicePayment({
     company,
     invoiceId: invoice.id,
-    successUrl: `${origin}/?reserved=success#slips`,
+    successUrl: page ? `${origin}${page}&paid=1` : `${origin}/?reserved=success#slips`,
     cancelUrl: `${origin}/?reserved=cancelled#slips`,
   });
   if (!pay.ok) {
@@ -209,6 +234,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: pay.error }, { status: pay.status });
   }
 
-  const summary = { slip: slip.slip_name, dock: slip.dock, start, end, amount, invoice: invoice.invoice_number };
+  const summary = { slip: slip.slip_name, dock: slip.dock, start, end, amount, invoice: invoice.invoice_number, paidNow: split.payNow, balance: split.balance, balanceDue: split.balanceDue, page, resident };
   return NextResponse.json("url" in pay ? { url: pay.url, summary } : { ok: true, demo: true, summary });
 }

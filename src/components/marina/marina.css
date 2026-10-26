@@ -856,3 +856,14 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-docs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .mr-docs-chips span { border: 1.5px solid; border-radius: 999px; padding: 3px 10px; font-size: 13px; font-weight: 600; background: #fff; }
 .mr-pass { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+/* Oct 26 (per Mely): price quote on the slip request page, booking balance, deposit split */
+.mr-pay-lines td { padding: 9px 0; border-bottom: 1px solid var(--mr-line); vertical-align: top; }
+.mr-quote { margin-top: 16px; border: 2px solid #0f2540; }
+.mr-quote-sub { font-size: 13px; color: var(--mr-muted); }
+.mr-quote-total td { font-weight: 800; font-size: 17px; border-bottom: 0 !important; }
+.mr-quote-answer { margin-top: 14px; }
+.mr-quote-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.mr-quote-btns .mr-btn { flex: 1 1 200px; text-align: center; }
+.mr-split { border: 1px dashed var(--mr-line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; font-size: 14px; }
+.mr-split > div { display: flex; justify-content: space-between; gap: 10px; }
