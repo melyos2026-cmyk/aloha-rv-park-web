@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 type M = { id: string; direction: "office" | "boater"; subject: string | null; body: string; sent_by_name: string | null; read_at: string | null; created_at: string };
 const when = (d: string) => new Date(d).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-export default function MessagesCard() {
+export default function MessagesCard({ startOpen = false }: { startOpen?: boolean } = {}) {
   const [list, setList] = useState<M[]>([]);
   const [unread, setUnread] = useState(0);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -18,7 +18,7 @@ export default function MessagesCard() {
     const r = await fetch(`/api/marina/messages${markRead ? "?read=1" : ""}`, { cache: "no-store" }).then((x) => x.json()).catch(() => ({}));
     setList(r.messages || []); setUnread(markRead ? 0 : r.unread || 0);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(startOpen); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   async function send() {
     setBusy(true); setErr("");

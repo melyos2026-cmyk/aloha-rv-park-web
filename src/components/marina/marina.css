@@ -879,3 +879,47 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 .mr-autopay-hist .failed { color: #b91c1c; font-weight: 700; }
 .mr-docs-form label.mr-autopay-agree { display: flex !important; flex-direction: row !important; gap: 10px; align-items: flex-start; font-weight: 500; font-size: 14px; line-height: 1.45; }
 .mr-autopay-agree input { margin-top: 3px; width: 18px; height: 18px; flex: 0 0 18px; }
+
+/* Oct 26 (per Mely): boater account with a menu — side menu on a computer, tab bar on a phone,
+   Home with "Needs your attention" and preview cards. */
+.mr-acct.mr-acct-tabs { max-width: 1140px; grid-template-columns: 230px minmax(0, 1fr); align-items: start; column-gap: 28px; }
+.mr-acct-top { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.mr-acct-main { display: grid; gap: 22px; min-width: 0; }
+.mr-acct-nav { position: sticky; top: 120px; display: grid; gap: 2px; background: #fff; border: 1.5px solid var(--mr-line); border-radius: 12px; padding: 8px; }
+.mr-acct-nav button, .mr-more-list button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 12px; border: 0; border-radius: 8px; background: none; color: var(--mr-ink); font: 600 .95rem 'Inter', sans-serif; text-align: left; cursor: pointer; }
+.mr-acct-nav button:hover { background: #eef3f6; }
+.mr-acct-nav button.on { background: var(--mr-ink); color: #fff; }
+.mr-acct-nav button span:nth-child(2), .mr-more-list button span:nth-child(2) { flex: 1; }
+.mr-nav-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #fff; font: 700 11.5px/20px 'Inter', sans-serif; text-align: center; }
+.mr-attn { border-color: #f59e0b; box-shadow: 0 0 0 2px #fde68a; padding: 18px 18px 10px; }
+.mr-attn-row { box-sizing: border-box; display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 6px; border: 0; border-top: 1px solid var(--mr-line); background: none; color: var(--mr-ink); text-align: left; text-decoration: none; font: inherit; cursor: pointer; }
+.mr-attn h3 + .mr-attn-row { border-top: 0; }
+.mr-attn-row:hover { background: #f8fafc; }
+.mr-attn-text { flex: 1; min-width: 0; display: grid; }
+.mr-attn-text small { color: var(--mr-muted, #5b6b78); font-size: .86rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-attn-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: #0369a1; }
+.mr-attn-dot.bad { background: #dc2626; } .mr-attn-dot.warn { background: #d97706; }
+.mr-attn-go { color: #94a3b8; font-weight: 700; }
+.mr-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.mr-tile { display: flex; flex-direction: column; gap: 3px; text-align: left; background: #fff; border: 1.5px solid var(--mr-line); border-radius: 12px; padding: 16px 18px; color: var(--mr-ink); font: inherit; cursor: pointer; transition: border-color .15s, transform .15s; min-width: 0; }
+.mr-tile:hover { border-color: var(--mr-ink); transform: translateY(-1px); }
+.mr-tile-h { display: flex; align-items: center; gap: 8px; font: 700 .78rem 'Inter', sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--mr-muted, #5b6b78); }
+.mr-tile-main { font-weight: 700; font-size: 1.08rem; margin-top: 2px; }
+.mr-tile-line { color: #475569; font-size: .92rem; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.mr-tile-cta { margin-top: auto; padding-top: 8px; font-weight: 700; font-size: .9rem; color: #0369a1; }
+.mr-more-list { display: grid; background: #fff; border: 1.5px solid var(--mr-line); border-radius: 12px; padding: 6px; }
+.mr-tabbar { display: none; }
+@media (max-width: 860px) {
+  .mr-acct.mr-acct-tabs { grid-template-columns: minmax(0, 1fr); padding-bottom: 110px; padding-top: 28px; }
+  .mr-acct-nav, .mr-acct-signout { display: none; }
+  .mr-tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 80; background: #fff; border-top: 1px solid var(--mr-line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px -16px rgba(10,34,48,.4); }
+  .mr-tabbar button { position: relative; display: grid; justify-items: center; gap: 2px; border: 0; background: none; color: #64748b; font: 600 11px 'Inter', sans-serif; padding: 4px 0; cursor: pointer; }
+  .mr-tabbar button.on { color: var(--mr-ink); }
+  .mr-tabbar button.on svg { stroke-width: 2.4; }
+  .mr-tabbar .mr-nav-badge { position: absolute; top: 0; left: calc(50% + 6px); min-width: 17px; height: 17px; line-height: 17px; font-size: 10px; padding: 0 4px; }
+  body:has(.mr-tabbar) .mr-chat-fab { bottom: 84px; width: 54px; height: 54px; }
+  body:has(.mr-tabbar) .mr-chat-tip { bottom: 96px; }
+  body:has(.mr-tabbar) .mr-chat { bottom: 148px; height: min(520px, calc(100vh - 180px)); }
+  body:has(.mr-tabbar) .mr-cart-fab { bottom: 84px; }
+}
+@media (max-width: 560px) { .mr-tiles { grid-template-columns: minmax(0, 1fr); } }
