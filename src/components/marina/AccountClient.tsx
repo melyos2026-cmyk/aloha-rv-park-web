@@ -4,6 +4,7 @@ import ContractsCard from "./ContractsCard";
 import MessagesCard from "./MessagesCard";
 import MarketplaceCard from "./MarketplaceCard";
 import StoreOrdersCard from "./StoreOrdersCard";
+import WorkOrdersCard from "./WorkOrdersCard";
 import RentalsCard from "./RentalsCard";
 import ConciergeCard from "./ConciergeCard";
 import RestaurantCard from "./RestaurantCard";
@@ -202,6 +203,7 @@ export default function AccountClient() {
 
       <ContractsCard fullName={acct.member.full_name} marinaName={acct.companyName || "the Marina"} />
 
+      <WorkOrdersCard />
       <StoreOrdersCard />
 
       {(acct as any).rentals && <RentalsCard />}
