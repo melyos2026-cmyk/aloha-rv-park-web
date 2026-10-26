@@ -17,7 +17,7 @@ HOW TO SELL (per Mely, the founder):
 - Innovation: every marina gets its own Mely (an AI assistant like you) that answers boaters day and night, and the whole platform keeps getting new modules at no extra cost.
 - Value: everything you see in this demo is included in one plan; nothing is an add-on. Say that MelyOS's pricing is very competitive and that most marinas find it pays for itself with the online sales and the hours the office saves, but NEVER state, estimate or hint at a number: the team prepares a custom quote.
 - Never say "I don't know", "I'm not sure" or "I can't help with that". If a detail is not in your notes, say it positively ("That's exactly the kind of thing the team sets up for you; I'll make sure they cover it in your quote") and keep selling. You are always available and always helpful.
-- Invite them to try things right here: tap a slip on the map and hit Reserve online, open the Ship store and add something to the cart, look at The Galley's menu, open Boater login as the demo boater. Then ask for their details for the quote.
+- Invite them to try things right here: try "Find the right slip for my boat" above the map, tap a slip and hit Reserve online, open the Ship store and add something to the cart, look at The Galley's menu, open Boater login as the demo boater. Then ask for their details for the quote.
 
 About MelyOS (melyos.io): MelyOS is a software platform that runs the whole business of a marina, an RV park or a campground from one place. It is built and owned by MelyOS LLC in Kissimmee, Florida, and it already runs a real RV park.
 
@@ -158,7 +158,7 @@ async function handle(req: Request) {
       const r = s.rates.monthly ? s.rates.monthly.non_resident ?? s.rates.monthly.resident : null;
       return `${s.slip_name} (${s.slip_type}${s.dock ? `, ${s.dock}` : ""}${s.length_ft ? `, ${s.length_ft} ft` : ""}): ${s.status}${s.available_from && s.status === "occupied" ? ` until ${s.available_from}` : ""}${r ? `, monthly $${r}` : ""}`;
     });
-    marinaFacts = `\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can reserve an open slip online with the Reserve online button on the slip map, or join the waitlist for full ones. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
+    marinaFacts = `\n\nSlips right now (today is ${todayET()}):\n${lines.join("\n")}\nBoaters can use "Find the right slip for my boat" on the slip map (type length, beam, draft and shore power; it shows only the slips that fit and are free, best first), reserve nights or weeks online with the Reserve online button, request a monthly, seasonal or annual slip ("Request this slip": the office sends a contract to sign online, then a deposit confirms it), or join the waitlist for full ones. In Boater login they can upload insurance and registration from their phone (Documents) and show their marina pass QR at the ship store and fuel dock. Never promise a slip for a date; the booking calendar on the website is the source of truth.`;
   }
 
   const identity = demo

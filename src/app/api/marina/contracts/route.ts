@@ -5,6 +5,7 @@ import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { buildSignedContractPdf } from "@/lib/marina/contractPdf";
 import { isDemoCompany } from "@/lib/marina/host";
+import { slipRequestSigned } from "@/lib/marina/slipRequests";
 
 // Oct 21 (per Mely): a boater's contracts (sent from the marina admin) and
 // electronic signing. Only the signed-in boater's own contracts, only on this
@@ -161,6 +162,9 @@ export async function POST(req: Request) {
       console.error("contract invoices failed:", e?.message);
     }
   }
+
+  // Oct 26 (per Mely): a contract from a slip request moves that request to "Signed".
+  await slipRequestSigned(w.company.id, k.id);
 
   // Signed PDF → private bucket → the boat's Documents.
   const company: any = w.company;

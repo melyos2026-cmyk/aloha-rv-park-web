@@ -6,6 +6,7 @@ import { isDemoCompany } from "./host";
 import { confirmStoreOrderForInvoice } from "./storeOrders";
 import { conciergePaidForInvoice } from "./conciergePaid";
 import { rentalPaidForInvoice } from "./rentalPaid";
+import { slipRequestPaidForInvoice } from "./slipRequests";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const esc = (v: string) => v.replace(/[<>&"]/g, "");
@@ -104,6 +105,7 @@ export async function recordMarinaOnlinePayment(p: {
     await confirmStoreOrderForInvoice(p.companyId, p.invoiceId); // Oct 24: store order confirmation email
     await conciergePaidForInvoice(p.companyId, p.invoiceId);     // Oct 24: concierge paid up front
     await rentalPaidForInvoice(p.companyId, p.invoiceId);        // Oct 24: rental booking paid
+    await slipRequestPaidForInvoice(p.companyId, p.invoiceId);   // Oct 26: slip request deposit
   }
   if (error) {
     if (error.code === "23505") return { ok: true, duplicate: true };
@@ -127,7 +129,7 @@ export async function settleMarinaAchPayment(companyId: string, reference: strin
     .select("invoice_id");
   for (const row of data || []) {
     const inv = row.invoice_id;
-    await confirmReservationForInvoice(companyId, inv); await confirmStoreOrderForInvoice(companyId, inv); await conciergePaidForInvoice(companyId, inv); await rentalPaidForInvoice(companyId, inv);
+    await confirmReservationForInvoice(companyId, inv); await confirmStoreOrderForInvoice(companyId, inv); await conciergePaidForInvoice(companyId, inv); await rentalPaidForInvoice(companyId, inv); await slipRequestPaidForInvoice(companyId, inv);
   }
 }
 

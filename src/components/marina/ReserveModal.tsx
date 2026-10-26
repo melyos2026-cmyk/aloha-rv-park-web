@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
+import FitBox from "./FitBox";
 
 type Stay = "transient_daily" | "transient_weekly" | "monthly";
 const STAYS: { key: Stay; title: string; unit: string; max: number }[] = [
@@ -16,14 +17,21 @@ const todayISO = () => {
 
 type Summary = { slip: string; dock: string | null; start: string; end: string; amount: number; invoice: string };
 
-export default function ReserveModal({ slip, startDate, onClose }: { slip: PublicSlip; startDate?: string; onClose: () => void }) {
+export type BoatPrefill = { name?: string; length?: string; beam?: string; draft?: string; power?: string };
+
+export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefill, unitsPrefill }: { slip: PublicSlip; startDate?: string; onClose: () => void; boat?: BoatPrefill; stayPrefill?: Stay; unitsPrefill?: number }) {
+  // Oct 26 (per Mely): boat details are kept so the "Does it fit?" box updates as they type.
+  const [bLen, setBLen] = useState(boat?.length || "");
+  const [bBeam, setBBeam] = useState(boat?.beam || "");
+  const [bDraft, setBDraft] = useState(boat?.draft || "");
+  const [bPower, setBPower] = useState(boat?.power || "");
   const minDate = slip.status === "occupied" && slip.available_from && slip.available_from > todayISO() ? slip.available_from : todayISO();
   const offered = useMemo(
     () => STAYS.filter((s) => { const r = slip.rates[s.key]; return r && (r.non_resident ?? r.resident); }),
     [slip],
   );
-  const [stay, setStay] = useState<Stay>(offered[0]?.key ?? "transient_daily");
-  const [units, setUnits] = useState(1);
+  const [stay, setStay] = useState<Stay>(stayPrefill && offered.some((o) => o.key === stayPrefill) ? stayPrefill : offered[0]?.key ?? "transient_daily");
+  const [units, setUnits] = useState(unitsPrefill && unitsPrefill > 0 ? unitsPrefill : 1);
   const [start, setStart] = useState(startDate && startDate > minDate ? startDate : minDate);
   const [state, setState] = useState<"idle" | "sending" | "done">("idle");
   const [error, setError] = useState("");
@@ -115,13 +123,21 @@ export default function ReserveModal({ slip, startDate, onClose }: { slip: Publi
                   </label>
                 </div>
                 <div className="two">
-                  <label>Boat name<input type="text" name="boat_name" autoComplete="off" /></label>
-                  <label>Length (ft)<input type="number" name="boat_length_ft" required min="1" step="0.1" inputMode="decimal" /></label>
+                  <label>Boat name<input type="text" name="boat_name" autoComplete="off" defaultValue={boat?.name || ""} /></label>
+                  <label>Length (ft)<input type="number" name="boat_length_ft" required min="1" step="0.1" inputMode="decimal" value={bLen} onChange={(e) => setBLen(e.target.value)} /></label>
                 </div>
                 <div className="two">
-                  <label>Beam (ft)<input type="number" name="boat_beam_ft" min="0" step="0.1" inputMode="decimal" /></label>
-                  <label>Draft (ft)<input type="number" name="boat_draft_ft" min="0" step="0.1" inputMode="decimal" /></label>
+                  <label>Beam (ft)<input type="number" name="boat_beam_ft" min="0" step="0.1" inputMode="decimal" value={bBeam} onChange={(e) => setBBeam(e.target.value)} /></label>
+                  <label>Draft (ft)<input type="number" name="boat_draft_ft" min="0" step="0.1" inputMode="decimal" value={bDraft} onChange={(e) => setBDraft(e.target.value)} /></label>
                 </div>
+                {slip.has_power && (
+                  <label>Shore power you need
+                    <select name="power_needed" value={bPower} onChange={(e) => setBPower(e.target.value)}>
+                      <option value="">Not sure / not needed</option><option value="30A">30 amp</option><option value="50A">50 amp</option><option value="100A">100 amp</option>
+                    </select>
+                  </label>
+                )}
+                <FitBox slip={slip} length={Number(bLen)} beam={Number(bBeam) || null} draft={Number(bDraft) || null} power={bPower || null} />
                 <label>Full name<input type="text" name="guest_name" required autoComplete="name" /></label>
                 <div className="two">
                   <label>Email<input type="email" name="guest_email" required autoComplete="email" /></label>

@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 import ReserveModal from "./ReserveModal";
+import SlipFinder, { type FinderPick } from "./SlipFinder";
+import RequestModal from "./RequestModal";
 
 // Whole dollars show as $280; anything with cents always shows two decimals ($2,553.60).
 const money = (n: number | null | undefined) => (n == null ? "" : `$${n.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })}`);
@@ -28,6 +30,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
   // Oct 24 (per Mely): on a computer, resting the mouse on a slip shows a small preview card.
   const [hover, setHover] = useState<string | null>(null);
   const [booking, setBooking] = useState<PublicSlip | null>(null);
+  // Oct 26 (per Mely): what the slip finder picked (boat, stay, dates) to prefill the forms.
+  const [pick, setPick] = useState<FinderPick | null>(null);
+  const [requesting, setRequesting] = useState<{ slip: PublicSlip | null } | null>(null);
   const [onDate, setOnDate] = useState("");
   const [type, setType] = useState<SlipType | "all">("all");
   const hasMap = slips.some((s) => s.map);
@@ -103,6 +108,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
           <button type="button" onClick={() => setType("all")}>Show all</button>
         </p>
       )}
+      <SlipFinder slips={slips} onPick={(p) => { setPick(p); if (p.mode === "book") setBooking(p.slip); else setRequesting({ slip: p.slip }); }} />
       <div className="mr-tools">
         <label>
           My boat length (ft)
@@ -277,7 +283,8 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
         </div>
       )}
 
-      {booking && <ReserveModal slip={booking} startDate={onDate || undefined} onClose={() => setBooking(null)} />}
+      {booking && <ReserveModal slip={booking} startDate={pick?.slip.id === booking.id ? pick.start : onDate || undefined} boat={pick?.slip.id === booking.id ? pick.boat : undefined} stayPrefill={pick?.slip.id === booking.id && ["transient_daily", "transient_weekly", "monthly"].includes(pick.stay) ? (pick.stay as any) : undefined} unitsPrefill={pick?.slip.id === booking.id ? pick.units : undefined} onClose={() => { setBooking(null); setPick(null); }} />}
+      {requesting && <RequestModal slip={requesting.slip} stay={pick?.stay} units={pick?.units} start={pick?.start} boat={pick?.boat} onClose={() => { setRequesting(null); setPick(null); }} />}
     </div>
   );
 }

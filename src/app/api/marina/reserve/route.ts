@@ -5,6 +5,7 @@ import { getMarinaForRequest } from "@/lib/marina/company";
 import { startInvoicePayment } from "@/lib/marina/checkout";
 import { round2, todayET } from "@/lib/marina/data";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
+import { fitCheck } from "@/lib/marina/fit";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -97,6 +98,17 @@ export async function POST(req: Request) {
   }
   if (slip.max_draft_ft && boatDraft && boatDraft > Number(slip.max_draft_ft)) {
     return NextResponse.json({ error: `This slip allows a draft up to ${slip.max_draft_ft} ft.` }, { status: 400 });
+  }
+  // Oct 26 (per Mely): shore power the boat needs (30A / 50A…) against the slip's power.
+  const fit = fitCheck(slip, { length: boatLen, beam: boatBeam, draft: boatDraft, power: text(b.power_needed, 10) || null });
+  if (!fit.fits) return NextResponse.json({ error: fit.checks.filter((c) => !c.ok).map((c) => c.detail).join(". ") + "." }, { status: 400 });
+  // A boat kept in the slip, or a contract (sent or signed) for these dates, takes the slip.
+  const [{ data: keptBoat }, { data: kContracts }] = await Promise.all([
+    supabaseAdmin.from("marina_boats").select("id").eq("company_id", company.id).eq("slip_id", slip.id).limit(1),
+    supabaseAdmin.from("marina_contracts").select("id").eq("company_id", company.id).eq("slip_id", slip.id).in("status", ["sent", "viewed", "signed"]).lte("start_date", end).gte("end_date", start).limit(1),
+  ]);
+  if ((keptBoat?.length && !(opensOn && start >= opensOn)) || kContracts?.length) {
+    return NextResponse.json({ error: "That slip is already taken for those dates. Try other dates or another slip." }, { status: 409 });
   }
 
   const { data: rate } = await supabaseAdmin
