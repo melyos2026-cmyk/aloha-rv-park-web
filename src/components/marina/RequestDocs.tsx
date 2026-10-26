@@ -27,7 +27,8 @@ export default function RequestDocs({ number, t, docs, need }: { number: string;
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     if (!r.ok) { setErr(j.error || "Could not upload."); return; }
-    setFile(null); setExp(""); setMsg("Thank you! The office will review it.");
+    setFile(null); setExp("");
+    if (j.decision === "rejected") setErr(j.message); else setMsg(j.message || "Thank you! The office will review it.");
     router.refresh();
   }
 
@@ -41,9 +42,9 @@ export default function RequestDocs({ number, t, docs, need }: { number: string;
       )}
       <div className="mr-docs-form">
         <label>Document<select value={type} onChange={(e) => setType(e.target.value)}>{Object.entries(LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-        {(type === "insurance" || type === "registration") && <label>Expiration date (on the document)<input type="date" value={exp} onChange={(e) => setExp(e.target.value)} /></label>}
+        {(type === "insurance" || type === "registration") && <label>Expiration date (optional, we read it from the document)<input type="date" value={exp} onChange={(e) => setExp(e.target.value)} /></label>}
         <label className="mr-docs-file">{file ? `✓ ${file.name}` : "Take a photo or choose a file (photo or PDF)"}<input type="file" accept="image/*,application/pdf" capture="environment" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
-        <button type="button" className="mr-btn dark" disabled={busy || !file} onClick={upload}>{busy ? "Uploading…" : "Send to the office"}</button>
+        <button type="button" className="mr-btn dark" disabled={busy || !file} onClick={upload}>{busy ? "Checking your document…" : "Send"}</button>
       </div>
       {msg && <div className="mr-ok" style={{ marginTop: 8 }}>{msg}</div>}
       {err && <div className="mr-error" role="alert" style={{ marginTop: 8 }}>{err}</div>}
