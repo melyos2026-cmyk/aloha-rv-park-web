@@ -1,19 +1,18 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
-import { isDemoCompany } from "@/lib/marina/host";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { todayET } from "@/lib/marina/data";
 import { recommendSlips, newRequestToken, addDaysISO, addMonthsISO, STAY_LABEL } from "@/lib/marina/slipRequests";
 import { fitCheck } from "@/lib/marina/fit";
+import { autoQuote, mailOffice, mailBoater, trackerLink } from "@/lib/marina/slipAuto";
+import { money } from "@/lib/marina/contractCore";
 
 // POST /api/marina/slip-request — Oct 26 (per Mely): a boater asks for a monthly, seasonal or
 // annual slip. The request carries the boat's size and power; the system checks the fit and saves
 // the best free slips for the office. The boater gets a private tracker link.
-const resend = new Resend(process.env.RESEND_API_KEY);
 const text = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
 const feet = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 && n < 1000 ? Math.round(n * 10) / 10 : null; };
 const esc = (v: unknown) => String(v ?? "").replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] as string));
@@ -67,26 +66,37 @@ export async function POST(req: Request) {
       full_name: name, email, phone, boat_name: text(b.boat_name, 80) || null, boat_make_model: text(b.boat_make_model, 120) || null,
       boat_length_ft: length, boat_beam_ft: beam, boat_draft_ft: draft, power_needed: power, stay_type: stay, slip_type_wanted: type,
       start_date: start, end_date: end, preferred_slip_id: pref?.id || null, recommended_slip_ids: ranked.slice(0, 5).map((x) => x.slip.id), notes: text(b.notes, 1000) || null,
-    }).select("request_number").single();
+    }).select("*").single();
     if (data) row = data; else if (error?.code !== "23505") return NextResponse.json({ error: /marina_slip_requests/.test(error?.message || "") ? "Slip requests are not set up yet. Please call the marina." : "Could not send your request. Please try again." }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: "Could not send your request. Please try again." }, { status: 500 });
 
+  // Oct 26 (per Mely): automatic mode → the price is ready right away (and held for some days).
+  const auto = await autoQuote(company, row).catch((e: any) => ({ ok: false as const, reason: e?.message || "error" }));
+  const link = trackerLink(company, row);
+  const boatTxt = `${length} ft boat${row.boat_name ? ` "${esc(row.boat_name)}"` : ""}`;
   await supabaseAdmin.from("resident_update_notifications").insert({
     company_id: company.id, resident_name: name, update_type: "slip_request",
-    message: `New slip request ${row.request_number}: ${STAY_LABEL[stay]} from ${start}, ${length} ft boat${pref ? `, asked for ${pref.slip_name}` : ""}. ${ranked.length ? `${ranked.length} free slip${ranked.length === 1 ? "" : "s"} fit.` : "No free slip fits these dates."}`,
+    message: auto.ok
+      ? `New slip request ${row.request_number}: ${STAY_LABEL[stay]} from ${start}, ${length} ft boat. The system offered slip ${auto.details.slip_name} at ${money(auto.details.total)}; waiting for the boater to accept.`
+      : `New slip request ${row.request_number}: ${STAY_LABEL[stay]} from ${start}, ${length} ft boat${pref ? `, asked for ${pref.slip_name}` : ""}. Needs the office: ${auto.reason}`,
   }).then(() => null, () => null);
-
-  const link = `https://${company.domain}/marina/request/${encodeURIComponent(row.request_number)}?t=${token}`;
-  if (!isDemoCompany(company) && company.domain) {
-    try {
-      await resend.emails.send({
-        from: `${company.company_name} <noreply@aloharvparkfl.com>`, to: email, subject: `We got your slip request (${row.request_number})`,
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f2540"><h2 style="margin:0 0 8px">Thanks, ${esc(name)}!</h2><p>We received your ${esc(STAY_LABEL[stay].toLowerCase())} slip request for a ${esc(length)} ft boat starting ${esc(start)}. The office will review it and send you a contract with the price.</p><p><a href="${link}" style="display:inline-block;background:#0f2540;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Track my request</a></p></div>`,
-      });
-    } catch (e: any) { console.error("slip request email failed:", e?.message); }
+  await mailOffice(company, auto.ok ? `New slip request ${row.request_number}: price sent automatically` : `New slip request ${row.request_number}: needs your review`, [
+    `<b>${esc(name)}</b> (${esc(email)}, ${esc(phone)}) asked for a <b>${esc(STAY_LABEL[stay].toLowerCase())}</b> slip from ${esc(start)} to ${esc(end)} for a ${boatTxt}.`,
+    auto.ok ? `The system offered <b>slip ${esc(auto.details.slip_name)}</b> at <b>${money(auto.details.total)}</b>${auto.details.deposit ? ` + ${money(auto.details.deposit)} deposit` : ""}. Nothing to do: when they accept, the contract is sent by itself.` : `<b>Needs you:</b> ${esc(auto.reason)} Open Slip Requests to choose a slip and send the price, or decline.`,
+    ...(row.notes ? [`Their note: “${esc(row.notes)}”`] : []),
+  ]);
+  if (auto.ok) {
+    await mailBoater(company, email, `Your price for slip ${auto.details.slip_name} (${row.request_number})`, `Your price is ready, ${name.split(" ")[0]}!`, [
+      `Slip <b>${esc(auto.details.slip_name)}</b>${auto.details.dock ? ` (${esc(auto.details.dock)})` : ""} fits your ${boatTxt}, from ${esc(start)} to ${esc(end)}: <b>${money(auto.details.total)}</b>${auto.details.deposit ? ` plus a refundable deposit of ${money(auto.details.deposit)}` : ""}, paid ${esc(auto.details.terms)}.`,
+      `It's held for you until ${esc(auto.expires.slice(0, 10))}. Accept it and your contract arrives by email to sign online.`,
+    ], { label: "See and accept my price", url: link });
+  } else {
+    await mailBoater(company, email, `We got your slip request (${row.request_number})`, `Thanks, ${name}!`, [
+      `We received your ${esc(STAY_LABEL[stay].toLowerCase())} slip request for a ${boatTxt} starting ${esc(start)}. The office will review it and send you the price.`,
+    ], { label: "Track my request", url: link });
   }
-  return NextResponse.json({ ok: true, number: row.request_number, link: `/marina/request/${encodeURIComponent(row.request_number)}?t=${token}`, fits: ranked.length });
+  return NextResponse.json({ ok: true, number: row.request_number, link: `/marina/request/${encodeURIComponent(row.request_number)}?t=${token}`, fits: ranked.length, priced: auto.ok });
 }
 
 // GET — the signed-in boater's own requests (Boater login card).

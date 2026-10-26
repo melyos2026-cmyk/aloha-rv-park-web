@@ -49,3 +49,12 @@ export async function getMarinaForRequest(req: Request): Promise<MarinaCompany |
   const company = await byHostname(hostnameFromRequest(req));
   return company?.business_type === "marina" ? company : null;
 }
+
+// Oct 26: the marina by id (payment hooks and other background steps that have no request host).
+export async function getMarinaById(id: string): Promise<MarinaCompany | null> {
+  const { data } = await supabaseAdmin.from("public_company_profile").select(COLUMNS).eq("id", id).maybeSingle();
+  const c = (data as MarinaCompany | null) || null;
+  if (!c || c.business_type !== "marina") return null;
+  const { data: flag, error } = await supabaseAdmin.from("companies").select("is_demo").eq("id", c.id).maybeSingle();
+  return { ...c, is_demo: error || !flag ? true : flag.is_demo === true };
+}

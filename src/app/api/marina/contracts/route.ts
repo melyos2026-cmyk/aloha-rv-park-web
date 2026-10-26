@@ -88,6 +88,29 @@ export async function POST(req: Request) {
   if (k.status === "cancelled") return NextResponse.json({ error: "The marina cancelled this contract." }, { status: 400 });
   if (sha(k.body) !== k.body_hash) return NextResponse.json({ error: "This contract can't be signed. Please contact the marina office." }, { status: 409 });
 
+  // Oct 26 (per Mely): for a new slip (slip request), insurance and registration must be uploaded
+  // before signing (the office reviews them while the boater signs and pays). Marina setting.
+  {
+    const { data: rq } = await supabaseAdmin.from("marina_slip_requests").select("id").eq("company_id", w.company.id).eq("contract_id", k.id).maybeSingle();
+    if (rq) {
+      const [st, ins] = await Promise.all([
+        supabaseAdmin.from("marina_booking_settings").select("docs_before_sign").eq("company_id", w.company.id).maybeSingle(),
+        supabaseAdmin.from("company_modules").select("enabled").eq("company_id", w.company.id).eq("module_name", "marina_require_insurance").maybeSingle(),
+      ]);
+      if (!st.error && st.data?.docs_before_sign !== false) {
+        const need = [...(ins.data?.enabled === false ? [] : ["insurance"]), "registration"];
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+        const { data: docs } = await supabaseAdmin.from("marina_boat_documents").select("doc_type, status, expires_on, boat_id, request_id").eq("company_id", w.company.id)
+          .or(`request_id.eq.${rq.id}${k.boat_id ? `,boat_id.eq.${k.boat_id}` : ""}`);
+        const missing = need.filter((t) => !(docs || []).some((d: any) => d.doc_type === t && d.status !== "rejected" && (!d.expires_on || d.expires_on >= today)));
+        if (missing.length) {
+          const label = missing.map((t) => (t === "insurance" ? "insurance" : "registration")).join(" and ");
+          return NextResponse.json({ error: `Before signing, upload your boat's ${label} in Documents (on this page). It takes a minute with your phone camera.`, needDocs: missing }, { status: 409 });
+        }
+      }
+    }
+  }
+
   const { data: member } = await supabaseAdmin.from("marina_members").select("full_name, email").eq("id", w.memberId).eq("company_id", w.company.id).maybeSingle();
   if (!member) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   const name = String(b.name || "").trim().replace(/\s+/g, " ").slice(0, 120);

@@ -72,8 +72,28 @@ export async function requestProgress(companyId: string, r: any) {
 
 // Called after a contract is signed (website contracts route).
 export async function slipRequestSigned(companyId: string, contractId: string) {
-  await supabaseAdmin.from("marina_slip_requests").update({ status: "signed", signed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("company_id", companyId).eq("contract_id", contractId).eq("status", "contract_sent").then(() => null, () => null);
+  const { data } = await supabaseAdmin.from("marina_slip_requests").update({ status: "signed", signed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("company_id", companyId).eq("contract_id", contractId).eq("status", "contract_sent").select("*").then((x) => x, () => ({ data: null } as any));
+  const r = data?.[0];
+  if (r) await requestEmails(companyId, r, "signed").catch(() => null);
+}
+
+// Oct 26 (per Mely — every email automatic): the office and the boater hear about each step.
+async function requestEmails(companyId: string, r: any, step: "signed" | "confirmed") {
+  const [{ getMarinaById }, auto] = await Promise.all([import("./company"), import("./slipAuto")]);
+  const company = await getMarinaById(companyId);
+  if (!company) return;
+  const { data: slip } = r.slip_id ? await supabaseAdmin.from("marina_slips").select("slip_name, dock").eq("id", r.slip_id).eq("company_id", companyId).maybeSingle() : { data: null as any };
+  const name = String(r.full_name).replace(/[<>&"]/g, "");
+  if (step === "signed") {
+    await auto.mailOffice(company, `${r.full_name} signed the contract for slip ${slip?.slip_name || ""}`, [`<b>${name}</b> signed the contract for slip <b>${slip?.slip_name || ""}</b> (request ${r.request_number}). When the deposit is paid the slip is confirmed automatically.`]);
+    return;
+  }
+  await auto.mailOffice(company, `Confirmed: slip ${slip?.slip_name || ""} for ${r.full_name}`, [`The deposit is paid. <b>${name}</b> is confirmed in slip <b>${slip?.slip_name || ""}</b> from ${r.start_date} (request ${r.request_number}). The boat is placed in the slip.`]);
+  await auto.mailBoater(company, r.email, `Confirmed: slip ${slip?.slip_name || ""} is yours`, `Welcome aboard, ${String(r.full_name).split(" ")[0]}!`, [
+    `Your deposit was received and slip <b>${slip?.slip_name || ""}</b>${slip?.dock ? ` (${slip.dock})` : ""} is confirmed from ${r.start_date}.`,
+    "Your contract, invoices and marina pass are in your boater account.",
+  ], { label: "Open my account", url: `https://${company.domain}/marina/account` });
 }
 
 // Called when a payment is recorded on an invoice: the deposit (or the first invoice when there is
@@ -97,6 +117,7 @@ export async function slipRequestPaidForInvoice(companyId: string, invoiceId: st
     await supabaseAdmin.from("marina_boats").update({ slip_id: r.slip_id, contract_type: r.stay_type }).eq("id", r.boat_id).eq("company_id", companyId);
     await supabaseAdmin.from("marina_slips").update({ status: r.start_date <= new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }) ? "occupied" : "reserved" }).eq("id", r.slip_id).eq("company_id", companyId).neq("status", "maintenance");
   }
+  await requestEmails(companyId, r, "confirmed").catch(() => null);
   if (r.waitlist_id) await supabaseAdmin.from("marina_waitlist").update({ status: "assigned" }).eq("id", r.waitlist_id).eq("company_id", companyId).then(() => null, () => null);
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: companyId, resident_name: r.full_name, update_type: "slip_request", message: `Slip request ${r.request_number} confirmed: deposit paid by ${r.full_name}. The boat is assigned to its slip.` }).then(() => null, () => null);
 }

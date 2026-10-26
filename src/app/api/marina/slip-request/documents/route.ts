@@ -4,6 +4,7 @@ import { getMarinaForRequest } from "@/lib/marina/company";
 import { sniff } from "@/lib/marina/fileType";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { loadRequestByLink } from "@/lib/marina/slipRequests";
+import { mailOffice } from "@/lib/marina/slipAuto";
 
 // Oct 26 (per Mely): a boater who is new to the marina has no boat on file yet, so they send
 // insurance, registration and ID with their slip request, from the private tracker page.
@@ -46,5 +47,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: /request_id|boat_id/.test(error.message) ? "Document uploads with requests are not set up yet. Please email them to the office." : "Could not save the document." }, { status: 500 });
   }
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: r.full_name, update_type: "boat_document", message: `${r.full_name} sent ${LABEL[type].toLowerCase()} with slip request ${r.request_number}. Review it in Document Review.` }).then(() => null, () => null);
+  await mailOffice(company, `New document to review: ${LABEL[type]} from ${r.full_name}`, [`<b>${String(r.full_name).replace(/[<>&"]/g, "")}</b> sent their ${LABEL[type].toLowerCase()} with slip request ${r.request_number}. Approve it or send it back in Document Review.`]);
   return NextResponse.json({ ok: true });
 }

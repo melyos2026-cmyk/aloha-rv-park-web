@@ -5,6 +5,7 @@ import { getMarinaSession } from "@/lib/marina/session";
 import { sniff } from "@/lib/marina/fileType";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { todayET } from "@/lib/marina/data";
+import { mailOffice } from "@/lib/marina/slipAuto";
 
 // Oct 26 (per Mely — "paperwork comes to you"): the boater's documents in Boater login.
 // GET → each boat: what the marina needs (insurance, registration), what's on file, what's waiting
@@ -85,5 +86,6 @@ export async function POST(req: Request) {
   }
   const { data: m } = await supabaseAdmin.from("marina_members").select("full_name").eq("id", w.memberId).maybeSingle();
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: w.company.id, resident_name: m?.full_name || "Boater", update_type: "boat_document", message: `${m?.full_name || "A boater"} uploaded ${label.toLowerCase()} for ${boat.boat_name}. Review it in Document Review.` }).then(() => null, () => null);
+  await mailOffice(w.company, `New document to review: ${label} for ${boat.boat_name}`, [`<b>${String(m?.full_name || "A boater").replace(/[<>&"]/g, "")}</b> uploaded the ${label.toLowerCase()} for ${String(boat.boat_name).replace(/[<>&"]/g, "")}. Approve it or send it back in Document Review.`]);
   return NextResponse.json({ ok: true });
 }

@@ -23,6 +23,7 @@ export default function RequestModal({ slip, stay: stay0, units: units0, start: 
     const j = await r.json().catch(() => ({}));
     setState("idle");
     if (!r.ok) { setErr(j.error || "Could not send your request."); return; }
+    if (j.priced && j.link) { window.location.href = j.link; return; }
     setDone({ number: j.number, link: j.link });
   }
 
@@ -34,7 +35,7 @@ export default function RequestModal({ slip, stay: stay0, units: units0, start: 
           <div className="mr-modal-body">
             <h3 className="mr-modal-h">Request sent</h3>
             <div className="mr-ok" role="status">Your request number is <b>{done.number}</b>.</div>
-            <p>The office will review it and send you a contract with the price. You&apos;ll sign it and pay the deposit online. Follow every step on your tracker page — we also emailed you the link.</p>
+            <p>The office will review it and send you the price. You&apos;ll accept it, sign the contract and pay the deposit online. Follow every step on your tracker page; we also emailed you the link.</p>
             <a className="mr-btn dark" href={done.link}>Track my request</a>
           </div>
         ) : (

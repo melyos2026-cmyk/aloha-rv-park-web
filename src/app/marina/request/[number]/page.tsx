@@ -93,6 +93,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           {r.status === "quote_accepted" && <p>Nothing to do right now. Your contract arrives by email at <b>{r.email}</b>.</p>}
           {r.status === "contract_sent" && (<>
             <p>Read and sign your contract online. It shows the price{p.amount ? ` (${money(p.amount)})` : ""}{p.deposit ? ` and a refundable deposit of ${money(p.deposit)}` : ""}.</p>
+            {docs && need.some((n) => !docs.some((d: any) => d.doc_type === n && d.status !== "rejected")) && <p><b>Before signing:</b> send your {need.filter((n) => !docs.some((d: any) => d.doc_type === n && d.status !== "rejected")).join(" and ")} below.</p>}
             <a className="mr-btn dark" href="/marina/account">Sign in to sign</a>
           </>)}
           {r.status === "signed" && !p.depositPaid && (<>
