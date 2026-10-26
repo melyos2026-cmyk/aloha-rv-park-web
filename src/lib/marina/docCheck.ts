@@ -150,7 +150,7 @@ export function verify(x: Extracted | null, want: { type: string; owner: string;
 
 // Run the check on a saved document row and apply the decision. Returns what the boater sees.
 type BoatRef = { id?: string; name?: string | null; length?: number | null; hull_id?: string | null; registration?: string | null };
-export async function autoCheckDocument(p: { companyId: string; marinaName: string; docId: string; buf: Buffer; type: string; docType: string; owner: string; boat: BoatRef | null; otherBoats?: BoatRef[] }) {
+export async function autoCheckDocument(p: { companyId: string; marinaName: string; docId: string; buf: Buffer; type: string; docType: string; owner: string; boat: BoatRef | null; otherBoats?: BoatRef[]; notify?: { memberId?: string | null; email?: string | null; link?: string | null } }) {
   const settings = await docSettings(p.companyId);
   if (!settings.auto) return { decision: "pending" as const, message: "Thank you! The office will review it." };
   const x = await readDocument(p.buf, p.type);
@@ -173,6 +173,8 @@ export async function autoCheckDocument(p: { companyId: string; marinaName: stri
   const { error } = await supabaseAdmin.from("marina_boat_documents").update(patch).eq("id", p.docId).eq("company_id", p.companyId);
   if (error) return { decision: "pending" as const, message: "Thank you! The office will review it." };
   const label = LABEL[p.docType] || "document";
+  // Oct 26 (per Mely): the boater is told what happened (account message + email), not only on screen.
+  await tellBoater(p, r, movedTo, label).catch(() => null);
   return {
     decision: r.decision,
     message: r.decision === "approved" ? `Approved! Your ${label}${movedTo ? ` for ${movedTo.name}` : ""} is on file${r.expires_on ? ` until ${r.expires_on}` : ""}.${movedTo ? ` (It's for ${movedTo.name}, so we filed it there.)` : ""}`
@@ -194,4 +196,31 @@ function friendly(r: CheckResult): string {
   if (c.label === "Marina as additional insured") return "the marina must be listed as additional insured on your policy.";
   if (c.label === "Liability") return "the liability coverage looks lower than the marina requires.";
   return "";
+}
+
+async function tellBoater(p: { companyId: string; marinaName: string; boat: BoatRef | null; notify?: { memberId?: string | null; email?: string | null; link?: string | null } }, r: CheckResult, movedTo: BoatRef | null, label: string) {
+  if (!p.notify) return;
+  const chose = p.boat?.name || "the boat you chose";
+  let subject = "", body = "";
+  if (r.decision === "approved" && movedTo) {
+    subject = `Your ${label} was filed under ${movedTo.name}`;
+    body = `You uploaded this ${label} for ${chose}, but it's for ${movedTo.name}, so we filed it there and approved it${r.expires_on ? ` (valid until ${r.expires_on})` : ""}. If ${chose} still needs its own ${label}, please upload it choosing ${chose}.`;
+  } else if (r.decision === "rejected") {
+    subject = `Please upload your ${label} again`;
+    body = `${r.note || `We couldn't accept the ${label} you uploaded for ${chose}.`}`;
+  } else if (r.decision === "pending") {
+    const why = friendly(r);
+    const boatWrong = r.checks.some((c) => c.label === "Boat" && c.ok === false);
+    subject = `We received your ${label}`;
+    body = `Thank you! The office will take a quick look at the ${label} you uploaded for ${chose}${why ? ` because ${why}` : "."}${boatWrong ? ` If you chose the wrong boat, upload it again choosing the right one.` : ""}`;
+  } else return;
+  if (p.notify.memberId) {
+    await supabaseAdmin.from("marina_messages").insert({ company_id: p.companyId, member_id: p.notify.memberId, direction: "office", sent_by_name: "Marina office", subject: subject.slice(0, 200), body }).then(() => null, () => null);
+  }
+  if (p.notify.email) {
+    const { getMarinaById } = await import("./company");
+    const { mailBoater } = await import("./slipAuto");
+    const company = await getMarinaById(p.companyId);
+    if (company) await mailBoater(company, p.notify.email, subject, subject, [body.replace(/[<>&"]/g, "")], { label: "Open", url: p.notify.link || `https://${company.domain}/marina/account#documents` });
+  }
 }
