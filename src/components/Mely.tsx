@@ -115,6 +115,7 @@ export default function Mely() {
     <>
       {showTooltip && !open && (
         <div
+          className="mely-tip"
           onClick={() => { setOpen(true); setShowTooltip(false); }}
           style={{
             position: "fixed", bottom: 94, right: 24, zIndex: 999,
@@ -129,7 +130,7 @@ export default function Mely() {
         </div>
       )}
 
-      <button onClick={() => { setOpen(!open); setShowTooltip(false); }} style={{
+      <button className="mely-fab" onClick={() => { setOpen(!open); setShowTooltip(false); }} style={{
         position: "fixed", bottom: 24, right: 24, zIndex: 1000,
         width: 60, height: 60, borderRadius: "50%",
         background: open ? "var(--sea)" : "var(--white)",
@@ -146,7 +147,7 @@ export default function Mely() {
       </button>
 
       {open && (
-        <div style={{
+        <div className="mely-chat" style={{
           position: "fixed", bottom: 96, right: 24, zIndex: 1000,
           width: 360, height: 500,
           background: "var(--white)", borderRadius: 16,

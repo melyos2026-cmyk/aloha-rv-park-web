@@ -60,3 +60,67 @@ button:active,
 .ck-btn { background: #0f2540; color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-weight: 700; cursor: pointer; }
 .ck-btn.ghost { background: #fff; color: #0f2540; border: 1px solid #b8c7d1; }
 @media (max-width: 560px) { .ck-actions { width: 100%; } .ck-actions .ck-btn { flex: 1 1 auto; } }
+
+/* Oct 26 (per Mely): resident portal with a menu — side menu on a computer,
+   tab bar on a phone, Home with "Needs your attention" and preview tiles.
+   Same layout as the marina boater account, in the park's own colors. */
+.rp-hero { background: var(--sea); color: var(--black); padding: 32px 24px; }
+.rp-wrap { padding: 32px 24px 60px; background: var(--offwhite); min-height: 500px; }
+.rp-portal { max-width: 1140px; margin: 0 auto; display: grid; grid-template-columns: 230px minmax(0, 1fr); align-items: start; column-gap: 28px; }
+.rp-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.rp-main > * { min-width: 0; }
+.rp-anchor { display: flex; flex-direction: column; gap: 16px; }
+.rp-anchor:empty { display: none; }
+.rp-anchor > * { margin-top: 0 !important; }
+.rp-nav { position: sticky; top: 110px; display: grid; gap: 2px; background: var(--white); border: 1.5px solid var(--border); border-radius: 8px; padding: 8px; }
+.rp-nav button, .rp-more-list button { display: flex; align-items: center; gap: 11px; width: 100%; padding: 11px 12px; border: 0; border-radius: 6px; background: none; color: var(--black); font: 600 15px 'DM Sans', sans-serif; text-align: left; cursor: pointer; }
+.rp-nav button:hover, .rp-more-list button:hover { background: var(--gray-light); transform: none; box-shadow: none; }
+.rp-nav button.on { background: var(--sea); color: var(--green); box-shadow: inset 3px 0 0 var(--red); font-weight: 700; }
+.rp-nav button span:nth-of-type(1), .rp-more-list button span:nth-of-type(1) { flex: 1; }
+.rp-nav-badge { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #fff; font: 700 11.5px/20px 'DM Sans', sans-serif; text-align: center; }
+.rp-balance { background: var(--white); border: 2px solid var(--red); border-radius: 8px; padding: 22px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.rp-balance-big { font-size: 34px; font-weight: 900; line-height: 1.15; }
+.rp-balance-btns { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.rp-link-btn { background: none; border: 0; padding: 6px 2px; color: var(--green); font-weight: 700; font-size: 14px; cursor: pointer; }
+.rp-link-btn:hover { transform: none; box-shadow: none; text-decoration: underline; }
+.rp-attn { background: var(--white); border: 1.5px solid #f59e0b; box-shadow: 0 0 0 2px #fde68a; border-radius: 8px; padding: 20px 20px 10px; }
+.rp-attn-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 6px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--black); text-align: left; font: inherit; cursor: pointer; }
+.rp-attn h2 + .rp-attn-row { border-top: 0; }
+.rp-attn-row:hover { background: #f8fafc; transform: none; box-shadow: none; }
+.rp-attn-text { flex: 1; min-width: 0; display: grid; }
+.rp-attn-text small { color: var(--gray); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-attn-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; background: #0369a1; }
+.rp-attn-dot.bad { background: #dc2626; }
+.rp-attn-dot.warn { background: #d97706; }
+.rp-attn-go { color: #94a3b8; font-weight: 700; }
+.rp-allset { background: var(--mint); border: 1.5px solid #86efac; color: var(--green); border-radius: 8px; padding: 14px 18px; font-weight: 600; }
+.rp-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.rp-tile { display: flex; flex-direction: column; gap: 3px; text-align: left; background: var(--white); border: 1.5px solid var(--border); border-radius: 8px; padding: 18px 20px; color: var(--black); font: inherit; cursor: pointer; min-width: 0; }
+.rp-tile:hover { border-color: var(--black); }
+.rp-tile-h { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--gray); }
+.rp-tile-main { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 18px; margin-top: 2px; overflow-wrap: anywhere; }
+.rp-tile-line { color: #475569; font-size: 14px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.rp-tile-cta { margin-top: auto; padding-top: 8px; font-weight: 700; font-size: 14px; color: var(--red); }
+.rp-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.rp-links:empty { display: none; }
+.rp-more-list { display: grid; background: var(--white); border: 1.5px solid var(--border); border-radius: 8px; padding: 6px; }
+.rp-tabbar { display: none; }
+@media (max-width: 860px) {
+  .rp-hero { padding: 22px 16px; }
+  .rp-wrap { padding: 20px 16px 110px; }
+  .rp-portal { grid-template-columns: minmax(0, 1fr); }
+  .rp-nav { display: none; }
+  .rp-tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 900; background: var(--white); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 24px -16px rgba(0,0,0,.35); }
+  .rp-tabbar button { position: relative; display: grid; justify-items: center; gap: 2px; border: 0; background: none; color: var(--gray); font: 600 11px 'DM Sans', sans-serif; padding: 4px 0; cursor: pointer; }
+  .rp-tabbar button:hover, .rp-tabbar button:active { transform: none; box-shadow: none; }
+  .rp-tabbar button.on { color: var(--green); }
+  .rp-tabbar button.on svg { stroke-width: 2.4; }
+  .rp-tabbar .rp-nav-badge { position: absolute; top: 0; left: calc(50% + 6px); min-width: 17px; height: 17px; line-height: 17px; font-size: 10px; padding: 0 4px; }
+  .rp-notif-pop { position: fixed !important; top: 100px !important; left: 12px !important; right: 12px !important; width: auto !important; }
+  /* lift the chat button (and its tip/window) above the tab bar */
+  body:has(.rp-tabbar) .mely-fab { bottom: 80px !important; width: 54px !important; height: 54px !important; right: 16px !important; }
+  body:has(.rp-tabbar) .mely-tip { bottom: 144px !important; right: 16px !important; }
+  body:has(.rp-tabbar) .mely-chat { bottom: 144px !important; right: 12px !important; left: 12px; width: auto !important; height: min(500px, calc(100vh - 190px)) !important; }
+  body:has(.rp-tabbar) .ck-banner { bottom: 76px; }
+}
+@media (max-width: 560px) { .rp-tiles { grid-template-columns: minmax(0, 1fr); } .rp-links { grid-template-columns: minmax(0, 1fr); } }
