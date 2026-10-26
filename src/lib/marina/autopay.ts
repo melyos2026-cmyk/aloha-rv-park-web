@@ -67,9 +67,11 @@ export async function confirmAutopay(company: MarinaCompany, memberId: string, s
   if (!stripe || !/^cs_[A-Za-z0-9_]+$/.test(sessionId)) return { error: "Session not found." };
   const s = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["setup_intent.payment_method"] });
   if (s.metadata?.type !== "marina_autopay_setup" || s.metadata.company_id !== company.id || s.metadata.member_id !== memberId) return { error: "Session not found." };
+  if (Date.now() - s.created * 1000 > 24 * 3600000) return { error: "This link is old. Please turn autopay on again." };
   const si = s.setup_intent as Stripe.SetupIntent | null;
   const pm = si?.payment_method as Stripe.PaymentMethod | null;
-  if (!si || !pm || (si.status !== "succeeded" && si.status !== "processing")) return { error: "The card or bank account was not saved. Please try again." };
+  if (si?.status === "processing" || si?.status === "requires_action") return { error: "Your bank is still verifying the account (this can take 1–2 days). Turn autopay on again once it's verified." };
+  if (!si || !pm || si.status !== "succeeded") return { error: "The card or bank account was not saved. Please try again." };
   const method = pm.type === "us_bank_account" ? "ach" : "card";
   const label = method === "ach" ? `${pm.us_bank_account?.bank_name || "Bank"} •••• ${pm.us_bank_account?.last4 || ""}` : `${String(pm.card?.brand || "Card").replace(/^\w/, (c) => c.toUpperCase())} •••• ${pm.card?.last4 || ""}`;
   const { error } = await supabaseAdmin.from("marina_members").update({
@@ -97,8 +99,11 @@ export async function dueForAutopay(companyId: string, memberId: string) {
   if (!ids.length) return [];
   const { data: pays } = await supabaseAdmin.from("marina_invoice_payments").select("invoice_id, amount, returned_at").eq("company_id", companyId).in("invoice_id", ids);
   const paid: Record<string, number> = {};
-  for (const p of pays || []) if (!p.returned_at) paid[p.invoice_id] = (paid[p.invoice_id] || 0) + Number(p.amount);
-  return (invs || []).map((i: any) => ({ ...i, balance: round2(Number(i.amount) - (paid[i.id] || 0)) })).filter((i) => i.balance > 0).slice(0, MAX_INVOICES);
+  const returned = new Set<string>();
+  for (const p of pays || []) { if (p.returned_at) returned.add(p.invoice_id); else paid[p.invoice_id] = (paid[p.invoice_id] || 0) + Number(p.amount); }
+  // An invoice that had money given back (refund, dispute, bounced payment) is never charged again
+  // automatically; the office or the boater decides.
+  return (invs || []).map((i: any) => ({ ...i, balance: round2(Number(i.amount) - (paid[i.id] || 0)) })).filter((i) => i.balance > 0 && !returned.has(i.id)).slice(0, MAX_INVOICES);
 }
 
 // One boater, one day: charge everything due in one payment.
@@ -108,8 +113,8 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
   const today = todayET();
   const total = round2(rows.reduce((a, r) => a + r.balance, 0));
   const ach = m.autopay_method === "ach";
-  const demo = isDemoCompany(company) || m.autopay_method === "demo";
-  const { data: fs } = await supabaseAdmin.from("company_fee_settings").select("pass_processing_fee_to_resident").eq("company_id", company.id).maybeSingle();
+  const demo = isDemoCompany(company);
+  const { data: fs } = await supabaseAdmin.from("company_fee_settings").select("pass_processing_fee_to_resident, ach_enabled").eq("company_id", company.id).maybeSingle();
   const passFee = fs?.pass_processing_fee_to_resident !== false;
   const fee = demo ? 0 : round2(ach ? calculateAchFee(total) : calculateProcessingFee(total));
   const charge = round2(total + (passFee ? fee : 0));
@@ -119,59 +124,120 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
   }).select("id").single();
   if (attErr || !att) return { status: "skipped" };
   const finish = (patch: Record<string, unknown>) => supabaseAdmin.from("marina_autopay_attempts").update(patch).eq("id", att.id);
+  const fail = async (msg: string, emailIt = true) => {
+    await finish({ status: "failed", error: msg });
+    await supabaseAdmin.from("marina_members").update({ autopay_failed_at: new Date().toISOString(), autopay_fail_note: msg }).eq("id", m.id).eq("company_id", company.id);
+    if (emailIt) await mailBoater(company, m.email, "Autopay didn't go through", "We couldn't charge your autopay", [
+      `We tried to charge ${esc(m.autopay_label || "your saved payment method")} ${money(charge)} for ${rows.map((r) => esc(r.invoice_number)).join(", ")}: ${esc(msg)}`,
+      "Please pay in your account or update your card or bank. We'll try again tomorrow.",
+    ], { label: "Pay or update", url: `https://${company.domain}/marina/account#autopay` });
+    return { status: "failed" as const, amount: total, error: msg };
+  };
 
   if (demo) {
-    const ref = `autopay:demo-${crypto.randomUUID()}`;
-    for (let i = 0; i < rows.length; i++) await recordMarinaOnlinePayment({ companyId: company.id, invoiceId: rows[i].id, amount: rows[i].balance, reference: `${ref}:${i + 1}`, demo: true, method: "card" });
+    const ref = `autopay:demo-${att.id}`;
+    for (let i = 0; i < rows.length; i++) await recordMarinaOnlinePayment({ companyId: company.id, invoiceId: rows[i].id, amount: rows[i].balance, reference: `${ref}:${i + 1}`, demo: true, method: "card" }).catch(() => null);
     await finish({ status: "succeeded" });
     return { status: "succeeded", amount: total };
   }
-  if (!stripe || !m.stripe_customer_id || !m.autopay_pm_id) { await finish({ status: "failed", error: "No saved payment method" }); return { status: "failed", error: "No saved payment method" }; }
+  if (m.autopay_method === "demo") return fail("This payment method was saved on a demo. Please turn autopay on again with a real card or bank account.");
+  if (ach && fs?.ach_enabled === false) return fail("The marina no longer takes bank payments. Please turn autopay on again with a card.");
+  if (!stripe || !m.stripe_customer_id || !m.autopay_pm_id) return fail("No saved payment method. Please turn autopay on again.");
   const split = await resolveConnectSplit(company.id, charge, total + (passFee ? 0 : -fee));
-  if (!split) { await finish({ status: "failed", error: "Marina has no connected Stripe account" }); return { status: "failed", error: "The marina's online payments are not set up." }; }
+  if (!split) return fail("The marina's online payments are not set up.", false);
+
+  // Only the charge itself is in this try: anything that fails AFTER money moved must never be
+  // reported as a failed payment.
+  let pi: Stripe.PaymentIntent;
   try {
-    const pi = await stripe.paymentIntents.create({
+    pi = await stripe.paymentIntents.create({
       amount: Math.round(charge * 100), currency: "usd", customer: m.stripe_customer_id, payment_method: m.autopay_pm_id, off_session: true, confirm: true,
       payment_method_types: [ach ? "us_bank_account" : "card"],
       description: `Autopay — ${company.company_name}: ${rows.map((r) => r.invoice_number).join(", ")}`.slice(0, 900),
       application_fee_amount: split.applicationFeeAmountCents, transfer_data: { destination: split.connectedAccountId },
       ...(split.statementDescriptorSuffix ? { statement_descriptor_suffix: split.statementDescriptorSuffix } : {}),
-      metadata: { type: "marina_autopay", company_id: company.id, member_id: m.id, allocs: rows.map((r) => `${r.id}:${r.balance}`).join(";").slice(0, 490) },
-    }, { idempotencyKey: `marina-autopay-${m.id}-${today}-${Math.round(charge * 100)}` });
-    const ok = pi.status === "succeeded", pending = pi.status === "processing";
-    if (ok || pending) {
-      for (let i = 0; i < rows.length; i++) await recordMarinaOnlinePayment({ companyId: company.id, invoiceId: rows[i].id, amount: rows[i].balance, reference: `autopay:${pi.id}:${i + 1}`, method: ach ? "ach" : "card", pending });
-      await finish({ status: ok ? "succeeded" : "processing", payment_intent_id: pi.id });
-      await supabaseAdmin.from("marina_members").update({ autopay_failed_at: null, autopay_fail_note: null }).eq("id", m.id).eq("company_id", company.id);
-      await mailBoater(company, m.email, `Autopay: ${money(charge)} ${ok ? "paid" : "is on its way from your bank"}`, ok ? "Payment received, thank you!" : "Bank payment started", [
-        `We charged ${esc(m.autopay_label || "your saved payment method")} <b>${money(charge)}</b> for ${rows.map((r) => esc(r.invoice_number)).join(", ")}${passFee && fee ? ` (includes a ${money(fee)} processing fee)` : ""}.`,
-        pending ? "Bank payments take 3 to 5 business days to clear." : "Your receipt is in your boater account.",
-      ], { label: "Open my account", url: `https://${company.domain}/marina/account` });
-      return { status: ok ? "succeeded" : "processing", amount: total };
-    }
-    throw new Error(`Payment ${pi.status}`);
+      metadata: { type: "marina_autopay", company_id: company.id, member_id: m.id, attempt_id: att.id, allocs: rows.map((r) => `${r.id}:${r.balance}`).join(";").slice(0, 490) },
+    }, { idempotencyKey: `marina-autopay-${att.id}` });
   } catch (e: any) {
-    const msg = String(e?.raw?.message || e?.message || "The payment was declined.").slice(0, 300);
-    await finish({ status: "failed", error: msg });
-    await supabaseAdmin.from("marina_members").update({ autopay_failed_at: new Date().toISOString(), autopay_fail_note: msg }).eq("id", m.id).eq("company_id", company.id);
-    await mailBoater(company, m.email, "Autopay didn't go through", "We couldn't charge your autopay", [
-      `We tried to charge ${esc(m.autopay_label || "your saved payment method")} ${money(charge)} for ${rows.map((r) => esc(r.invoice_number)).join(", ")}: ${esc(msg)}`,
-      "Please pay in your account or update your card. We'll try again tomorrow.",
-    ], { label: "Pay or update my card", url: `https://${company.domain}/marina/account` });
-    return { status: "failed", amount: total, error: msg };
+    const id = e?.raw?.payment_intent?.id || null;
+    if (id) await finish({ payment_intent_id: id });
+    return fail(String(e?.raw?.message || e?.message || "The payment was declined.").slice(0, 300));
   }
+  await finish({ payment_intent_id: pi.id });
+  if (pi.status !== "succeeded" && pi.status !== "processing") return fail(`Payment ${pi.status.replace(/_/g, " ")}`);
+  return afterCharge(company, m, att.id, pi, rows, charge, passFee ? fee : 0);
 }
 
-// Bank autopay payments still pending: ask Stripe and settle or fail them.
+// Money moved (or is moving, for a bank): record it on the invoices, receipt to the boater.
+async function afterCharge(company: MarinaCompany, m: any, attemptId: string, pi: Stripe.PaymentIntent, rows: { id: string; balance: number; invoice_number: string }[], charge: number, fee: number) {
+  const ok = pi.status === "succeeded";
+  const ach = pi.payment_method_types?.includes("us_bank_account");
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const r = await recordMarinaOnlinePayment({ companyId: company.id, invoiceId: rows[i].id, amount: rows[i].balance, reference: `autopay:${pi.id}:${i + 1}`, method: ach ? "ach" : "card", pending: !ok });
+      if (!r.ok) console.error("autopay record failed", pi.id, r.error);
+    }
+  } catch (e: any) { console.error("autopay record error", pi.id, e?.message); }
+  await supabaseAdmin.from("marina_autopay_attempts").update({ status: ok ? "succeeded" : "processing" }).eq("id", attemptId);
+  await supabaseAdmin.from("marina_members").update({ autopay_failed_at: null, autopay_fail_note: null }).eq("id", m.id).eq("company_id", company.id);
+  await mailBoater(company, m.email, `Autopay: ${money(charge)} ${ok ? "paid" : "is on its way from your bank"}`, ok ? "Payment received, thank you!" : "Bank payment started", [
+    `We charged ${esc(m.autopay_label || "your saved payment method")} <b>${money(charge)}</b> for ${rows.map((r) => esc(r.invoice_number)).join(", ")}${fee ? ` (includes a ${money(fee)} processing fee)` : ""}.`,
+    ok ? "Your receipt is in your boater account." : "Bank payments take 3 to 5 business days to clear.",
+  ], { label: "Open my account", url: `https://${company.domain}/marina/account` }).catch(() => null);
+  return { status: ok ? ("succeeded" as const) : ("processing" as const), amount: round2(rows.reduce((a, r) => a + r.balance, 0)) };
+}
+
+// A bank autopay payment bounced: reopen the invoices, tell the boater and the office, and pause
+// bank autopay after the second bounce in 60 days (bank rules allow only limited retries).
+export async function autopayBankFailed(companyId: string, piId: string, reason: string) {
+  await failMarinaAchPayment(companyId, `autopay:${piId}`, reason);
+  const { data: a } = await supabaseAdmin.from("marina_autopay_attempts").update({ status: "failed", error: reason.slice(0, 300) }).eq("company_id", companyId).eq("payment_intent_id", piId).neq("status", "failed").select("member_id");
+  const memberId = a?.[0]?.member_id;
+  if (!memberId) return;
+  const since = new Date(Date.now() - 60 * 86400000).toISOString();
+  const { count } = await supabaseAdmin.from("marina_autopay_attempts").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("member_id", memberId).eq("method", "ach").eq("status", "failed").gte("created_at", since);
+  const pause = (count || 0) >= 2;
+  const { data: m } = await supabaseAdmin.from("marina_members").update({ autopay_failed_at: new Date().toISOString(), autopay_fail_note: `Bank payment returned: ${reason}`.slice(0, 300), ...(pause ? { autopay_enabled: false } : {}) }).eq("id", memberId).eq("company_id", companyId).select("full_name, email, autopay_label").maybeSingle();
+  const { getMarinaById } = await import("./company");
+  const company = await getMarinaById(companyId);
+  if (!company || !m) return;
+  await mailBoater(company, m.email, "Your bank returned the autopay payment", "Your bank returned the payment", [
+    `Your bank didn't complete the autopay payment from ${esc(m.autopay_label || "your account")}: ${esc(reason)}. The invoices are open again.`,
+    pause ? "Autopay is paused after two returned payments. Please pay in your account and turn autopay on again with a card or another account." : "Please make sure the account has funds, or pay in your account.",
+  ], { label: "Open my account", url: `https://${company.domain}/marina/account#autopay` });
+  await mailOffice(company, `Autopay bank payment returned: ${m.full_name}`, [`${esc(m.full_name)}'s bank returned an autopay payment (${esc(reason)}). The invoices are open again.${pause ? " Autopay was paused after the second return." : ""}`]);
+}
+
+// Pending bank payments and stuck attempts: ask Stripe and settle, record or fail them.
 export async function reconcileAutopay() {
   if (!stripe) return 0;
-  const { data } = await supabaseAdmin.from("marina_autopay_attempts").select("id, company_id, payment_intent_id").eq("status", "processing").not("payment_intent_id", "is", null).limit(200);
   let n = 0;
+  const { data } = await supabaseAdmin.from("marina_autopay_attempts").select("id, company_id, payment_intent_id").eq("status", "processing").not("payment_intent_id", "is", null).limit(200);
   for (const a of data || []) {
     const pi = await stripe.paymentIntents.retrieve(a.payment_intent_id).catch(() => null);
     if (!pi) continue;
     if (pi.status === "succeeded") { await settleMarinaAchPayment(a.company_id, `autopay:${pi.id}`); await supabaseAdmin.from("marina_autopay_attempts").update({ status: "succeeded" }).eq("id", a.id); n++; }
-    else if (pi.status === "requires_payment_method" || pi.status === "canceled") { await failMarinaAchPayment(a.company_id, `autopay:${pi.id}`, pi.last_payment_error?.message || "the bank declined the transfer"); await supabaseAdmin.from("marina_autopay_attempts").update({ status: "failed", error: pi.last_payment_error?.message || "Bank declined" }).eq("id", a.id); n++; }
+    else if (pi.status === "requires_payment_method" || pi.status === "canceled") { await autopayBankFailed(a.company_id, pi.id, pi.last_payment_error?.message || "the bank declined the transfer"); n++; }
+  }
+  // Attempts that never got their payment id saved (the run stopped right after charging): find
+  // the payment in Stripe by attempt id; record it if money moved, otherwise close the attempt.
+  const old = new Date(Date.now() - 30 * 60000).toISOString();
+  const { data: stuck } = await supabaseAdmin.from("marina_autopay_attempts").select("*").eq("status", "processing").is("payment_intent_id", null).lt("created_at", old).limit(50);
+  for (const a of stuck || []) {
+    const found = await stripe.paymentIntents.search({ query: `metadata['attempt_id']:'${a.id}'`, limit: 1 }).catch(() => null);
+    const pi = found?.data[0];
+    if (!pi || !["succeeded", "processing"].includes(pi.status)) {
+      await supabaseAdmin.from("marina_autopay_attempts").update({ status: "failed", error: pi ? `Payment ${pi.status}` : "Not charged", payment_intent_id: pi?.id || null }).eq("id", a.id);
+      continue;
+    }
+    await supabaseAdmin.from("marina_autopay_attempts").update({ payment_intent_id: pi.id }).eq("id", a.id);
+    const allocs = String(pi.metadata?.allocs || "").split(";").map((x) => x.split(":")).filter((x) => x.length === 2);
+    const { data: invs } = await supabaseAdmin.from("marina_invoices").select("id, invoice_number").eq("company_id", a.company_id).in("id", allocs.map((x) => x[0]).concat(["00000000-0000-0000-0000-000000000000"]));
+    const rows = allocs.map(([id, amt]) => ({ id, balance: Number(amt), invoice_number: (invs || []).find((i: any) => i.id === id)?.invoice_number || "invoice" }));
+    const { getMarinaById } = await import("./company");
+    const company = await getMarinaById(a.company_id);
+    const { data: m } = await supabaseAdmin.from("marina_members").select("*").eq("id", a.member_id).eq("company_id", a.company_id).maybeSingle();
+    if (company && m) { await afterCharge(company, m, a.id, pi, rows, pi.amount / 100, Number(a.fee || 0)); n++; }
   }
   return n;
 }

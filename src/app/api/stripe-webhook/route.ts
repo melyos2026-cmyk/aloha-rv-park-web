@@ -9,7 +9,8 @@ import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
-import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment } from "@/lib/marina/payments";
+import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
+import { autopayBankFailed } from "@/lib/marina/autopay";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
 
@@ -435,7 +436,7 @@ async function handleWebhook(req: Request) {
         }
         // Oct 26: marina autopay charges (no checkout session) — metadata is on the charge.
         if (!s && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id) {
-          if (charge.refunded) await failMarinaAchPayment(charge.metadata.company_id, `autopay:${pi}`, "refunded in Stripe");
+          if (charge.refunded) await returnMarinaPaymentRef(charge.metadata.company_id, `autopay:${pi}`, "Refunded in Stripe");
           else await logSystemHealthIssue({ companyId: charge.metadata.company_id, issueType: "marina_online_payment_returned", source: "stripe_webhook", message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on a marina autopay charge. Record the refund on the invoice.` });
         }
       } catch (e: any) { console.error("marina refund sync:", e?.message); }
@@ -555,6 +556,10 @@ async function handleWebhook(req: Request) {
         if (s0 && (s0.metadata?.type === "marina_invoice" || s0.metadata?.type === "marina_invoices") && s0.metadata.company_id) {
           await returnMarinaOnlinePayment(s0.metadata.company_id, s0.id, `Lost card dispute ${dispute.id}`);
         }
+        // Oct 26: autopay charges have no checkout session; the metadata is on the charge.
+        if (!s0 && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id) {
+          await returnMarinaPaymentRef(charge.metadata.company_id, `autopay:${piId}`, `Lost card dispute ${dispute.id}`);
+        }
       }
       const source = `Stripe lost dispute ${dispute.id}`;
       const { data: done } = await supabase.from("melyos_billing_charges").select("id").eq("source", source).limit(1);
@@ -640,7 +645,7 @@ async function handleWebhook(req: Request) {
     const intent = event.data.object as Stripe.PaymentIntent;
     if (intent.metadata?.type === "marina_autopay" && intent.metadata.company_id) {
       if (event.type === "payment_intent.succeeded") await settleMarinaAchPayment(intent.metadata.company_id, `autopay:${intent.id}`);
-      else await failMarinaAchPayment(intent.metadata.company_id, `autopay:${intent.id}`, intent.last_payment_error?.message || "the payment failed");
+      else await autopayBankFailed(intent.metadata.company_id, intent.id, intent.last_payment_error?.message || "the payment failed");
       return NextResponse.json({ received: true });
     }
   }

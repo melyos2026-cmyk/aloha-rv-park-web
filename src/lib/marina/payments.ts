@@ -162,3 +162,12 @@ export async function returnMarinaOnlinePayment(companyId: string, sessionId: st
     }).catch(() => null);
   }
 }
+
+// Oct 26: money given back (refund or lost dispute) on payments recorded under a reference
+// ("autopay:<pi>" and "autopay:<pi>:N"). The invoices reopen; autopay never charges an invoice
+// that had money returned (see dueForAutopay), so a refund is not charged again.
+export async function returnMarinaPaymentRef(companyId: string, reference: string, reason: string) {
+  await supabaseAdmin.from("marina_invoice_payments")
+    .update({ returned_at: new Date().toISOString(), return_reason: reason.slice(0, 300), recorded_by_name: "Online payment (returned)", pending_at: null })
+    .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).is("returned_at", null);
+}
