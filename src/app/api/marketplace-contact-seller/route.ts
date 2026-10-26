@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { hostnameFromRequest } from "@/lib/marina/host";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 // POST /api/marketplace-contact-seller
 // Body: { listingId, buyerName, buyerEmail, buyerPhone, message }
@@ -19,6 +20,10 @@ function escapeHtml(value: unknown): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Oct 26 (security review): at most 5 messages to sellers per device per hour (spam).
+  if (await tooManyFromIp(req, "marketplace-contact-seller", 5)) {
+    return NextResponse.json({ error: "Too many messages. Please try again later." }, { status: 429 });
+  }
   const body = await req.json();
   const listingId = body?.listingId;
   // Oct 20 (security review): trim + cap lengths on the free-text fields.

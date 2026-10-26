@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   // residentId isn't proof of who's actually calling.
   let residentName: string | null = null;
   if (residentId) {
-    const authError = requireMatchingSession(req, residentId);
+    const authError = await requireMatchingSession(req, residentId);
     if (authError) return authError;
 
     const { data: resident } = await supabase

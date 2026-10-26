@@ -38,3 +38,10 @@ export function isDemoDomain(domain: string | null | undefined): boolean {
 export function isDemoCompany(c: { domain?: string | null; is_demo?: boolean | null } | null | undefined): boolean {
   return !!c && (c.is_demo === true || isDemoDomain(c.domain));
 }
+
+// Oct 26 (security review): a CONFIRMED demo — the is_demo flag was read and is true, or the site is
+// on a melyos.io address. Use this (not isDemoCompany) for anything that reveals secrets on screen,
+// like the sign-in code. isDemoCompany stays fail-closed for payments.
+export function isConfirmedDemo(c: { domain?: string | null; demo_flag_confirmed?: boolean | null } | null | undefined): boolean {
+  return !!c && (c.demo_flag_confirmed === true || isDemoDomain(c.domain));
+}

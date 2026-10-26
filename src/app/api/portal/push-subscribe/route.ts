@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const { residentId, subscription } = body;
   if (!residentId) return NextResponse.json({ error: "residentId is required." }, { status: 400 });
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
     return NextResponse.json({ error: "Invalid subscription." }, { status: 400 });
@@ -37,7 +37,7 @@ export async function DELETE(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const { residentId, endpoint } = body;
   if (!residentId || !endpoint) return NextResponse.json({ error: "residentId and endpoint are required." }, { status: 400 });
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
   await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint).eq("user_id", String(residentId)).eq("audience", "resident");
   return NextResponse.json({ success: true });

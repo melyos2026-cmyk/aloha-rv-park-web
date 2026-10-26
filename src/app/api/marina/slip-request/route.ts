@@ -105,10 +105,12 @@ export async function GET(req: Request) {
   if (!company) return NextResponse.json({ requests: [] });
   const s = await getMarinaSession(req);
   if (!s || s.companyId !== company.id) return NextResponse.json({ requests: [] });
-  const { data: m } = await supabaseAdmin.from("marina_members").select("email").eq("id", s.memberId).eq("company_id", company.id).maybeSingle();
-  const { data, error } = await supabaseAdmin.from("marina_slip_requests").select("request_number, access_token, status, stay_type, start_date, end_date, boat_name, member_id, email")
-    .eq("company_id", company.id).order("created_at", { ascending: false }).limit(50);
+  // Oct 26 (security review): only requests submitted while signed in as this boater (member_id).
+  // Matching by email also listed requests anyone typed that email into without signing in —
+  // and handed out their private links (access_token). Those people got their link by email.
+  const { data, error } = await supabaseAdmin.from("marina_slip_requests").select("request_number, access_token, status, stay_type, start_date, end_date, boat_name, member_id")
+    .eq("company_id", company.id).eq("member_id", s.memberId).order("created_at", { ascending: false }).limit(10);
   if (error) return NextResponse.json({ requests: [] });
-  const mine = (data || []).filter((r: any) => r.member_id === s.memberId || (m?.email && String(r.email).toLowerCase() === String(m.email).toLowerCase())).slice(0, 10);
+  const mine = data || [];
   return NextResponse.json({ requests: mine.map((r: any) => ({ number: r.request_number, status: r.status, stay: r.stay_type, start: r.start_date, end: r.end_date, boat: r.boat_name, link: `/marina/request/${encodeURIComponent(r.request_number)}?t=${r.access_token}` })) });
 }

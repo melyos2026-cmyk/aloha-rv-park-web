@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
-import { isDemoCompany } from "@/lib/marina/host";
+import { isConfirmedDemo } from "@/lib/marina/host";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { hashLoginCode, newLoginCode } from "@/lib/marina/session";
 import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
 
@@ -17,6 +18,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export async function POST(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  // Oct 26 (security review): per-device limit so one person can't request codes for many emails.
+  if (await tooManyFromIp(req, `marina-code-request|${company.id}`, 20)) {
+    return NextResponse.json({ error: "Too many attempts. Please wait a while and try again." }, { status: 429 });
+  }
 
   let email = "";
   try {
@@ -24,7 +29,9 @@ export async function POST(req: Request) {
   } catch {}
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
 
-  const demo = isDemoCompany(company);
+  // Oct 26 (security review): the code is only shown on screen on a CONFIRMED demo. If the demo
+  // flag couldn't be read for a real marina, the code is emailed like normal (never revealed).
+  const demo = isConfirmedDemo(company);
   const generic = { ok: true };
 
   // Oct 20 (security review): exact (case-insensitive) email match only —

@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     // signed-in resident's own portal session may do this now. (The
     // no-login guest invoice link uses create-guest-invoice-checkout,
     // which is unaffected.)
-    const authError = requireMatchingSession(req, residentId);
+    const authError = await requireMatchingSession(req, residentId);
     if (authError) return authError;
 
     const { data: resident } = await supabase

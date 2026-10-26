@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,8 +8,17 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(req: Request) {
-  const body = await req.json();
-  const { path, referrer, visitorId } = body;
+  // Oct 26 (security review): at most 300 page views per device per hour (no flooding the stats
+  // table or the geolocation lookup).
+  if (await tooManyFromIp(req, "track-visit", 300)) {
+    return NextResponse.json({ success: false }, { status: 429 });
+  }
+  const body = await req.json().catch(() => ({}));
+  // Oct 26 (security review): cap lengths — these go straight into page_views.
+  const capStr = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : null);
+  const path = capStr(body?.path, 500);
+  const referrer = capStr(body?.referrer, 500);
+  const visitorId = capStr(body?.visitorId, 100);
 
   // SECURITY: derive company_id from the request's own Host header instead
   // of trusting the client-sent companyId — same cross-tenant pattern fixed

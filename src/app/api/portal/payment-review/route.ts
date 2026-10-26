@@ -14,7 +14,7 @@ import { getPortalSession } from "@/lib/portalSession";
 // Derives the resident purely from the signed session cookie — never
 // trusts a client-supplied residentId at all, so there's no id to swap.
 export async function GET(req: NextRequest) {
-  const session = getPortalSession(req);
+  const session = await getPortalSession(req);
   if (!session) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }

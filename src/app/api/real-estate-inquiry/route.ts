@@ -1,23 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Oct 26 (security review): every visitor field is escaped before going into the email HTML,
+// and stripped of < > in the admin bell text, so a visitor can't inject links/markup.
+function escapeHtml(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+}
+const plain = (v: unknown) => String(v ?? "").replace(/[<>\u0000-\u001f]/g, " ").trim();
+// Oct 26 (security review): length caps on every visitor field.
+const cap = (v: unknown, n: number) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, n) : "");
+
 export async function POST(req: NextRequest) {
   try {
-    const {
-      listingId,
-      listingTitle,
-      fullName,
-      email,
-      phone,
-      preferredDate,
-      preferredTime,
-      message,
-    } = await req.json();
+    // Oct 26 (security review): at most 5 inquiries per device per hour (spam / email flooding).
+    if (await tooManyFromIp(req, "real-estate-inquiry", 5)) {
+      return NextResponse.json({ error: "Too many requests. Please try again later or call the office." }, { status: 429 });
+    }
+    const body = await req.json();
+    const listingId = cap(body.listingId, 64) || null;
+    const listingTitle = cap(body.listingTitle, 200);
+    const fullName = cap(body.fullName, 120);
+    const email = cap(body.email, 160);
+    const phone = cap(body.phone, 40);
+    const preferredDate = /^\d{4}-\d{2}-\d{2}$/.test(cap(body.preferredDate, 10)) ? cap(body.preferredDate, 10) : "";
+    const preferredTime = cap(body.preferredTime, 40);
+    const message = cap(body.message, 2000);
 
     if (!fullName || !email) {
       return NextResponse.json(
@@ -88,7 +101,7 @@ export async function POST(req: NextRequest) {
       company_id: company.id,
       resident_name: fullName,
       update_type: "real_estate_inquiry",
-      message: `New appointment request${listingTitle ? ` for "${listingTitle}"` : ""} from ${fullName} (${email}${phone ? `, ${phone}` : ""}).`,
+      message: `New appointment request${listingTitle ? ` for "${plain(listingTitle)}"` : ""} from ${plain(fullName)} (${plain(email)}${phone ? `, ${plain(phone)}` : ""}).`,
     });
 
     // Notify the company's own contact email (falls back to Mely's if unset).
@@ -105,14 +118,14 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
             to: notifyEmail,
-            subject: `New appointment request${listingTitle ? `: ${listingTitle}` : ""} from ${fullName}`,
+            subject: `New appointment request${listingTitle ? `: ${plain(listingTitle)}` : ""} from ${plain(fullName)}`.replace(/[\r\n]+/g, " "),
             html: `
-              <p>${fullName} requested an appointment${listingTitle ? ` about "${listingTitle}"` : ""}.</p>
+              <p>${escapeHtml(fullName)} requested an appointment${listingTitle ? ` about "${escapeHtml(listingTitle)}"` : ""}.</p>
               <ul>
-                <li>Email: ${email}</li>
-                <li>Phone: ${phone || "not provided"}</li>
-                <li>Preferred date/time: ${preferredDate || "not specified"} ${preferredTime || ""}</li>
-                ${message ? `<li>Message: ${message}</li>` : ""}
+                <li>Email: ${escapeHtml(email)}</li>
+                <li>Phone: ${escapeHtml(phone || "not provided")}</li>
+                <li>Preferred date/time: ${escapeHtml(preferredDate || "not specified")} ${escapeHtml(preferredTime)}</li>
+                ${message ? `<li>Message: ${escapeHtml(message)}</li>` : ""}
               </ul>
             `,
           }),

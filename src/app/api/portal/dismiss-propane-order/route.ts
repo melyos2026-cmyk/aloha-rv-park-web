@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   // same email/lot match propane-orders GET uses) before hiding it —
   // otherwise anyone could dismiss another resident's propane order from
   // their own view just by knowing/guessing its id.
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { data: resident } = await supabase

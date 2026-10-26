@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { hostnameFromRequest } from "@/lib/marina/host";
 
 // GET /api/public-marketplace-listings?company_id=...
 //
@@ -15,10 +16,17 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 // was silently never showing). Resolved server-side instead so neither
 // table needs any public policy at all for this to work.
 export async function GET(req: NextRequest) {
-  const companyId = req.nextUrl.searchParams.get("company_id");
-  if (!companyId) {
-    return NextResponse.json({ error: "company_id is required." }, { status: 400 });
+  // Oct 26 (security review): the company is the one whose website this is (Host header), not a
+  // ?company_id anyone can change to list another park's listings. The only caller is this site's
+  // own /marketplace page (no embeds on other domains), so the param is now ignored.
+  const host = hostnameFromRequest(req);
+  const { data: hostCompany } = host
+    ? await supabase.from("companies").select("id").in("domain", [host, `www.${host}`]).limit(1).maybeSingle()
+    : { data: null };
+  if (!hostCompany?.id) {
+    return NextResponse.json({ listings: [] });
   }
+  const companyId = hostCompany.id;
 
   const { data: listings, error } = await supabase
     .from("marketplace_listings")

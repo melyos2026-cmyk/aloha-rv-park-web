@@ -12,6 +12,7 @@ import {
   matchesAny,
   type LotPricing,
 } from "@/lib/applicationPricing";
+import { PARK_LEASE_TERM_FIELDS, parkLeaseTerms } from "@/lib/leaseTerms";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,6 +26,10 @@ const supabaseAdmin = createClient(
 // set of fields /apply/page.tsx builds today — if a NEW applicant field is
 // added to that form, add its column here too, or it will be dropped (a
 // warning with the dropped keys is logged).
+// Oct 26 (security review): the lease's legal terms (late/NSF fees, pet deposit, notice days,
+// park rules, additional provisions, RV removal, utilities, payment instructions, parking…) were
+// in this list, so an applicant could rewrite their own lease. They are now filled by the server
+// from the park's Lease Defaults (see src/lib/leaseTerms.ts) — the filter below removes them.
 const APPLICANT_FIELDS = new Set([
   "form_draft_json",
   "full_name",
@@ -95,11 +100,12 @@ const APPLICANT_FIELDS = new Set([
   "tenant_signature_name",
   "tenant_signature_agreed",
   "background_check_consent_given",
-]);
+].filter((k) => !PARK_LEASE_TERM_FIELDS.has(k)));
 
 // Fields the browser still sends but the server now computes itself — not
 // worth a warning when they're dropped.
 const SERVER_COMPUTED_FIELDS = new Set([
+  ...PARK_LEASE_TERM_FIELDS, // Oct 26 (security review): lease terms, filled from Lease Defaults
   "company_id",
   "status",
   "filled_by",
@@ -417,6 +423,9 @@ export async function POST(req: NextRequest) {
 
   const finalRow: Record<string, any> = {
     ...clean,
+    // Oct 26 (security review): lease terms always come from the park's Lease Defaults (the same
+    // values the applicant's form displays), never from the browser.
+    ...parkLeaseTerms(leaseDefaults),
     form_draft_json: formDraft,
     company_id: companyId,
     status: "Pending",

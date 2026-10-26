@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   // SECURITY: require the caller's own signed session to match this
   // residentId — otherwise anyone could read another resident's propane
   // purchase history/QR pickup codes just by knowing/guessing their id.
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { data: resident, error: residentError } = await supabase
@@ -46,9 +46,15 @@ export async function GET(req: NextRequest) {
     console.error("portal propane-orders:", byEmail.error?.message || byLot.error?.message);
     return NextResponse.json({ error: "Could not load your propane orders." }, { status: 500 });
   }
+  // Oct 26 (security review): a resident can change their own email (save-resident-info) to the
+  // email a guest used at checkout. Orders matched ONLY by email are still listed, but without the
+  // pickup QR code (qr_token) — that stays with the buyer's own email/receipt. Orders on the
+  // resident's own lot keep the QR as before.
+  const lotIds = new Set((byLot.data || []).map((o: any) => o.id));
   const seen = new Set<string>();
-  const data = [...(byEmail.data || []), ...(byLot.data || [])]
+  const data = [...(byLot.data || []), ...(byEmail.data || [])]
     .filter((o: any) => (seen.has(o.id) ? false : (seen.add(o.id), true)))
+    .map((o: any) => (lotIds.has(o.id) ? o : { ...o, qr_token: null }))
     .sort((a: any, b: any) => String(b.paid_at || "").localeCompare(String(a.paid_at || "")));
 
   return NextResponse.json({ orders: data ?? [] });

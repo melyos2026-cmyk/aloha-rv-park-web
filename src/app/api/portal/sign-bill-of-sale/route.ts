@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   // SECURITY: same pattern as every other resident-facing portal route —
   // require the caller's own signed session to match this residentId.
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const result = await signBillOfSaleAsResident(residentId, companyId, signatureName.trim());

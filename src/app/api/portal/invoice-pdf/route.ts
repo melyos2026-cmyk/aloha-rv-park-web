@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "invoiceId and residentId are required." }, { status: 400 });
   }
 
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { data: invoice } = await supabase

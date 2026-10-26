@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   // residentId — otherwise anyone knowing/guessing a residentId could file
   // a fake move-out request (and end someone else's lease) on their
   // behalf. This was the original gap that started this audit.
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { data: resident } = await supabase

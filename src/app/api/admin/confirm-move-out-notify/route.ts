@@ -50,7 +50,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Oct 20 (security review): see comment above.
-  if (adminSessionSecretConfigured()) {
+  // Oct 26 (security review): fail closed — without ADMIN_SESSION_SECRET no admin session can be
+  // checked, so the request is refused instead of skipping the check.
+  if (!adminSessionSecretConfigured()) {
+    return NextResponse.json({ error: "Admin sign-in is not configured on this site." }, { status: 503, headers: CORS_HEADERS });
+  }
+  {
     const denied = requireAdminSessionForCompany(req, resident.company_id);
     if (denied) return denied;
   }

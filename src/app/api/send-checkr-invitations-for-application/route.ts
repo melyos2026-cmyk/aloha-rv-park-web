@@ -48,10 +48,45 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const result = await sendCheckrInvitationsForApplication(applicationId);
+  // Oct 26 (security review): claim the send atomically — only the one request that flips
+  // checkr_invitation_sent_at from empty gets to send. Two calls at the same moment used to both
+  // pass the check above and both order (paid) background checks.
+  const claimAt = new Date().toISOString();
+  const { data: claimed } = await supabaseAdmin
+    .from("resident_applications")
+    .update({ checkr_invitation_sent_at: claimAt })
+    .eq("id", applicationId)
+    .eq("application_fee_paid", true)
+    .is("checkr_invitation_sent_at", null)
+    .select("id");
+  if (!claimed?.length) {
+    return NextResponse.json(
+      { error: "Background check invitations were already sent for this application." },
+      { status: 409 }
+    );
+  }
+  // If nothing was actually sent, give the claim back so the office can retry (as before).
+  const releaseClaim = () =>
+    supabaseAdmin
+      .from("resident_applications")
+      .update({ checkr_invitation_sent_at: null })
+      .eq("id", applicationId)
+      .eq("checkr_invitation_sent_at", claimAt)
+      .then(() => null, () => null);
+
+  let result: Awaited<ReturnType<typeof sendCheckrInvitationsForApplication>>;
+  try {
+    result = await sendCheckrInvitationsForApplication(applicationId);
+  } catch (e) {
+    await releaseClaim();
+    throw e;
+  }
   if (!result.success) {
+    await releaseClaim();
     return NextResponse.json({ error: result.error || "Could not send background check invitations." }, { status: 500 });
   }
+  // checkrCostTotal is 0 only when every invitation failed (the flow then leaves sent_at alone).
+  if (!result.checkrCostTotal) await releaseClaim();
 
   return NextResponse.json({
     success: true,

@@ -108,8 +108,9 @@ export function verify(x: Extracted | null, want: { type: string; owner: string;
   if (!x) return { decision: "pending", reasons: ["The system couldn't read this file automatically."], note: null, expires_on: null, extracted: null, checks };
   if (!x.readable) return { decision: "rejected", reasons: ["The photo can't be read."], note: "We couldn't read this photo. Take it again in good light with the whole document visible, or upload the PDF.", expires_on: null, extracted: x, checks: [{ label: "Readable", ok: false, detail: "Blurry, cut off or not a document" }] };
 
-  const typeOk = !x.doc_type || x.doc_type === want.type || (want.type === "other");
-  checks.push({ label: "Kind of document", ok: typeOk, detail: typeOk ? `Looks like ${LABEL[x.doc_type || want.type] || "a document"}` : `Looks like ${LABEL[x.doc_type || ""] || x.doc_type}, not ${label}` });
+  // Oct 26 (security review): no document type from the AI is never an automatic pass — the office looks.
+  const typeOk = !!x.doc_type && (x.doc_type === want.type || want.type === "other");
+  checks.push({ label: "Kind of document", ok: typeOk, detail: typeOk ? `Looks like ${LABEL[x.doc_type || want.type] || "a document"}` : !x.doc_type ? "Kind of document not recognized" : `Looks like ${LABEL[x.doc_type || ""] || x.doc_type}, not ${label}` });
 
   const needsDate = ["insurance", "registration", "id"].includes(want.type);
   const exp = x.expires_on;
@@ -129,8 +130,10 @@ export function verify(x: Extracted | null, want: { type: string; owner: string;
       const byHull = !!b.hull_id && !!x.hull_id && compact(b.hull_id) === compact(x.hull_id);
       const byReg = !!b.registration && !!x.registration_number && compact(b.registration) === compact(x.registration_number);
       const byLen = !!b.length && !!x.length_ft && Math.abs(Number(b.length) - x.length_ft) <= 2;
-      boatOk = byName || byHull || byReg || byLen;
-      why = boatOk ? [byName && "name", byHull && "hull ID", byReg && "registration number", byLen && "length"].filter(Boolean).join(", ") + " match" : `Document shows ${[x.boat_name, x.length_ft && `${x.length_ft} ft`, x.hull_id].filter(Boolean).join(" · ") || "no boat details"}`;
+      // Oct 26 (security review): length alone (or name alone) no longer passes — any boat of a
+      // similar size would. Needs the hull ID or registration number, or the name AND the length.
+      boatOk = byHull || byReg || (byName && byLen);
+      why = boatOk ? [byName && "name", byHull && "hull ID", byReg && "registration number", byLen && "length"].filter(Boolean).join(", ") + " match" : (byName || byLen) ? `Only the ${byName ? "name" : "length"} matches (needs hull ID, registration number, or name and length)` : `Document shows ${[x.boat_name, x.length_ft && `${x.length_ft} ft`, x.hull_id].filter(Boolean).join(" · ") || "no boat details"}`;
     }
     checks.push({ label: "Boat", ok: boatOk, detail: why });
   }
@@ -191,7 +194,7 @@ function friendly(r: CheckResult): string {
   if (!c) return r.extracted ? "" : "we couldn't read the file automatically.";
   if (c.label === "Boat") return `the document seems to be for ${x?.boat_name || "another boat"}, not this boat.`;
   if (c.label === "Name") return `the name on it (${x?.holder_names?.[0] || "not found"}) is different from your account.`;
-  if (c.label === "Kind of document") return `it looks like a different kind of document.`;
+  if (c.label === "Kind of document") return x?.doc_type ? `it looks like a different kind of document.` : "we couldn't tell what kind of document it is.";
   if (c.label === "Expiration") return "we couldn't find the expiration date.";
   if (c.label === "Marina as additional insured") return "the marina must be listed as additional insured on your policy.";
   if (c.label === "Liability") return "the liability coverage looks lower than the marina requires.";

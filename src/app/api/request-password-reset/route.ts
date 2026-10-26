@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { hostnameFromRequest } from "@/lib/marina/host";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const supabaseAdmin = createClient(
@@ -10,7 +11,12 @@ const supabaseAdmin = createClient(
 );
 
 export async function POST(req: Request) {
-  const { email } = await req.json();
+  // Oct 26 (security review): at most 10 reset requests per device per hour (email flooding /
+  // probing). Same generic success answer so it reveals nothing.
+  if (await tooManyFromIp(req, "password-reset", 10)) {
+    return NextResponse.json({ success: true });
+  }
+  const { email } = await req.json().catch(() => ({ email: "" }));
 
   if (!email) {
     return NextResponse.json({ error: "Email is required" }, { status: 400 });
@@ -42,10 +48,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   }
 
+  // Oct 26 (security review): at most 3 reset emails per address per hour (silently — same answer).
+  const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+  const { count: recentResets } = await supabaseAdmin
+    .from("resident_password_resets")
+    .select("id", { count: "exact", head: true })
+    .eq("email", resident.email)
+    .gte("created_at", hourAgo);
+  if ((recentResets || 0) >= 3) {
+    return NextResponse.json({ success: true });
+  }
+
   const isFirstTimeSetup = !resident.portal_password;
 
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 1000 * 60 * 30).toISOString();
+
+  // Oct 26 (security review): only the newest link works — older unused links are marked used.
+  await supabaseAdmin
+    .from("resident_password_resets")
+    .update({ used_at: new Date().toISOString() })
+    .eq("resident_id", resident.id)
+    .is("used_at", null);
 
   await supabaseAdmin.from("resident_password_resets").insert({
     resident_id: resident.id,

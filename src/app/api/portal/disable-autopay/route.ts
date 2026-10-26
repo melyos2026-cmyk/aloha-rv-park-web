@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
   // SECURITY: require the caller's own signed session to match this
   // residentId — otherwise anyone could turn off billing/autopay on a
   // DIFFERENT resident's account just by knowing/guessing their id.
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { error } = await supabase

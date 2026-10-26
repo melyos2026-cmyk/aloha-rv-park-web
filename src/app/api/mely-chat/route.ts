@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
+import { hostnameFromRequest } from "@/lib/marina/host";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,6 +11,10 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
+    // Oct 26 (security review): each message costs an AI call — at most 30 per device per hour.
+    if (await tooManyFromIp(req, "mely-chat", 30)) {
+      return NextResponse.json({ error: "You've sent a lot of messages. Please wait a bit, or call the office." }, { status: 429 });
+    }
     const body = await req.json();
     const sessionId = body?.sessionId;
     // Oct 20 (security review): the browser sends the whole conversation
@@ -39,7 +45,10 @@ export async function POST(req: NextRequest) {
     // and pull another tenant's private website content, listings, or lot
     // pricing (cross-tenant leak). Always re-derive the company server-side
     // from the request's own Host header, the same way pages/[slug] does.
-    const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
+    // Oct 26 (security review): same host rule as the rest of the site (local dev / previews use
+    // NEXT_PUBLIC_DEV_COMPANY_DOMAIN), and no company for this host → 404 (no AI call on a
+    // domain that isn't one of our parks/marinas).
+    const host = hostnameFromRequest(req);
     const { data: company } = await supabaseAdmin
       .from("companies")
       .select(
@@ -47,6 +56,7 @@ export async function POST(req: NextRequest) {
       )
       .eq("domain", host)
       .maybeSingle();
+    if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
     const companyName = company?.company_name || "the park";
     const address = company?.address || "";

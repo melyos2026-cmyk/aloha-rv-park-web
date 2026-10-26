@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "residentId and vehicleId are required." }, { status: 400 });
   }
 
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   // SECURITY: confirm this vehicle actually belongs to the session's own

@@ -16,7 +16,11 @@ export type MarinaCompany = {
   hero_headline: string | null;
   hero_subtext: string | null;
   events_calendar_pdf_url?: string | null;
-  is_demo?: boolean;   // Oct 24: from companies (see isDemoCompany)   // Oct 24: monthly events calendar (PDF or image), same field as the RV parks
+  is_demo?: boolean;   // Oct 24: from companies (see isDemoCompany)
+  // Oct 26 (security review): true only when the demo flag was actually read and is true. is_demo
+  // above is ALSO true when the flag couldn't be read (so payments never charge on a guess); this
+  // one is for things that must only happen on a real demo, like showing the sign-in code on screen.
+  demo_flag_confirmed?: boolean;   // Oct 24: monthly events calendar (PDF or image), same field as the RV parks
 };
 
 const COLUMNS =
@@ -34,7 +38,9 @@ async function byHostname(hostname: string): Promise<MarinaCompany | null> {
   // Oct 24: the demo flag lives on companies (not in the public view). If it can't be read, the
   // company counts as a demo — never charge a card on a guess.
   const { data: flag, error } = await supabaseAdmin.from("companies").select("is_demo").eq("id", c.id).maybeSingle();
-  return { ...c, is_demo: error || !flag ? true : flag.is_demo === true };
+  // Oct 26 (security review): remember whether the flag was really read, so a failed read never
+  // reveals a sign-in code on screen for a real marina (see isConfirmedDemo).
+  return { ...c, is_demo: error || !flag ? true : flag.is_demo === true, demo_flag_confirmed: !error && !!flag && flag.is_demo === true };
 }
 
 // Returns the marina for this host, or null when the host is anything else
@@ -56,5 +62,7 @@ export async function getMarinaById(id: string): Promise<MarinaCompany | null> {
   const c = (data as MarinaCompany | null) || null;
   if (!c || c.business_type !== "marina") return null;
   const { data: flag, error } = await supabaseAdmin.from("companies").select("is_demo").eq("id", c.id).maybeSingle();
-  return { ...c, is_demo: error || !flag ? true : flag.is_demo === true };
+  // Oct 26 (security review): remember whether the flag was really read, so a failed read never
+  // reveals a sign-in code on screen for a real marina (see isConfirmedDemo).
+  return { ...c, is_demo: error || !flag ? true : flag.is_demo === true, demo_flag_confirmed: !error && !!flag && flag.is_demo === true };
 }

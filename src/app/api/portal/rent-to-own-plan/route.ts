@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   // SECURITY: require the caller's own signed session to match this
   // residentId — otherwise anyone could read another resident's
   // rent-to-own balance/progress just by knowing/guessing their id.
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { data: plan, error } = await supabaseAdmin

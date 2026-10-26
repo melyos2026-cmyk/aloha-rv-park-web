@@ -4,19 +4,24 @@
 // reviewer.
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { hostnameFromRequest } from "@/lib/marina/host";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { recordSmsConsentAndConfirm as recordSmsConsent, requestIp, normalizeUsSmsPhone } from "@/lib/smsConsent";
 
 export async function POST(req: Request) {
+  // Oct 26 (security review): at most 5 sign-ups per device per hour (each one texts a phone).
+  if (await tooManyFromIp(req, "sms-consent", 5)) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+  }
   let body: any = {};
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  const { companyId, name, phone, agreed } = body || {};
-  if (!companyId || typeof companyId !== "string") {
-    return NextResponse.json({ error: "Missing company." }, { status: 400 });
-  }
+  // Oct 26 (security review): the company comes from the website's own domain (Host header); a
+  // companyId sent in the body is ignored, so nobody can sign a number up under another park.
+  const { name, phone, agreed } = body || {};
   if (agreed !== true) {
     return NextResponse.json({ error: "Please check the box to agree to receive text messages." }, { status: 400 });
   }
@@ -31,11 +36,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Please enter a valid US mobile number (10 digits)." }, { status: 400 });
   }
 
-  const { data: company } = await supabaseAdmin
-    .from("companies")
-    .select("id, company_name")
-    .eq("id", companyId)
-    .maybeSingle();
+  const host = hostnameFromRequest(req);
+  const { data: company } = host
+    ? await supabaseAdmin
+        .from("companies")
+        .select("id, company_name")
+        .in("domain", [host, `www.${host}`])
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
   if (!company) return NextResponse.json({ error: "Company not found." }, { status: 404 });
 
   const result = await recordSmsConsent({

@@ -137,19 +137,27 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     ...(company?.seo_description ? { description: company.seo_description } : {}),
   };
 
+  // Oct 26 (security review): company colors go into a <style> tag — only plain hex colors are
+  // used (anything else could close the tag and inject HTML); otherwise the site's default colors.
+  const safeColor = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]{3,8}$/i.test(c.trim()) ? c.trim() : null);
+  const primaryColor = safeColor(company?.primary_color);
+  const secondaryColor = safeColor(company?.secondary_color);
+
   return (
     <html lang="en">
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          // Oct 26 (security review): escape "<" so a company name/description containing
+          // "</script>" can't break out of the JSON-LD tag (stored XSS).
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
         />
-        {(company?.primary_color || company?.secondary_color) && (
+        {(primaryColor || secondaryColor) && (
           <style
             dangerouslySetInnerHTML={{
               __html: `:root {
-                ${company?.primary_color ? `--red: ${company.primary_color}; --red-dark: ${company.primary_color};` : ""}
-                ${company?.secondary_color ? `--blue-accent: ${company.secondary_color};` : ""}
+                ${primaryColor ? `--red: ${primaryColor}; --red-dark: ${primaryColor};` : ""}
+                ${secondaryColor ? `--blue-accent: ${secondaryColor};` : ""}
               }`,
             }}
           />

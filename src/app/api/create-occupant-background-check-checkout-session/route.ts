@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const authError = requireMatchingSession(req, residentId);
+    const authError = await requireMatchingSession(req, residentId);
     if (authError) return authError;
 
     const { data: resident } = await supabase

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { data, error } = await supabase
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest) {
   if (!residentId) {
     return NextResponse.json({ error: "residentId is required." }, { status: 400 });
   }
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const now = new Date().toISOString();
@@ -75,7 +75,7 @@ export async function DELETE(req: NextRequest) {
   if (!residentId || !id) {
     return NextResponse.json({ error: "residentId and id are required." }, { status: 400 });
   }
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
 
   const { error } = await supabase

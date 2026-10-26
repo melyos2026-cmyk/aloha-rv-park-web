@@ -47,11 +47,17 @@ export async function logProspect(req: Request, slugIn: any, kind: "site" | "off
     slug = "v-" + createHash("sha256").update(`melyos-demo:${ip}`).digest("hex").slice(0, 10);
   }
   let { data: p } = await supabaseAdmin.from("demo_prospects").select("*").eq("slug", slug).maybeSingle();
+  // Oct 26 (security review): a personal link only counts if Mely created it — an unknown ?d=… is
+  // logged as an ordinary visitor (stops anyone creating endless records / emails with random links).
+  if (!p && !anon) {
+    if (!ip) return { ok: false };
+    slug = "v-" + createHash("sha256").update(`melyos-demo:${ip}`).digest("hex").slice(0, 10);
+    ({ data: p } = await supabaseAdmin.from("demo_prospects").select("*").eq("slug", slug).maybeSingle());
+  }
   if (!p) {
     g = await geo(ip);
     const place = [g.city, g.region].filter(Boolean).join(", ");
-    // a link Mely typed by hand (e.g. ?d=hodge) works without creating it first
-    const name = anon ? `Visitor${place ? ` from ${place}` : ""}` : slug.replace(/-/g, " ");
+    const name = `Visitor${place ? ` from ${place}` : ""}`;
     const ins = await supabaseAdmin.from("demo_prospects").insert({ slug, name }).select("*").single();
     p = ins.data || (await supabaseAdmin.from("demo_prospects").select("*").eq("slug", slug).maybeSingle()).data;
     if (!p) return { ok: false };
@@ -74,14 +80,17 @@ export async function logProspect(req: Request, slugIn: any, kind: "site" | "off
     office_entries: (p.office_entries || 0) + (kind === "office" ? 1 : 0),
   }).eq("id", p.id);
 
-  if ((newVisit || newOffice) && !p.ignored) {
+  // at most 20 alert emails an hour, whatever happens
+  const { count: recent } = await supabaseAdmin.from("demo_prospects").select("id", { count: "exact", head: true }).gte("last_seen_at", new Date(now - 3600000).toISOString());
+  if ((newVisit || newOffice) && !p.ignored && (recent ?? 0) <= 20) {
     const who = p.name || slug;
     const place = [g.city, g.region, g.country].filter(Boolean).join(", ");
     const time = new Date(now).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const what = newOffice ? "entró a la oficina demo" : "abrió el demo";
-    const subject = anon && !p.renamed ? `👀 Alguien ${what}${place ? ` · ${place}` : ""}` : `👀 ${who} ${what}`;
+    const visitor = String(p.slug).startsWith("v-");
+    const subject = visitor && !p.renamed ? `👀 Alguien ${what}${place ? ` · ${place}` : ""}` : `👀 ${who} ${what}`;
     const lines = [
-      anon && !p.renamed ? `Alguien ${what} (sin enlace personal). Si sabes quién es, ponle el nombre en MelyOS Insights → Demo prospects.` : `<b>${esc(who)}</b>${p.email ? ` (${esc(p.email)})` : ""} ${what}.`,
+      visitor && !p.renamed ? `Alguien ${what} (sin enlace personal). Si sabes quién es, ponle el nombre en MelyOS Insights → Demo prospects.` : `<b>${esc(who)}</b>${p.email ? ` (${esc(p.email)})` : ""} ${what}.`,
       `${esc(time)} (hora de Florida)${place ? ` · ${esc(place)}` : ""}${device(ua) ? ` · ${device(ua)}` : ""}`,
       `${SCREEN[kind]}${path ? `: ${esc(path)}` : ""}`,
       `Visitas hasta ahora: ${(p.visits || 0) + (newVisit ? 1 : 0)} · entradas a la oficina: ${(p.office_entries || 0) + (kind === "office" ? 1 : 0)}`,

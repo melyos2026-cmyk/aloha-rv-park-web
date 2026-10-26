@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import crypto from "crypto";
+import { sniff } from "@/lib/marina/fileType";
 
 // POST /api/portal/upload-document
 // Body: { residentId, fileName, fileDataBase64, contentType, documentType, relatedOccupantId? }
@@ -32,8 +34,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
+  // Oct 26 (security review): the name is only a label now — cleaned and capped.
+  const displayName = String(fileName).replace(/[^\w.\- ()]/g, "_").slice(0, 120) || "document";
 
   const { data: resident } = await supabase
     .from("resident_accounts")
@@ -69,10 +73,18 @@ export async function POST(req: NextRequest) {
     confirmedOccupantId = occupant?.id || null;
   }
 
-  const storagePath = `${residentId}/${Date.now()}-${fileName}`;
+  // Oct 26 (security review): the real file type is read from the file's own bytes (photos and
+  // PDFs only — no HTML/SVG that could run scripts), and the storage path is a random id plus that
+  // type's extension. The browser's fileName/contentType are never used for the path or the type.
+  void contentType;
+  const kind = sniff(fileBuffer);
+  if (!kind) {
+    return NextResponse.json({ error: "Please upload a photo (JPG, PNG, WEBP, HEIC) or a PDF." }, { status: 400 });
+  }
+  const storagePath = `${residentId}/${crypto.randomUUID()}.${kind.ext}`;
   const { error: uploadError } = await supabase.storage
     .from("resident-documents")
-    .upload(storagePath, fileBuffer, { contentType: contentType || "application/octet-stream" });
+    .upload(storagePath, fileBuffer, { contentType: kind.type });
 
   if (uploadError) {
     return NextResponse.json({ error: "Could not upload file: " + uploadError.message }, { status: 500 });
@@ -85,7 +97,7 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.from("resident_documents").insert({
     company_id: resident.company_id,
     resident_id: residentId,
-    file_name: fileName,
+    file_name: displayName,
     file_url: storagePath,
     document_type: documentType || "general",
     related_occupant_id: confirmedOccupantId,
@@ -102,7 +114,7 @@ export async function POST(req: NextRequest) {
     resident_id: residentId,
     resident_name: resident.full_name,
     update_type: "document_uploaded",
-    message: `${resident.full_name} uploaded a document: ${fileName}.`,
+    message: `${resident.full_name} uploaded a document: ${displayName}.`,
   });
 
   return NextResponse.json({ success: true });

@@ -1247,11 +1247,14 @@ export default function ResidentDashboard() {
                     key={order.id}
                     style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 14, display: "flex", gap: 16, alignItems: "center" }}
                   >
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(order.qr_token)}`}
-                      alt="Propane pickup QR code"
-                      style={{ width: 100, height: 100, flexShrink: 0 }}
-                    />
+                    {/* Oct 26 (security review): orders matched only by email come without the QR code. */}
+                    {order.qr_token ? (
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(order.qr_token)}`}
+                        alt="Propane pickup QR code"
+                        style={{ width: 100, height: 100, flexShrink: 0 }}
+                      />
+                    ) : null}
                     <div style={{ flex: 1 }}>
                       <p style={{ fontWeight: 700, margin: 0 }}>
                         {order.quantity} {order.unit === "gallon" ? "gallons" : "×"} {order.product_label}

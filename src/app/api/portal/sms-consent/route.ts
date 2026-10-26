@@ -19,7 +19,7 @@ async function loadResident(residentId: string) {
 
 export async function GET(req: NextRequest) {
   const residentId = req.nextUrl.searchParams.get("residentId");
-  const authError = requireMatchingSession(req, residentId);
+  const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
   const r = await loadResident(residentId!);
   if (!r) return NextResponse.json({ error: "Resident not found." }, { status: 404 });
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { residentId, enabled } = await req.json().catch(() => ({}));
-  const authError = requireMatchingSession(req, residentId || null);
+  const authError = await requireMatchingSession(req, residentId || null);
   if (authError) return authError;
   const r = await loadResident(residentId);
   if (!r) return NextResponse.json({ error: "Resident not found." }, { status: 404 });

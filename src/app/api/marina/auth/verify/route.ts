@@ -3,12 +3,18 @@ import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { hashLoginCode, setMarinaSession } from "@/lib/marina/session";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
+import { isConfirmedDemo } from "@/lib/marina/host";
 import { escapeLikePattern, hasWildcardChars, sameEmail } from "@/lib/marina/email";
 
 // POST /api/marina/auth/verify  { email, code }
 export async function POST(req: Request) {
   const company = await getMarinaForRequest(req);
   if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  // Oct 26 (security review): per-device limit on code guesses.
+  if (await tooManyFromIp(req, `marina-code-verify|${company.id}`, 30)) {
+    return NextResponse.json({ error: "Too many attempts. Please wait a while and try again." }, { status: 429 });
+  }
 
   let email = "";
   let code = "";
@@ -31,6 +37,23 @@ export async function POST(req: Request) {
     .limit(10);
   const member = (candidates || []).find((m) => sameEmail(m.email, email)) || null;
   if (!member) return bad;
+
+  // Oct 26 (security review): per-boater cap of 10 wrong codes per 24 hours, across every code issued
+  // (each code allows 5 tries, and new codes can be requested). Counted from the attempts already
+  // stored on marina_login_codes: wrong tries = all attempts minus the ones that signed in.
+  const dayAgo = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const { data: recent } = await supabaseAdmin
+    .from("marina_login_codes")
+    .select("attempts, used_at")
+    .eq("member_id", member.id)
+    .gte("created_at", dayAgo)
+    .limit(500);
+  const failed = (recent || []).reduce((n, r: any) => n + Math.max(0, (r.attempts || 0) - (r.used_at ? 1 : 0)), 0);
+  // (Not on a confirmed demo: there the code is shown on screen anyway, and the shared demo boater
+  // must not be locked out for every prospect by one person typing wrong codes.)
+  if (failed >= 10 && !isConfirmedDemo(company)) {
+    return NextResponse.json({ error: "Too many wrong codes. Please try again tomorrow or contact the marina office." }, { status: 429 });
+  }
 
   const { data: row } = await supabaseAdmin
     .from("marina_login_codes")

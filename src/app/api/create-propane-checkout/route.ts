@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const host = (req.headers.get("host") || "").replace(/^www\./, "").split(":")[0];
     const { data: company } = await supabase
       .from("companies")
-      .select("id, park_id")
+      .select("id, park_id, domain")
       .eq("domain", host)
       .maybeSingle();
 
@@ -69,7 +69,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Cantidad máxima: ${maxQty}` }, { status: 400 });
     }
 
-    const origin = req.headers.get("origin") || `https://${req.headers.get("host")}`;
+    // Oct 26 (security review): Stripe's return links are built from the company's own domain, not
+    // the Origin header (which a caller controls), so checkout can't send a buyer to another site.
+    const origin = `https://${company.domain || host}`;
     const unitAmount = Math.round(Number(product.price) * 100);
     const lineItemAmount = isGallon ? Math.round(unitAmount * rawQty) : unitAmount;
     const lineItemQty = isGallon ? 1 : rawQty;
