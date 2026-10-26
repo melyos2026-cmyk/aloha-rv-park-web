@@ -8,9 +8,9 @@ type Step = { key: string; kicker: string; title: string; text: string; points: 
 
 const STEPS: Step[] = [
   {
-    key: "dashboard", kicker: "1 · Dashboard", title: "Your whole marina at a glance",
+    key: "dashboard", kicker: "1 · Dashboard", title: "Today at the docks, at a glance",
     text: "The first screen your office sees every morning.",
-    points: ["Open and occupied slips", "Balances due and overdue invoices", "Waitlist, renewals due and expiring insurance or registration"],
+    points: ["Who arrives and who leaves today or tomorrow, with one-tap check-in and check-out", "Occupancy by dock: in use, reserved this week, out of service", "Launches today, open work orders, balances due, renewals and expiring insurance"],
   },
   {
     key: "slips", kicker: "2 · Slips, map & rates", title: "An interactive map of your docks",
@@ -18,59 +18,78 @@ const STEPS: Step[] = [
     points: ["Wet slips, lift slips and dry storage", "Size, power, water and a photo for every slip", "Member and visitor rates: annual, seasonal, monthly, weekly and daily"],
   },
   {
-    key: "fuel", kicker: "3 · Fuel dock", title: "Sell fuel and always know what's in the tanks",
+    key: "calendar", kicker: "3 · Slip calendar", title: "Every slip, day by day",
+    text: "Week, two weeks or month: who is in each slip and when, plus your service yard.",
+    points: ["Reservations, guests on the dock, contracts and boats kept in each slip, in colors anyone understands", "“Find a free slip”: type the boat length and dates, see only the slips that fit", "Click any stay to check the guest in or out, or move them to another free slip"],
+  },
+  {
+    key: "fuel", kicker: "4 · Fuel dock", title: "Sell fuel and always know what's in the tanks",
     text: "Every fill-up becomes a sale, a receipt and a line in the daily close.",
     points: ["Sell by gallons or by dollar amount", "Cash, card, check or charge it to the boat owner's account", "Tank levels drop with every sale; low-fuel alerts and delivery log", "Pumps listed in the system, built to connect a compatible pump controller (today staff enter the gallons)"],
   },
   {
-    key: "store", kicker: "4 · Ship store", title: "A point of sale for the counter",
+    key: "store", kicker: "5 · Ship store", title: "A point of sale for the counter",
     text: "Ice, bait, drinks and boat supplies, rung up in seconds.",
     points: ["Scan barcodes with a USB or Bluetooth scanner, or the phone camera", "Stock goes down with every sale, with low-stock alerts", "Upload your whole product list from Excel or Google Sheets", "Sales tax on taxable items; charge to the boat owner's account"],
   },
   {
-    key: "drystack", kicker: "5 · Dry stack", title: "The launch board for your forklift team",
+    key: "drystack", kicker: "6 · Dry stack", title: "The launch board for your forklift team",
     text: "Boaters ask from their phone; your team sees the day's launches in order.",
     points: ["“Put my boat in the water” from the boater account", "New request → confirmed → in the water → back on the rack", "Phone requests added by staff in seconds"],
   },
   {
-    key: "billing", kicker: "6 · Shifts & daily close", title: "Every dollar tied to a person and a shift",
+    key: "workorders", kicker: "7 · Work orders", title: "Your service yard, from estimate to paid",
+    text: "Repairs and service for every boat, with the owner's approval online.",
+    points: ["Board: Estimates → Waiting for owner → Approved → In the shop → Ready to bill", "Labor hours, parts with sales tax, fees, technician, travel lift or bay, and dates on the slip calendar", "The owner approves the estimate from their phone; if the price goes up, they're asked again", "Before/after photos, a full timeline, and one click to bill — the owner pays online"],
+  },
+  {
+    key: "meters", kicker: "8 · Electric meters", title: "Read the dock with a phone, bill in one click",
+    text: "Shore power billed by what each boat really used.",
+    points: ["Type each meter's number: kWh and the charge appear instantly", "Warns about readings much higher than usual or lower than last time", "Bill every reading at once; each owner sees it in their account and pays online"],
+  },
+  {
+    key: "billing", kicker: "9 · Shifts & daily close", title: "Every dollar tied to a person and a shift",
     text: "Built for audits, including city and county marinas.",
     points: ["Each employee opens and closes a shift", "The system counts what the drawer should have", "Fuel, store and invoice payments all land in the close"],
   },
   {
-    key: "invoices", kicker: "7 · Invoices & accounting", title: "Billing that runs itself",
+    key: "invoices", kicker: "10 · Invoices & accounting", title: "Billing that runs itself",
     text: "Slip fees, utilities, fuel, store and late fees in one place.",
     points: ["Boaters pay online 24/7 from their account", "Overdue invoices and late fees in one click", "Export for QuickBooks Online and print any report as a PDF with your logo"],
   },
   {
-    key: "renewals", kicker: "8 · Annual renewals & waitlist", title: "The yearly busy work, handled",
+    key: "renewals", kicker: "11 · Annual renewals & waitlist", title: "The yearly busy work, handled",
     text: "The tasks that usually live in spreadsheets.",
     points: ["Generate and invoice every annual renewal in one click", "Mark renewed or release the slip to the waitlist", "Waitlist ranked first come, first served, with slip offers"],
   },
   {
-    key: "events", kicker: "9 · Event rooms", title: "Rent your meeting room or clubhouse",
+    key: "events", kicker: "12 · Event rooms", title: "Rent your meeting room or clubhouse",
     text: "Your office books the room, reviews requests and confirms them.",
     points: ["Hourly, daily or flat pricing per room", "Requests to review, confirmed bookings and totals", "Bill any booking with an invoice in Invoices"],
   },
   {
-    key: "contracts", kicker: "10 · Contracts & e-signature", title: "Slip agreements signed online",
+    key: "contracts", kicker: "13 · Contracts & e-signature", title: "Slip agreements signed online",
     text: "Write your agreement once; every boater signs from their phone.",
     points: ["Price read from your rates, plus extras and deposit from your fee schedule", "Boater signs with an elegant signature; date, IP and document fingerprint recorded", "Signed PDF saved to the boat's documents; invoices created on signing", "Annual renewals sent as contracts in one click"],
   },
   {
-    key: "messages", kicker: "11 · Messages", title: "Talk to your boaters, privately",
+    key: "messages", kicker: "14 · Messages", title: "Talk to your boaters, privately",
     text: "Hurricane watch, dock closed, fuel hours: one notice, a private copy for each boater.",
     points: ["Send to everyone, one dock, dry storage or owners with a balance due", "Email plus the boater's account; see who has read it", "Replies come only to the office, never to the whole group"],
   },
   {
-    key: "mely", kicker: "12 · Mely, your AI assistant", title: "Answers boaters 24/7, in their language",
+    key: "mely", kicker: "15 · Mely, your AI assistant", title: "Answers boaters 24/7, in their language",
     text: "Try her now: the chat bubble on this page is the real Mely.",
-    points: ["Knows your slips, prices, hours and rules", "Answers in English, Spanish and other languages", "Helps your staff in the office too"],
+    points: ["Knows your slips, prices, hours and rules", "Answers in English, Spanish and other languages", "In the office she reads your live data: “Who owes more than 30 days?”, “Do we have room for a 40-ft boat next weekend?”, “How much fuel did we sell this month?”"],
   },
 ];
 
 // Screenshots added to /public/marina/tour (key → file).
 const SHOTS: Record<string, string> = {
+  dashboard: "/marina/tour/today.jpg",
+  calendar: "/marina/tour/calendar.jpg",
+  workorders: "/marina/tour/workorders.jpg",
+  meters: "/marina/tour/meters.jpg",
   fuel: "/marina/tour/fuel.jpg",
   drystack: "/marina/tour/drystack.jpg",
   billing: "/marina/tour/billing.jpg",
