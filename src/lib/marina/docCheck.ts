@@ -34,15 +34,23 @@ async function prepare(buf: Buffer, type: string): Promise<{ kind: "image" | "do
   try {
     const out = await sharp(buf, { failOn: "none" }).rotate().resize({ width: 1800, height: 1800, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
     return { kind: "image", media: "image/jpeg", data: out.toString("base64") };
-  } catch {
+  } catch (e: any) {
+    lastError = `image: ${e?.message || e}`;
+    // the original photo still works when it's a common type and small enough
+    if (["image/jpeg", "image/png", "image/webp"].includes(type) && buf.length <= 4.5 * 1024 * 1024) return { kind: "image", media: type, data: buf.toString("base64") };
     return null; // e.g. a HEIC photo the server can't open: the office looks at it
   }
 }
 
+// Why the last read failed (saved with the document so the office/support can see it).
+let lastError: string | null = null;
+export const lastReadError = () => lastError;
+
 export async function readDocument(buf: Buffer, type: string): Promise<Extracted | null> {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+  lastError = null;
+  if (!process.env.ANTHROPIC_API_KEY) { lastError = "ANTHROPIC_API_KEY is not set on the marina website (Vercel)"; return null; }
   const file = await prepare(buf, type);
-  if (!file) return null;
+  if (!file) { lastError = lastError || `Can't open this kind of file (${type})`; return null; }
   const prompt = `You read boat documents for a marina office. Look at this file and answer ONLY with one JSON object, no other text:
 {"readable": true|false (false if blurry, cut off, too dark, or not a document),
  "doc_type": "insurance" | "registration" | "id" | "survey" | "other",
@@ -65,10 +73,10 @@ Copy what is printed; do not guess. Dates printed as MM/DD/YYYY must be converte
       }),
     });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) { console.error("doc check: Anthropic error", j?.error?.message); return null; }
+    if (!res.ok) { lastError = `AI ${res.status}: ${j?.error?.message || "error"}`; console.error("doc check: Anthropic error", lastError); return null; }
     const text: string = (j.content || []).find((b: any) => b.type === "text")?.text || "";
     const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return null;
+    if (!m) { lastError = `AI answer had no JSON: ${text.slice(0, 120)}`; return null; }
     const x = JSON.parse(m[0]);
     const arr = (v: any) => (Array.isArray(v) ? v.map(String).filter(Boolean).slice(0, 10) : []);
     const num = (v: any) => { const n = Number(String(v ?? "").replace(/[$,\s]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; };
@@ -79,7 +87,7 @@ Copy what is printed; do not guess. Dates printed as MM/DD/YYYY must be converte
       registration_number: x.registration_number ? String(x.registration_number).slice(0, 40) : null, length_ft: num(x.length_ft),
       additional_insured: arr(x.additional_insured), liability_amount: num(x.liability_amount), issuer: x.issuer ? String(x.issuer).slice(0, 120) : null, notes: x.notes ? String(x.notes).slice(0, 300) : null,
     };
-  } catch (e: any) { console.error("doc check failed:", e?.message); return null; }
+  } catch (e: any) { lastError = `read failed: ${e?.message || e}`; console.error("doc check failed:", lastError); return null; }
 }
 
 // Same person? Last name must appear, plus the first name or its initial.
@@ -147,7 +155,7 @@ export async function autoCheckDocument(p: { companyId: string; marinaName: stri
   const x = await readDocument(p.buf, p.type);
   const r = verify(x, { type: p.docType, owner: p.owner, boat: p.boat, marina: p.marinaName, settings });
   const now = new Date().toISOString();
-  const patch: Record<string, unknown> = { ai_check: { extracted: r.extracted, checks: r.checks, reasons: r.reasons, at: now } };
+  const patch: Record<string, unknown> = { ai_check: { extracted: r.extracted, checks: r.checks, reasons: r.reasons, at: now, error: x ? null : lastError } };
   if (r.decision === "approved") Object.assign(patch, { status: "approved", expires_on: r.expires_on, auto_approved: true, reviewed_by_name: "Automatic check", reviewed_at: now });
   if (r.decision === "rejected") Object.assign(patch, { status: "rejected", review_note: r.note, auto_approved: false, reviewed_by_name: "Automatic check", reviewed_at: now, ...(r.expires_on ? { expires_on: r.expires_on } : {}) });
   const { error } = await supabaseAdmin.from("marina_boat_documents").update(patch).eq("id", p.docId).eq("company_id", p.companyId);
