@@ -149,13 +149,25 @@ export function verify(x: Extracted | null, want: { type: string; owner: string;
 }
 
 // Run the check on a saved document row and apply the decision. Returns what the boater sees.
-export async function autoCheckDocument(p: { companyId: string; marinaName: string; docId: string; buf: Buffer; type: string; docType: string; owner: string; boat: { name?: string | null; length?: number | null; hull_id?: string | null; registration?: string | null } | null }) {
+type BoatRef = { id?: string; name?: string | null; length?: number | null; hull_id?: string | null; registration?: string | null };
+export async function autoCheckDocument(p: { companyId: string; marinaName: string; docId: string; buf: Buffer; type: string; docType: string; owner: string; boat: BoatRef | null; otherBoats?: BoatRef[] }) {
   const settings = await docSettings(p.companyId);
   if (!settings.auto) return { decision: "pending" as const, message: "Thank you! The office will review it." };
   const x = await readDocument(p.buf, p.type);
-  const r = verify(x, { type: p.docType, owner: p.owner, boat: p.boat, marina: p.marinaName, settings });
+  let r = verify(x, { type: p.docType, owner: p.owner, boat: p.boat, marina: p.marinaName, settings });
+  // Oct 26: the boater picked the wrong boat but the document is for another of their boats →
+  // file it under the right boat instead of bothering the office.
+  let movedTo: BoatRef | null = null;
+  const boatFailed = r.checks.some((c) => c.label === "Boat" && c.ok === false);
+  if (r.decision === "pending" && boatFailed && p.otherBoats?.length) {
+    for (const b of p.otherBoats) {
+      const r2 = verify(x, { type: p.docType, owner: p.owner, boat: b, marina: p.marinaName, settings });
+      if (r2.decision !== "pending" || !r2.checks.some((c) => c.label === "Boat" && c.ok === false)) { r = r2; movedTo = b; break; }
+    }
+  }
   const now = new Date().toISOString();
-  const patch: Record<string, unknown> = { ai_check: { extracted: r.extracted, checks: r.checks, reasons: r.reasons, at: now, error: x ? null : lastError } };
+  const patch: Record<string, unknown> = { ai_check: { extracted: r.extracted, checks: r.checks, reasons: r.reasons, at: now, error: x ? null : lastError, ...(movedTo ? { moved_to_boat: movedTo.name } : {}) } };
+  if (movedTo?.id) Object.assign(patch, { boat_id: movedTo.id, file_name: `${(LABEL[p.docType] || "Document").replace(/^\w/, (c) => c.toUpperCase())} — ${movedTo.name}` });
   if (r.decision === "approved") Object.assign(patch, { status: "approved", expires_on: r.expires_on, auto_approved: true, reviewed_by_name: "Automatic check", reviewed_at: now });
   if (r.decision === "rejected") Object.assign(patch, { status: "rejected", review_note: r.note, auto_approved: false, reviewed_by_name: "Automatic check", reviewed_at: now, ...(r.expires_on ? { expires_on: r.expires_on } : {}) });
   const { error } = await supabaseAdmin.from("marina_boat_documents").update(patch).eq("id", p.docId).eq("company_id", p.companyId);
@@ -163,9 +175,23 @@ export async function autoCheckDocument(p: { companyId: string; marinaName: stri
   const label = LABEL[p.docType] || "document";
   return {
     decision: r.decision,
-    message: r.decision === "approved" ? `Approved! Your ${label} is on file${r.expires_on ? ` until ${r.expires_on}` : ""}.`
+    message: r.decision === "approved" ? `Approved! Your ${label}${movedTo ? ` for ${movedTo.name}` : ""} is on file${r.expires_on ? ` until ${r.expires_on}` : ""}.${movedTo ? ` (It's for ${movedTo.name}, so we filed it there.)` : ""}`
       : r.decision === "rejected" ? r.note || "Please upload it again."
-      : `Thank you! The office will review it (${r.reasons[0] || "it needs a quick look"}).`,
+      : `Thank you! The office will take a quick look${friendly(r) ? `: ${friendly(r)}` : "."}`,
     reasons: r.reasons,
   };
+}
+
+// Short reason for the boater, in plain words.
+function friendly(r: CheckResult): string {
+  const c = r.checks.find((k) => k.ok === false);
+  const x = r.extracted;
+  if (!c) return r.extracted ? "" : "we couldn't read the file automatically.";
+  if (c.label === "Boat") return `the document seems to be for ${x?.boat_name || "another boat"}, not this boat.`;
+  if (c.label === "Name") return `the name on it (${x?.holder_names?.[0] || "not found"}) is different from your account.`;
+  if (c.label === "Kind of document") return `it looks like a different kind of document.`;
+  if (c.label === "Expiration") return "we couldn't find the expiration date.";
+  if (c.label === "Marina as additional insured") return "the marina must be listed as additional insured on your policy.";
+  if (c.label === "Liability") return "the liability coverage looks lower than the marina requires.";
+  return "";
 }
