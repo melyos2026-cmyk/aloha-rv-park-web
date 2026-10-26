@@ -42,5 +42,22 @@ export default function PageTracker() {
     }).catch(() => {});
   }, [pathname, company?.id, consent]);
 
+  // Oct 26 (per Mely): personal demo link (marinademo.melyos.io/?d=…). The link was made for this
+  // person, so each page they open is logged and Mely gets an email when they arrive. Kept only for
+  // this tab (sessionStorage), and only on the demo marina.
+  useEffect(() => {
+    if (!company?.domain || !/^marinademo\./.test(String(company.domain))) return;
+    let d: string | null = null, sid: string | null = null;
+    try {
+      const q = new URLSearchParams(window.location.search).get("d");
+      if (q) sessionStorage.setItem("melyos_demo_ref", q.slice(0, 40));
+      d = sessionStorage.getItem("melyos_demo_ref");
+      sid = sessionStorage.getItem("melyos_demo_sid") || crypto.randomUUID();
+      sessionStorage.setItem("melyos_demo_sid", sid);
+    } catch {}
+    if (!d) return;
+    fetch("/api/demo-visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ d, s: sid, path: pathname }) }).catch(() => {});
+  }, [pathname, company?.domain]);
+
   return null;
 }

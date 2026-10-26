@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DemoOfficeButton from "./DemoOfficeButton";
 
 // Oct 21 (per Mely): the office tour. Each step shows a real screenshot of the
 // marina admin when one is available in /public/marina/tour, otherwise a clean
@@ -119,6 +120,7 @@ export default function TourScreens({ marinaName }: { marinaName: string }) {
           </p>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 24 }}>
             <a className="mr-btn" href="#steps">Start the tour</a>
+            <DemoOfficeButton className="mr-btn ghost" />
             <a className="mr-btn ghost" href="mailto:melyos2026@gmail.com?subject=Marina%20walkthrough%20request&body=Hi%20MelyOS%2C%20I%27d%20like%20a%20live%20walkthrough%20for%20our%20marina.%0A%0AMarina%3A%20%0ANumber%20of%20slips%3A%20%0APhone%3A%20">Book a live walkthrough</a>
           </div>
         </div>
@@ -167,10 +169,11 @@ export default function TourScreens({ marinaName }: { marinaName: string }) {
         <div className="mr-wrap">
           <h2 className="mr-h2" style={{ color: "#fff" }}>See it with your own slips</h2>
           <p style={{ maxWidth: "60ch", margin: "0 auto", opacity: .9 }}>
-            MelyOS is built in Florida. We set it up for you: your map, your slips, your rates and your website. In a 20-minute call we&apos;ll show you the office live and answer every question.
+            MelyOS is built in Florida. We set it up for you: your map, your slips, your rates and your website. Open the demo office and click around yourself (sample data, no password), or book a 20-minute call and we&apos;ll show you live.
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 24 }}>
-            <a className="mr-btn" href="mailto:melyos2026@gmail.com?subject=Marina%20walkthrough%20request&body=Hi%20MelyOS%2C%20I%27d%20like%20a%20live%20walkthrough%20for%20our%20marina.%0A%0AMarina%3A%20%0ANumber%20of%20slips%3A%20%0APhone%3A%20">Book a live walkthrough</a>
+            <DemoOfficeButton />
+            <a className="mr-btn ghost" href="mailto:melyos2026@gmail.com?subject=Marina%20walkthrough%20request&body=Hi%20MelyOS%2C%20I%27d%20like%20a%20live%20walkthrough%20for%20our%20marina.%0A%0AMarina%3A%20%0ANumber%20of%20slips%3A%20%0APhone%3A%20">Book a live walkthrough</a>
             <Link className="mr-btn ghost" href="/">Back to the marina website</Link>
           </div>
           <p className="mr-note" style={{ color: "rgba(255,255,255,.7)" }}>Prefer to chat? Ask Mely in the bubble below — she can pass your details to our team.</p>
