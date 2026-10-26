@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "crypto";
 
 
-// Oct 26 (per Mely): personal demo links. A prospect opens marinademo.melyos.io/?d=<slug>; the
+// Oct 26 (per Mely): every visit to the demo is logged — with a personal link (?d=…) under that
+// prospect, without one under "Visitor from <city>" (grouped by internet connection). Mely can name
+// a visitor or mark one as herself (no more emails). Personal demo links: A prospect opens marinademo.melyos.io/?d=<slug>; the
 // website logs each page and the demo office (adminmarinademo.melyos.io/?d=<slug>) logs the entry
 // and each screen. Mely gets an email when they arrive (once per visit, 30 minutes apart) and
 // when they enter the office. The same logic lives in the builder repo (lib/demoProspects.ts).
@@ -30,18 +33,31 @@ async function geo(ip: string | null) {
 const SCREEN: Record<string, string> = { site: "Demo website", office: "Entered the demo office", screen: "Office screen" };
 
 export async function logProspect(req: Request, slugIn: any, kind: "site" | "office" | "screen", path?: string | null, sessionId?: string | null) {
-  const slug = cleanSlug(slugIn);
-  if (slug.length < 2) return { ok: false };
+  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
+  // link previews (Gmail, iMessage, Slack…) and robots are not people
+  if (/bot|crawl|spider|preview|headless|facebookexternalhit|slurp|vercel|lighthouse/i.test(req.headers.get("user-agent") || "")) return { ok: false };
+  let slug = cleanSlug(slugIn);
+  let g: { city: string | null; region: string | null; country: string | null } | null = null;
+  // Oct 26 (per Mely): no personal link → still log it, grouped by the visitor's internet
+  // connection (a short one-way code, never the address itself), so the website visit and the
+  // office entry of the same person land together. Mely can rename it ("this was Hodge").
+  const anon = slug.length < 2;
+  if (anon) {
+    if (!ip) return { ok: false };
+    slug = "v-" + createHash("sha256").update(`melyos-demo:${ip}`).digest("hex").slice(0, 10);
+  }
   let { data: p } = await supabaseAdmin.from("demo_prospects").select("*").eq("slug", slug).maybeSingle();
   if (!p) {
+    g = await geo(ip);
+    const place = [g.city, g.region].filter(Boolean).join(", ");
     // a link Mely typed by hand (e.g. ?d=hodge) works without creating it first
-    const ins = await supabaseAdmin.from("demo_prospects").insert({ slug, name: slug.replace(/-/g, " ") }).select("*").single();
+    const name = anon ? `Visitor${place ? ` from ${place}` : ""}` : slug.replace(/-/g, " ");
+    const ins = await supabaseAdmin.from("demo_prospects").insert({ slug, name }).select("*").single();
     p = ins.data || (await supabaseAdmin.from("demo_prospects").select("*").eq("slug", slug).maybeSingle()).data;
     if (!p) return { ok: false };
   }
   const now = Date.now();
-  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
-  const g = await geo(ip);
+  if (!g) g = await geo(ip);
   const ua = req.headers.get("user-agent") || "";
 
   const { data: lastOffice } = kind === "office"
@@ -58,14 +74,14 @@ export async function logProspect(req: Request, slugIn: any, kind: "site" | "off
     office_entries: (p.office_entries || 0) + (kind === "office" ? 1 : 0),
   }).eq("id", p.id);
 
-  if (newVisit || newOffice) {
+  if ((newVisit || newOffice) && !p.ignored) {
     const who = p.name || slug;
     const place = [g.city, g.region, g.country].filter(Boolean).join(", ");
     const time = new Date(now).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const what = newOffice ? "entró a la oficina demo" : "abrió el demo";
-    const subject = `👀 ${who} ${what}`;
+    const subject = anon && !p.renamed ? `👀 Alguien ${what}${place ? ` · ${place}` : ""}` : `👀 ${who} ${what}`;
     const lines = [
-      `<b>${esc(who)}</b>${p.email ? ` (${esc(p.email)})` : ""} ${what}.`,
+      anon && !p.renamed ? `Alguien ${what} (sin enlace personal). Si sabes quién es, ponle el nombre en MelyOS Insights → Demo prospects.` : `<b>${esc(who)}</b>${p.email ? ` (${esc(p.email)})` : ""} ${what}.`,
       `${esc(time)} (hora de Florida)${place ? ` · ${esc(place)}` : ""}${device(ua) ? ` · ${device(ua)}` : ""}`,
       `${SCREEN[kind]}${path ? `: ${esc(path)}` : ""}`,
       `Visitas hasta ahora: ${(p.visits || 0) + (newVisit ? 1 : 0)} · entradas a la oficina: ${(p.office_entries || 0) + (kind === "office" ? 1 : 0)}`,

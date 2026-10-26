@@ -42,20 +42,22 @@ export default function PageTracker() {
     }).catch(() => {});
   }, [pathname, company?.id, consent]);
 
-  // Oct 26 (per Mely): personal demo link (marinademo.melyos.io/?d=…). The link was made for this
-  // person, so each page they open is logged and Mely gets an email when they arrive. Kept only for
-  // this tab (sessionStorage), and only on the demo marina.
+  // Oct 26 (per Mely): the demo marina is only visited by prospects, so every visit is logged and
+  // Mely gets an email when someone arrives (with a personal link ?d=… it carries their name). Only
+  // on the demo marina; the link is kept for this tab only (sessionStorage).
   useEffect(() => {
     if (!company?.domain || !/^marinademo\./.test(String(company.domain))) return;
-    let d: string | null = null, sid: string | null = null;
+    let d: string | null = null, sid: string | null = null, me = false;
     try {
-      const q = new URLSearchParams(window.location.search).get("d");
-      if (q) sessionStorage.setItem("melyos_demo_ref", q.slice(0, 40));
+      const q = new URLSearchParams(window.location.search);
+      if (q.get("d")) sessionStorage.setItem("melyos_demo_ref", q.get("d")!.slice(0, 40));
+      if (q.get("me") === "1") localStorage.setItem("melyos_demo_me", "1"); // Mely's own devices: never logged
+      me = localStorage.getItem("melyos_demo_me") === "1";
       d = sessionStorage.getItem("melyos_demo_ref");
       sid = sessionStorage.getItem("melyos_demo_sid") || crypto.randomUUID();
       sessionStorage.setItem("melyos_demo_sid", sid);
     } catch {}
-    if (!d) return;
+    if (me) return;
     fetch("/api/demo-visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ d, s: sid, path: pathname }) }).catch(() => {});
   }, [pathname, company?.domain]);
 
