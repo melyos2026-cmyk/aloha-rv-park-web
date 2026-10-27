@@ -1,8 +1,9 @@
 // Oct 21 (per Mely): shows contract text formatted like a legal document.
 // "# " line = centered title, "## " line = section heading, other lines = paragraphs.
-export default function ContractText({ body, owner, marina, signedName, signedAt, sentBy, sentAt, sentBySignature, sentByTitle, signatureImage }: {
+export default function ContractText({ body, owner, marina, signedName, signedAt, sentBy, sentAt, sentBySignature, sentByTitle, signatureImage, countersign }: {
   body: string; owner: string; marina: string; signedName?: string | null; signedAt?: string | null; sentBy?: string | null; sentAt?: string | null;
   sentBySignature?: string | null; sentByTitle?: string | null; signatureImage?: string | null; // Oct 27: adopted signatures
+  countersign?: { by?: string | null; at?: string | null; title?: string | null; image?: string | null } | null; // Oct 27: second marina signature
 }) {
   const when = (d?: string | null) => (d ? new Date(d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "");
   return (
@@ -30,6 +31,22 @@ export default function ContractText({ body, owner, marina, signedName, signedAt
           </div>
         ))}
       </div>
+      {countersign && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28, marginTop: 22, textAlign: "left" }}>
+          <div />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 12, letterSpacing: ".1em" }}>APPROVED FOR THE MARINA</div>
+            <div style={{ borderBottom: "1px solid #111827", minHeight: 34, fontStyle: "italic", fontSize: 18, paddingTop: 8 }}>
+              {countersign.image && /^data:image\/png;base64,/.test(countersign.image) ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={countersign.image} alt={`Signature of ${countersign.by}`} style={{ height: 40, maxWidth: "100%", objectFit: "contain", display: "block" }} />
+              ) : countersign.by ? `/s/ ${countersign.by}` : ""}
+            </div>
+            <div style={{ fontSize: 13 }}>{countersign.by ? `${countersign.by}${countersign.title ? `, ${countersign.title}` : ""}` : countersign.title || "Marina approval"}</div>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>{countersign.at ? `Signed electronically ${when(countersign.at)}` : "Signs after the owner"}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

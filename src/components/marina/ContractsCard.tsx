@@ -50,7 +50,7 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
     const r = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) { setErr(r.error || "Could not sign. Please try again."); return; }
-    setOpen(null); setDone("Signed. Thank you! Your copy is ready to download."); load();
+    setOpen(null); setDone(r.message || "Signed. Thank you! Your copy is ready to download."); load();
   }
   async function pdf(id: string) {
     const w = window.open("", "_blank");
@@ -68,7 +68,7 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
         <div className="mr-inv" key={k.id}>
           <div>{k.title}<small>{k.status === "signed" ? `Signed ${day(k.signed_at)}` : `Sent ${day(k.sent_at)}`}{k.start_date ? ` · ${day(k.start_date)} – ${day(k.end_date)}` : ""}</small></div>
           {k.status === "signed"
-            ? (k.hasPdf ? <button className="mr-btn ghost" onClick={() => pdf(k.id)}>Download PDF</button> : <span className="mr-note">Signed</span>)
+            ? (k.hasPdf ? <button className="mr-btn ghost" onClick={() => pdf(k.id)}>Download PDF</button> : <span className="mr-note">{(k as any).countersign_required && !(k as any).countersigned_at ? "Signed · waiting for the marina's signature" : "Signed"}</span>)
             : <button className="mr-btn" onClick={() => show(k)}>Read and sign</button>}
         </div>
       ))}
@@ -81,7 +81,8 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
               <button type="button" aria-label="Close" onClick={() => setOpen(null)} style={{ background: "none", border: 0, fontSize: 26, lineHeight: 1, cursor: "pointer", color: "#5b6b78" }}>×</button>
             </div>
             <div style={{ overflowY: "auto", flex: 1, minHeight: 160, border: "1px solid #dbe3e8", borderRadius: 8, padding: "20px 22px", background: "#fff" }}>
-              <ContractText body={open.body} owner={fullName} marina={marinaName} sentBy={open.sent_by_name} sentAt={open.sent_at} sentBySignature={(open as any).sent_by_signature} sentByTitle={(open as any).sent_by_title} />
+              <ContractText body={open.body} owner={fullName} marina={marinaName} sentBy={open.sent_by_name} sentAt={open.sent_at} sentBySignature={(open as any).sent_by_signature} sentByTitle={(open as any).sent_by_title}
+                countersign={(open as any).countersign_required ? { by: (open as any).countersigned_by_name, at: (open as any).countersigned_at, title: (open as any).countersign_title, image: (open as any).countersign_signature } : null} />
             </div>
             <div style={{ display: "grid", gap: 10 }}>
               <label style={{ fontSize: 14, fontWeight: 600 }}>Type your full name to sign

@@ -142,15 +142,27 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
   };
   const text = String(tpl.body).replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k) => (k in values ? values[k] : m));
   const title = String(body.title || "").trim().slice(0, 120) || `${tpl.name.replace(/\s*\(sample\)\s*$/i, "")}${slip ? ` — Slip ${slip.slip_name}` : ""}`;
-  const { data: k, error } = await supabaseAdmin.from("marina_contracts").insert({
+  // Oct 27 (per Mely): the marina's signer (setting) and the second signature, same as the office app.
+  const { data: cs } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
+  const st: any = cs || {};
+  let signerName: string | null = actor?.name || null;
+  let sig: Record<string, any> = {};
+  if (st.contract_signer_id) {
+    const { data: me } = await supabaseAdmin.from("admin_users").select("*").eq("id", st.contract_signer_id).eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
+    if (me) { signerName = (me as any).full_name || (me as any).email || signerName; sig = { sent_by_signature: (me as any).signature_image || null, sent_by_title: (me as any).signature_title || null, prepared_by_name: actor?.name || "Automatic" }; }
+  }
+  if (st.countersign_required) sig = { ...sig, countersign_required: true, countersigner_id: st.countersigner_id || null, countersign_title: st.countersign_title || null };
+  const row: Record<string, any> = {
     company_id: companyId, template_id: tpl.id, member_id: member.id, boat_id: boat?.id || null, slip_id: slip?.id || null,
     title, body: text, body_hash: hash(text), start_date: start, end_date: end,
-    amount, sent_by_name: actor?.name || null,
+    amount, sent_by_name: signerName,
     contract_type: price.type, price_source: price.source, price_override_reason: price.reason,
     billing: price.billing, installments: price.installments, extras: ex.chosen, deposit: ex.deposit,
     ...(body.renewal_id ? { renewal_id: body.renewal_id } : {}),
-  }).select("id").single();
-  if (error) return { error: error.message, status: 500 };
+  };
+  let { data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig }).select("id").single();
+  if (error && /sent_by_signature|sent_by_title|countersign|prepared_by_name/.test(error.message)) ({ data: k, error } = await supabaseAdmin.from("marina_contracts").insert(row).select("id").single());
+  if (error || !k) return { error: error?.message || "Could not create the contract.", status: 500 };
 
   let emailed = false;
   if (!isDemo(co?.domain, co?.is_demo) && co?.domain) {

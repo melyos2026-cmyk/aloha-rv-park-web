@@ -19,6 +19,7 @@ import { NextResponse } from "next/server";
 export const ADMIN_ALLOWED_ORIGINS = new Set([
   "https://admin.melyos.io",
   "https://admin.aloharvparkfl.com",
+  "https://adminmarinademo.melyos.io", // Oct 27: the demo office (contract second signature)
 ]);
 
 export function adminCorsHeaders(req: Request): Record<string, string> {

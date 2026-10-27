@@ -25,6 +25,7 @@ export type SignedContractInfo = {
   sentByName?: string | null;
   sentBySignature?: string | null; // Oct 27: the marina signer's adopted signature (PNG data URL)
   sentByTitle?: string | null;
+  countersignedBy?: string | null; countersignedAt?: string | null; countersignTitle?: string | null; countersignSignature?: string | null; // Oct 27: second marina signature
   viewedAt?: string | null;
 };
 
@@ -130,7 +131,7 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
   const owner = block(M, "OWNER", `/s/ ${clean(info.signerName)}`, [clean(info.signerName), `Date: ${fmtDay(info.signedAt)}`], info.signatureImage);
   const sentBy = clean(info.sentByName || "Authorized Representative");
   const marina = block(M + colW + 36, "MARINA", `/s/ ${sentBy}`, [`${clean(info.marinaName)}`, `By: ${sentBy}, ${clean(info.sentByTitle || "") || "Authorized Representative"}`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`], info.sentBySignature);
-  for (const b of [owner, marina]) {
+  const draw = async (b: { x: number; yy: number; sigLine: string; lines: string[]; image?: string | null }) => {
     if (b.image && /^data:image\/png;base64,/.test(b.image)) {
       try {
         const img = await pdf.embedPng(Buffer.from(b.image.split(",")[1], "base64"));
@@ -143,8 +144,15 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
     page.drawLine({ start: { x: b.x, y: b.yy }, end: { x: b.x + colW, y: b.yy }, thickness: 0.8, color: black });
     let ly = b.yy - 13;
     for (const t of b.lines) { page.drawText(t, { x: b.x, y: ly, size: 9.5, font: serif, color: black }); ly -= 12.5; }
-  }
+  };
+  for (const b of [owner, marina]) await draw(b);
   y -= 120;
+  // Oct 27 (per Mely): a second marina signature (e.g. a director), below, on the right
+  if (info.countersignedBy) {
+    need(110);
+    await draw(block(M + colW + 36, "APPROVED FOR THE MARINA", `/s/ ${clean(info.countersignedBy)}`, [`By: ${clean(info.countersignedBy)}, ${clean(info.countersignTitle || "") || "Authorized Representative"}`, `Date: ${info.countersignedAt ? fmtDay(new Date(info.countersignedAt)) : ""}`], info.countersignSignature));
+    y -= 110;
+  }
 
   // ── Electronic signature record ──
   newPage();
@@ -154,6 +162,7 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
     ["Document", info.title],
     ["Contract ID", info.contractId],
     ["Issued by", `${info.sentByName || "Authorized Representative"} for ${info.marinaName}${info.sentAt ? `, ${fmtET(new Date(info.sentAt))}` : ""}`],
+    ...(info.countersignedBy ? [["Approved for the marina by", `${info.countersignedBy}${info.countersignTitle ? `, ${info.countersignTitle}` : ""}${info.countersignedAt ? `, ${fmtET(new Date(info.countersignedAt))}` : ""}`] as [string, string]] : []),
     ["Opened by signer", info.viewedAt ? fmtET(new Date(info.viewedAt)) : "-"],
     ["Signed by", `${info.signerName} (${info.signerEmail || "no email"})`],
     ["Date and time signed", `${fmtET(info.signedAt)}  (UTC ${info.signedAt.toISOString()})`],
