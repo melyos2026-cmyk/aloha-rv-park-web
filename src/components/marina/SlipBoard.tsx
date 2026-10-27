@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fitSlipLabel } from "@/lib/marina/slipLabel";
+import { fitSlipLabel, slipStroke } from "@/lib/marina/slipLabel";
 import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 import ReserveModal from "./ReserveModal";
@@ -163,6 +163,7 @@ export default function SlipBoard({ slips, mapUrl, allowSample = false }: { slip
                 data-dim={dim(s)}
                 data-picked={picked === s.id}
                 points={s.map!.points.map((p) => p.join(",")).join(" ")}
+                style={mapDim[0] ? { strokeWidth: slipStroke(s.map!.points as [number, number][], mapDim[0], mapDim[1]) * (picked === s.id ? 1.4 : 1) } : undefined}
                 role="button"
                 tabIndex={0}
                 aria-label={`Slip ${s.slip_name}, ${STATUS_TEXT[eff(s)]}${s.length_ft ? `, ${s.length_ft} feet` : ""}`}

@@ -25,3 +25,11 @@ export function fitSlipLabel(points: [number, number][], widthPx: number, height
   if (size < 6) return null;
   return { size: Math.round(size * 10) / 10, text, angle: Math.round(angle) };
 }
+
+/** Outline width (px) that suits the slip's size on screen: thin on small slips, fuller on big ones. */
+export function slipStroke(points: [number, number][], widthPx: number, heightPx: number): number {
+  if (!points?.length || points.length < 3 || !widthPx || !heightPx) return 1.5;
+  const px = points.map(([x, y]) => [(x * widthPx) / 100, (y * heightPx) / 100]);
+  const a = Math.hypot(px[1][0] - px[0][0], px[1][1] - px[0][1]), b = Math.hypot(px[2][0] - px[1][0], px[2][1] - px[1][1]);
+  return Math.round(Math.max(0.75, Math.min(3, Math.min(a, b) * 0.06)) * 100) / 100;
+}
