@@ -422,6 +422,20 @@ async function handleWebhook(req: Request) {
     return NextResponse.json({ received: true });
   }
 
+  // Oct 27 (per Mely): a refund made from MelyOS that the bank later rejects (closed card, bank
+  // transfer refused): the money came back to MelyOS, so the request is flagged for the office and
+  // MelyOS to fix the books by hand. Requires "charge.refund.updated" on this webhook endpoint.
+  if (event.type === "charge.refund.updated") {
+    const rf = event.data.object as Stripe.Refund;
+    if (rf.status === "failed" && rf.metadata?.source === "melyos_marina_refund" && rf.metadata.company_id) {
+      await supabase.from("marina_refunds").update({ status: "refund_failed", reject_note: `The bank rejected the refund (${rf.failure_reason || "no reason given"}).` })
+        .eq("company_id", rf.metadata.company_id).eq("stripe_refund_id", rf.id).then(() => null, () => null);
+      await logSystemHealthIssue({ companyId: rf.metadata.company_id, issueType: "refund_review", source: "stripe_webhook",
+        message: `Refund ${rf.id} of $${(rf.amount / 100).toFixed(2)} FAILED at the bank (${rf.failure_reason || "no reason"}). The money is back in MelyOS's balance; the marina's payout was already reduced and the invoice was changed. Fix by hand: give the marina its share back and re-open/re-issue the invoice or refund another way.` }).catch(() => null);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
     const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
@@ -430,9 +444,10 @@ async function handleWebhook(req: Request) {
       try {
         const sessions = await stripe.checkout.sessions.list({ payment_intent: pi, limit: 1 });
         const s = sessions.data[0];
-        // Oct 27: refunds made from MelyOS (Invoices → Refund) already updated the books.
-        const { data: ourRefund } = await supabase.from("marina_refunds").select("id").eq("payment_intent", pi).eq("status", "done").limit(1).then((x) => x, () => ({ data: null } as any));
-        const fromMelyos = !!ourRefund?.length;
+        // Oct 27: refunds made from MelyOS (Invoices → Refund) update the books themselves. Decided per
+        // refund: only when EVERY refund on this charge came from MelyOS is there nothing to do here.
+        const refundsOnCharge = await stripe.refunds.list({ charge: charge.id, limit: 100 }).then((x) => x.data, () => [] as Stripe.Refund[]);
+        const fromMelyos = refundsOnCharge.length > 0 && refundsOnCharge.every((r) => r.metadata?.source === "melyos_marina_refund");
         if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id && fromMelyos) { /* nothing to do */ }
         else if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id) {
           if (charge.refunded) await returnMarinaOnlinePayment(s.metadata.company_id, s.id, "Refunded in Stripe");
