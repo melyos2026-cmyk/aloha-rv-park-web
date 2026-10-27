@@ -163,8 +163,11 @@ export async function POST(req: Request) {
   const residentAmount = holdMode ? stayPrice(stay, units, ratesFor(true))?.total ?? null : null;
   if (holdMode && !(residentAmount && residentAmount < amount)) holdMode = false; // no cheaper resident price: a normal booking
   if (holdMode) { // the hold columns must exist (SQL 93), or the booking couldn't be confirmed by the hold
-    const { error: hc } = await supabaseAdmin.from("marina_reservations").select("hold_pi, resident_amount").limit(1);
-    if (hc) holdMode = false;
+    const [{ error: hc }, { error: hi }] = await Promise.all([
+      supabaseAdmin.from("marina_reservations").select("hold_pi, hold_session, hold_amount, resident_amount, hold_placed_at, hold_captured_at, hold_fee_passed, hold_capture_before, hold_failed_at").limit(1),
+      supabaseAdmin.from("marina_invoices").select("on_hold").limit(1),
+    ]);
+    if (hc || hi) holdMode = false;
   }
   // Oct 26 (per Mely): deposit now, balance later — when the marina chose it.
   const split = holdMode ? { payNow: amount, balance: 0, balanceDue: null as string | null } : splitPayment(await loadBookingSettings(company.id), amount, unitPrice, stay, start); // a hold is for the whole stay
@@ -256,6 +259,7 @@ export async function POST(req: Request) {
     split.payNow = amount; split.balance = 0; split.balanceDue = null;
   }
   const page = extraErr ? null : `/marina/reservation/${reservation.id}?t=${token}`;
+  if (holdMode) await supabaseAdmin.from("marina_invoices").update({ on_hold: true }).eq("id", invoice.id).eq("company_id", company.id); // charged by the hold, never paid twice
   // the dockage terms the guest accepted: when, from where, and exactly which text (fingerprint)
   await supabaseAdmin.from("marina_reservations").update({
     terms_accepted_at: new Date().toISOString(), terms_accepted_ip: (req.headers.get("x-forwarded-for") || "").split(",")[0].trim().slice(0, 60) || null,

@@ -39,11 +39,13 @@ export async function startInvoicePayment(p: {
   const { company } = p;
   const { data: invoice } = await supabaseAdmin
     .from("marina_invoices")
-    .select("id, invoice_number, description, amount, status")
+    .select("*")
     .eq("id", p.invoiceId)
     .eq("company_id", company.id)
     .maybeSingle();
   if (!invoice || invoice.status !== "open") return { ok: false, status: 404, error: "Invoice not found." };
+  // Oct 27: a booking on a card hold is charged by the hold, never paid a second time
+  if ((invoice as any).on_hold) return { ok: false, status: 409, error: "This booking is on a card hold and will be charged automatically." };
 
   const { data: pays } = await supabaseAdmin
     .from("marina_invoice_payments")
@@ -161,8 +163,9 @@ export async function startMultiInvoicePayment(p: {
   const { company } = p;
   const ids = [...new Set(p.invoiceIds)].slice(0, MAX_INVOICES_PER_PAYMENT);
   if (!ids.length) return { ok: false, status: 400, error: "Choose the invoices to pay." };
-  const { data: invoices } = await supabaseAdmin.from("marina_invoices").select("id, invoice_number, description, amount, status, due_date")
+  const { data: invoices0 } = await supabaseAdmin.from("marina_invoices").select("*")
     .eq("company_id", company.id).in("id", ids).eq("status", "open").order("due_date");
+  const invoices = (invoices0 || []).filter((i: any) => !i.on_hold); // Oct 27: card-hold bookings are charged by the hold
   const { data: pays } = await supabaseAdmin.from("marina_invoice_payments").select("invoice_id, amount, returned_at").eq("company_id", company.id).in("invoice_id", ids);
   const paidBy: Record<string, number> = {};
   (pays || []).forEach((x: any) => { if (!x.returned_at) paidBy[x.invoice_id] = (paidBy[x.invoice_id] || 0) + Number(x.amount); });

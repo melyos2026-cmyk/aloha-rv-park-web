@@ -177,18 +177,23 @@ export async function returnMarinaPaymentRef(companyId: string, reference: strin
 // approved → the resident price is charged and the rest released; not approved (or no answer in
 // 6 days, before the card hold expires) → the regular price is charged. See the admin app
 // lib/marinaHolds.ts. Safe to call twice.
-export async function cardHoldPlaced(companyId: string, invoiceId: string, pi: string, sessionId: string, held: number, feePassed: boolean) {
-  const { data: rows } = await supabaseAdmin.from("marina_reservations")
-    .update({ status: "confirmed", hold_pi: pi, hold_session: sessionId, hold_amount: held, hold_placed_at: new Date().toISOString(), hold_fee_passed: feePassed })
+export async function cardHoldPlaced(companyId: string, invoiceId: string, pi: string, sessionId: string, held: number, feePassed: boolean, captureBefore: string | null): Promise<"ok" | "error" | "no_booking"> {
+  const { data: rows, error } = await supabaseAdmin.from("marina_reservations")
+    .update({ status: "confirmed", hold_pi: pi, hold_session: sessionId, hold_amount: held, hold_placed_at: new Date().toISOString(), hold_fee_passed: feePassed, hold_capture_before: captureBefore })
     .eq("company_id", companyId).eq("invoice_id", invoiceId).eq("status", "pending").select("*");
+  if (error) return "error";
   const r: any = rows?.[0];
-  if (!r) return;
+  if (!r) {
+    // a repeat delivery (already confirmed with this hold) is fine; anything else has no booking
+    const { data: same } = await supabaseAdmin.from("marina_reservations").select("id").eq("company_id", companyId).eq("invoice_id", invoiceId).eq("hold_pi", pi).maybeSingle();
+    return same ? "ok" : "no_booking";
+  }
   const [{ data: company }, { data: slip }] = await Promise.all([
     supabaseAdmin.from("companies").select("company_name, domain, contact_phone, is_demo").eq("id", companyId).maybeSingle(),
     supabaseAdmin.from("marina_slips").select("slip_name, dock").eq("id", r.slip_id).maybeSingle(),
   ]);
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: companyId, resident_name: r.guest_name, update_type: "document", message: `${r.guest_name} booked slip ${slip?.slip_name || ""} with a card hold while their proof of residency is checked. Approve or refuse it in Document Review → Residency.` }).then(() => null, () => null);
-  if (!company || isDemoCompany(company as any) || !r.guest_email) return;
+  if (!company || isDemoCompany(company as any) || !r.guest_email) return "ok";
   try {
     await resend.emails.send({
       from: `${company.company_name} <noreply@aloharvparkfl.com>`,
@@ -204,4 +209,5 @@ export async function cardHoldPlaced(companyId: string, invoiceId: string, pi: s
       </div>`,
     });
   } catch (err: any) { console.error("hold email failed:", err?.message); }
+  return "ok";
 }

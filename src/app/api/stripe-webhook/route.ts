@@ -108,8 +108,20 @@ async function handleWebhook(req: Request) {
       // charged yet: the booking is confirmed and the office later charges the resident or the regular price.
       const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
       if (pi && session.metadata.company_id && session.metadata.invoice_id) {
-        const intent = await stripe.paymentIntents.retrieve(pi).catch(() => null);
-        if (intent?.status === "requires_capture") await cardHoldPlaced(session.metadata.company_id, session.metadata.invoice_id, pi, session.id, intent.amount / 100, Number(session.metadata.processing_fee_charged || 0) > 0);
+        let intent: Stripe.PaymentIntent;
+        try { intent = await stripe.paymentIntents.retrieve(pi, { expand: ["latest_charge"] }); }
+        catch { return NextResponse.json({ error: "retry" }, { status: 500 }); } // Stripe sends it again
+        if (intent.status === "requires_capture") {
+          const ch: any = intent.latest_charge;
+          const before = ch?.payment_method_details?.card?.capture_before ? new Date(ch.payment_method_details.card.capture_before * 1000).toISOString() : null;
+          const r = await cardHoldPlaced(session.metadata.company_id, session.metadata.invoice_id, pi, session.id, intent.amount / 100, Number(session.metadata.processing_fee_charged || 0) > 0, before);
+          if (r === "error") return NextResponse.json({ error: "retry" }, { status: 500 });
+          if (r === "no_booking") {
+            // the booking is gone (expired or cancelled): release the guest's card
+            await stripe.paymentIntents.cancel(pi).catch(() => null);
+            await logSystemHealthIssue({ companyId: session.metadata.company_id, issueType: "card_hold", source: "stripe_webhook", message: `A card hold arrived for a booking that is no longer waiting (invoice ${session.metadata.invoice_id}); the hold was released.` }).catch(() => null);
+          }
+        }
       }
       return NextResponse.json({ received: true });
     }

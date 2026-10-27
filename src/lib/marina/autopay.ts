@@ -94,7 +94,8 @@ export async function stopAutopay(company: MarinaCompany, memberId: string) {
 // What autopay would charge today for one boater: their open invoices due today or earlier.
 export async function dueForAutopay(companyId: string, memberId: string) {
   const today = todayET();
-  const { data: invs } = await supabaseAdmin.from("marina_invoices").select("id, invoice_number, description, amount, due_date").eq("company_id", companyId).eq("member_id", memberId).eq("status", "open").lte("due_date", today).order("due_date").limit(50);
+  const { data: invs0 } = await supabaseAdmin.from("marina_invoices").select("*").eq("company_id", companyId).eq("member_id", memberId).eq("status", "open").lte("due_date", today).order("due_date").limit(50);
+  const invs = (invs0 || []).filter((i: any) => !i.on_hold); // Oct 27: never autopay a booking on a card hold
   const ids = (invs || []).map((i: any) => i.id);
   if (!ids.length) return [];
   const { data: pays } = await supabaseAdmin.from("marina_invoice_payments").select("invoice_id, amount, returned_at").eq("company_id", companyId).in("invoice_id", ids);
