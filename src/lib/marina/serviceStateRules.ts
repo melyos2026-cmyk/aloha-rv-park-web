@@ -22,7 +22,7 @@ const GENERIC: StateRules = {
 };
 
 const STATES: Record<string, StateRules> = { FL };
-const NAMES: Record<string, string> = { florida: "FL" };
+const NAMES: Record<string, string> = { florida: "FL", georgia: "GA", alabama: "AL", "south carolina": "SC", "north carolina": "NC", texas: "TX", louisiana: "LA", mississippi: "MS", "puerto rico": "PR" };
 
 export function rulesForState(state: string | null | undefined): StateRules {
   const s = String(state || "").trim();
