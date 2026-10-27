@@ -1,4 +1,5 @@
 "use client";
+import InstallApp, { AppBadge } from "@/components/InstallApp";
 import SmsAlertsToggle from "@/components/SmsAlertsToggle";
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import GolfCartCard from "@/components/GolfCartCard";
@@ -109,13 +110,8 @@ export default function ResidentDashboard() {
   const [notifLoadedOnce, setNotifLoadedOnce] = useState(false);
 
   // Oct 9: mirror unread notifications on the installed app's icon.
+  // Oct 26 (per Mely): the icon number is now everything that needs attention (see <AppBadge> below).
   useEffect(() => {
-    try {
-      const n = notifications.filter((x: any) => !x.resident_read_at).length;
-      const nav: any = navigator;
-      if (n > 0 && nav.setAppBadge) nav.setAppBadge(n).catch(() => {});
-      else if (nav.clearAppBadge) nav.clearAppBadge().catch(() => {});
-    } catch {}
     if (notifLoadedOnce) {
       closeSeenNotifications(
         new Set(notifications.filter((x: any) => !x.resident_read_at).map((x: any) => String(x.id)))
@@ -1130,6 +1126,7 @@ export default function ResidentDashboard() {
             ))}
           </nav>
 
+          <AppBadge n={attention.length} />
           <div className="rp-main">
             {/* Oct 26 (per Mely): inside a section, show what the red number means — tap one to go
                 straight to it. The number goes away by itself once it's done. */}
@@ -1180,6 +1177,7 @@ export default function ResidentDashboard() {
                 <div className="rp-allset" role="status">✓ You&apos;re all set. Nothing needs your attention right now.</div>
               ))}
 
+              <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" compact />
               <div className="rp-tiles">
                 <Tile go="pay" h="Payments" lines={[
                   pendingInvoices.length ? `${money(outstandingBalance)} due · ${pendingInvoices.length} invoice${pendingInvoices.length === 1 ? "" : "s"}` : "All paid up",
@@ -2050,6 +2048,7 @@ export default function ResidentDashboard() {
             </>)}
 
             {section === "more" && (<>
+              <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" />
               <div className="rp-more-list">
                 {(["household", "requests"] as SectionId[]).map((id) => {
                   const x = SECTIONS.find((s) => s.id === id)!;

@@ -13,6 +13,7 @@ import ConciergeCard from "./ConciergeCard";
 import RestaurantCard from "./RestaurantCard";
 import PaymentsSummaryCard from "./PaymentsSummaryCard";
 import AutopayCard from "./AutopayCard";
+import InstallApp, { AppBadge } from "@/components/InstallApp";
 import type { AccountData } from "@/lib/marina/data";
 
 type Account = AccountData & { demo: boolean; companyName: string };
@@ -369,6 +370,7 @@ export default function AccountClient() {
 
   return (
     <div className="mr-acct mr-acct-tabs">
+      <AppBadge n={sum ? attention.length : 0} />
       <div className="mr-acct-top">
         <h1 className="mr-h2" style={{ margin: 0 }}>{section === "home" ? `Hello, ${acct.member.full_name.split(" ")[0]}` : title}</h1>
         <button className="mr-btn dark mr-acct-signout" onClick={logout}>Sign out</button>
@@ -427,6 +429,7 @@ export default function AccountClient() {
           </div>
 
           <PassCard />
+          <InstallApp appName={acct.companyName || "marina"} compact />
         </>)}
 
         {section === "pay" && (<>
@@ -480,6 +483,7 @@ export default function AccountClient() {
             <p className="mr-note">To change your name, email or phone, write to the office in Messages.</p>
             <button className="mr-btn dark" onClick={logout}>Sign out</button>
           </div>
+          <InstallApp appName={acct.companyName || "marina"} />
           <MarketplaceCard />
         </>)}
       </div>
