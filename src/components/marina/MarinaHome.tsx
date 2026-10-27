@@ -79,7 +79,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
         <div className="mr-wrap">
           <h2 className="mr-h2">Find a slip that fits</h2>
           <p className="mr-lede">Enter your boat length, tap a slip and see its size, hookups and price.</p>
-          <SlipBoard slips={slips} mapUrl={mapUrl} />
+          <SlipBoard slips={slips} mapUrl={mapUrl} allowSample={company.domain === "marinademo.melyos.io"} />
         </div>
       </section>
 

@@ -16,7 +16,7 @@ export default async function MarinaLiveMapPage() {
     <>
       <style>{`.mr-header,.mr-footer,.mr-demobar,.mr-chat-tip,.mr-chat-fab,.mr-chat{display:none!important} body{background:#fff}`}</style>
       <div className="mr-wrap" style={{ padding: "12px 12px 24px" }}>
-        <SlipBoard slips={slips} mapUrl={mapUrl} />
+        <SlipBoard slips={slips} mapUrl={mapUrl} allowSample={company.domain === "marinademo.melyos.io"} />
       </div>
     </>
   );

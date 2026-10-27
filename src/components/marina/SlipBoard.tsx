@@ -23,7 +23,7 @@ const todayLocal = () => { const d = new Date(); return new Date(d.getTime() - d
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;
 
 
-export default function SlipBoard({ slips, mapUrl }: { slips: PublicSlip[]; mapUrl?: string | null }) {
+export default function SlipBoard({ slips, mapUrl, allowSample = false }: { slips: PublicSlip[]; mapUrl?: string | null; allowSample?: boolean }) {
   // Oct 27 (per Mely): labels sized to each slip so small docks stay readable
   const mapBox = useRef<HTMLDivElement>(null);
   const [mapDim, setMapDim] = useState<[number, number]>([0, 0]);
@@ -46,7 +46,11 @@ export default function SlipBoard({ slips, mapUrl }: { slips: PublicSlip[]; mapU
   const [requesting, setRequesting] = useState<{ slip: PublicSlip | null } | null>(null);
   const [onDate, setOnDate] = useState("");
   const [type, setType] = useState<SlipType | "all">("all");
-  const hasMap = slips.some((s) => s.map);
+  // Oct 27 (per Mely — "son mapas completamente diferentes"): each marina's slips are drawn only on its
+  // OWN picture. The sample picture belongs to Demo Marina; any other marina without its own picture
+  // shows the list instead of putting its slips on someone else's docks.
+  const picture = mapUrl || (allowSample ? "/marina/map.jpg" : null);
+  const hasMap = !!picture && slips.some((s) => s.map);
   const [view, setView] = useState<"map" | "list">(hasMap ? "map" : "list");
   // Dry storage is on land, so it is never drawn on the water map.
   const showMap = view === "map" && hasMap && type !== "dry";
@@ -149,7 +153,7 @@ export default function SlipBoard({ slips, mapUrl }: { slips: PublicSlip[]; mapU
       {showMap && (
         <div className="mr-map" ref={mapBox} onClick={() => setPicked(null)}>
           {/* Oct 27: the marina's own map picture (uploaded in the admin); the sample picture otherwise */}
-          <img src={mapUrl || "/marina/map.jpg"} alt="Aerial view of the marina docks" />
+          <img src={picture!} alt="Aerial view of the marina docks" />
           <svg className="mr-polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Slips on the marina map">
             {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => (
               <polygon
