@@ -430,12 +430,16 @@ async function handleWebhook(req: Request) {
       try {
         const sessions = await stripe.checkout.sessions.list({ payment_intent: pi, limit: 1 });
         const s = sessions.data[0];
-        if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id) {
+        // Oct 27: refunds made from MelyOS (Invoices → Refund) already updated the books.
+        const { data: ourRefund } = await supabase.from("marina_refunds").select("id").eq("payment_intent", pi).eq("status", "done").limit(1).then((x) => x, () => ({ data: null } as any));
+        const fromMelyos = !!ourRefund?.length;
+        if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id && fromMelyos) { /* nothing to do */ }
+        else if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id) {
           if (charge.refunded) await returnMarinaOnlinePayment(s.metadata.company_id, s.id, "Refunded in Stripe");
           else await logSystemHealthIssue({ companyId: s.metadata.company_id, issueType: "marina_online_payment_returned", source: "stripe_webhook", message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on a marina online payment. The invoice still shows the full amount paid — record the refund on the invoice.` });
         }
         // Oct 26: marina autopay charges (no checkout session) — metadata is on the charge.
-        if (!s && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id) {
+        if (!s && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id && !fromMelyos) {
           if (charge.refunded) await returnMarinaPaymentRef(charge.metadata.company_id, `autopay:${pi}`, "Refunded in Stripe");
           else await logSystemHealthIssue({ companyId: charge.metadata.company_id, issueType: "marina_online_payment_returned", source: "stripe_webhook", message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on a marina autopay charge. Record the refund on the invoice.` });
         }
@@ -580,6 +584,20 @@ async function handleWebhook(req: Request) {
           amount: melyosCents / 100,
           markup: 0,
         });
+      }
+
+      // Oct 27 (per Mely): since June 2025 Stripe also charges $15 when someone RESPONDS to a dispute
+      // (it comes back only if the dispute is won). Lost after responding → the park owes it too.
+      if (Number((dispute as any).evidence_details?.submission_count || 0) > 0) {
+        const src2 = `Stripe dispute response ${dispute.id}`;
+        const { data: had } = await supabase.from("melyos_billing_charges").select("id").eq("source", src2).limit(1);
+        if (!had?.length) {
+          await recordMelyOSBillingCharge({
+            companyId, chargeType: "Chargeback response fee", source: src2,
+            description: `The card dispute by ${who} was answered with evidence and lost. Stripe charges $15.00 to respond to a dispute and returns it only when the dispute is won.`,
+            amount: 15, markup: 0,
+          });
+        }
       }
 
       // 2) The park's own share → taken back from the park's transfer.

@@ -115,6 +115,8 @@ export async function autoContract(company: MarinaCompany, r: any): Promise<{ ok
       memberId = m.id;
     }
   }
+  // Oct 27 (per Mely): the boater's date of birth from the request goes on the owner's record (if missing).
+  if (r.date_of_birth) await supabaseAdmin.from("marina_members").update({ date_of_birth: r.date_of_birth }).eq("id", memberId).eq("company_id", company.id).is("date_of_birth", null).then(() => null, () => null);
   let boatId = r.boat_id as string | null;
   if (!boatId) {
     const name = (r.boat_name || "").trim() || `${String(r.full_name).split(" ")[0]}'s boat`;

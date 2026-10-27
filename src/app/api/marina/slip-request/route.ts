@@ -36,6 +36,18 @@ export async function POST(req: Request) {
   if (name.length < 2) return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
   if (!/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]{2,}$/.test(email)) return NextResponse.json({ error: "Enter a valid email." }, { status: 400 });
   if (phone.length < 7) return NextResponse.json({ error: "Enter a phone number the office can call." }, { status: 400 });
+  // Oct 27 (per Mely — "para saber quién parquea"): date of birth of the person asking (18 or older).
+  let dob = text(b.date_of_birth, 10);
+  if (!dob && memberId) {
+    const { data: md } = await supabaseAdmin.from("marina_members").select("date_of_birth").eq("id", memberId).eq("company_id", company.id).maybeSingle().then((x) => x, () => ({ data: null } as any));
+    dob = md?.date_of_birth || "";
+  }
+  {
+    const ok = /^\d{4}-\d{2}-\d{2}$/.test(dob) && !Number.isNaN(Date.parse(dob));
+    const adult = ok && dob <= addMonthsISO(todayET(), -12 * 18) && dob >= addMonthsISO(todayET(), -12 * 110);
+    if (!ok) return NextResponse.json({ error: "Enter your date of birth." }, { status: 400 });
+    if (!adult) return NextResponse.json({ error: "The person renting the slip must be 18 or older." }, { status: 400 });
+  }
   const length = feet(b.boat_length_ft);
   if (!length) return NextResponse.json({ error: "Enter your boat length." }, { status: 400 });
   const beam = feet(b.boat_beam_ft), draft = feet(b.boat_draft_ft);
@@ -59,14 +71,16 @@ export async function POST(req: Request) {
 
   const token = newRequestToken();
   let row: any = null;
+  let withDob = true;
   for (let i = 0; i < 5 && !row; i++) {
     const number = `SR-${today.replace(/-/g, "").slice(2)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     const { data, error } = await supabaseAdmin.from("marina_slip_requests").insert({
       company_id: company.id, request_number: number, access_token: token, member_id: memberId,
-      full_name: name, email, phone, boat_name: text(b.boat_name, 80) || null, boat_make_model: text(b.boat_make_model, 120) || null,
+      full_name: name, email, phone, ...(withDob ? { date_of_birth: dob } : {}), boat_name: text(b.boat_name, 80) || null, boat_make_model: text(b.boat_make_model, 120) || null,
       boat_length_ft: length, boat_beam_ft: beam, boat_draft_ft: draft, power_needed: power, stay_type: stay, slip_type_wanted: type,
       start_date: start, end_date: end, preferred_slip_id: pref?.id || null, recommended_slip_ids: ranked.slice(0, 5).map((x) => x.slip.id), notes: text(b.notes, 1000) || null,
     }).select("*").single();
+    if (!data && error && /date_of_birth/.test(error.message || "")) { withDob = false; i--; continue; } // SQL 89 not run yet
     if (data) row = data; else if (error?.code !== "23505") return NextResponse.json({ error: /marina_slip_requests/.test(error?.message || "") ? "Slip requests are not set up yet. Please call the marina." : "Could not send your request. Please try again." }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: "Could not send your request. Please try again." }, { status: 500 });

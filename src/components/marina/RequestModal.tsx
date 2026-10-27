@@ -62,7 +62,11 @@ export default function RequestModal({ slip, stay: stay0, units: units0, start: 
               <label>Shore power<select value={power} onChange={(e) => setPower(e.target.value)}><option value="">Not needed</option><option value="30A">30 amp</option><option value="50A">50 amp</option><option value="100A">100 amp</option></select></label>
             </div>
             {slip && <FitBox slip={slip} length={Number(len)} beam={Number(beam) || null} draft={Number(draft) || null} power={power || null} />}
-            <label>Full name<input type="text" name="full_name" required autoComplete="name" /></label>
+            <div className="two">
+              <label>Full name<input type="text" name="full_name" required autoComplete="name" /></label>
+              {/* Oct 27 (per Mely): who is renting the slip — 18 or older */}
+              <label>Date of birth<input type="date" name="date_of_birth" required autoComplete="bday" max={new Date(Date.now() - 18 * 365.25 * 864e5).toISOString().slice(0, 10)} /></label>
+            </div>
             <div className="two">
               <label>Email<input type="email" name="email" required autoComplete="email" /></label>
               <label>Phone<input type="tel" name="phone" required autoComplete="tel" /></label>
