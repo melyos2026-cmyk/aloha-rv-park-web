@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { MarinaCompany } from "@/lib/marina/company";
-import { loadPublicSlips, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems, loadStoreSettings } from "@/lib/marina/data";
+import { loadPublicSlips, loadMapImageUrl, ratesBySlipType, RATE_LABEL, loadFuelPrices, loadStoreItems, loadStoreSettings } from "@/lib/marina/data";
 import { loadRentalItems, loadRentalSettings, rentalsEnabled } from "@/lib/rentals";
 import { loadRestaurant, restaurantEnabled } from "@/lib/restaurant";
 import SlipBoard from "./SlipBoard";
@@ -25,7 +25,7 @@ const CAPABILITIES: [string, string][] = [
 ];
 
 export default async function MarinaHome({ company }: { company: MarinaCompany }) {
-  const [slips, fuel, store, storeSettings, rentalsOn] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id), loadStoreSettings(company.id), rentalsEnabled(company.id)]);
+  const [slips, fuel, store, storeSettings, rentalsOn, mapUrl] = await Promise.all([loadPublicSlips(company.id), loadFuelPrices(company.id), loadStoreItems(company.id), loadStoreSettings(company.id), rentalsEnabled(company.id), loadMapImageUrl(company.id).catch(() => null)]);
   // Oct 23 (per Mely): Rentals & Experiences teaser (only when the module is on).
   const [rentals, rentalSettings] = rentalsOn ? await Promise.all([loadRentalItems(company.id), loadRentalSettings(company.id)]) : [[], null];
   // Oct 24 (per Mely): Restaurant teaser (menu, delivery, reserve) when the module is on.
@@ -79,7 +79,7 @@ export default async function MarinaHome({ company }: { company: MarinaCompany }
         <div className="mr-wrap">
           <h2 className="mr-h2">Find a slip that fits</h2>
           <p className="mr-lede">Enter your boat length, tap a slip and see its size, hookups and price.</p>
-          <SlipBoard slips={slips} />
+          <SlipBoard slips={slips} mapUrl={mapUrl} />
         </div>
       </section>
 

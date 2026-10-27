@@ -1,5 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fitSlipLabel } from "@/lib/marina/slipLabel";
 import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
 import ReserveModal from "./ReserveModal";
@@ -22,7 +23,17 @@ const todayLocal = () => { const d = new Date(); return new Date(d.getTime() - d
 const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved", maintenance: "Closed for repair" } as const;
 
 
-export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
+export default function SlipBoard({ slips, mapUrl }: { slips: PublicSlip[]; mapUrl?: string | null }) {
+  // Oct 27 (per Mely): labels sized to each slip so small docks stay readable
+  const mapBox = useRef<HTMLDivElement>(null);
+  const [mapDim, setMapDim] = useState<[number, number]>([0, 0]);
+  useEffect(() => {
+    const el = mapBox.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setMapDim([el.clientWidth, el.clientHeight]));
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
   const [openOnly, setOpenOnly] = useState(false);
   const [power, setPower] = useState(false);
   const [boat, setBoat] = useState("");
@@ -136,8 +147,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
       )}
 
       {showMap && (
-        <div className="mr-map" onClick={() => setPicked(null)}>
-          <img src="/marina/map.jpg" alt="Aerial view of the marina docks" />
+        <div className="mr-map" ref={mapBox} onClick={() => setPicked(null)}>
+          {/* Oct 27: the marina's own map picture (uploaded in the admin); the sample picture otherwise */}
+          <img src={mapUrl || "/marina/map.jpg"} alt="Aerial view of the marina docks" />
           <svg className="mr-polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Slips on the marina map">
             {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => (
               <polygon
@@ -160,7 +172,9 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
           </svg>
           {slips.filter((s) => s.map && (type === "all" || s.slip_type === type)).map((s) => {
             const c = centroid(s.map!.points);
-            return <span key={s.id} className="mr-polylabel" data-dim={dim(s)} style={{ left: `${c[0]}%`, top: `${c[1]}%` }}>{s.slip_name}</span>;
+            const lab = fitSlipLabel(s.map!.points as [number, number][], mapDim[0], mapDim[1], s.slip_name, 13);
+            if (!lab) return null;
+            return <span key={s.id} className="mr-polylabel" data-dim={dim(s)} style={{ left: `${c[0]}%`, top: `${c[1]}%`, fontSize: lab.size, lineHeight: 1, whiteSpace: "nowrap", transform: `translate(-50%,-50%) rotate(${lab.angle}deg)` }}>{lab.text}</span>;
           })}
           {(() => {
             const h = hover && hover !== picked ? slips.find((x) => x.id === hover) : null;

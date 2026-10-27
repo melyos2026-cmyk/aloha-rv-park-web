@@ -458,3 +458,12 @@ export function ratesBySlipType(slips: PublicSlip[]): RatesByType {
   }
   return { types, rows };
 }
+
+// Oct 27 (per Mely): the marina's own aerial map picture (uploaded in the admin → Slips & Rates → Map
+// picture), so the slip map on its website shows its own docks.
+export async function loadMapImageUrl(companyId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin.from("map_elements").select("data").eq("company_id", companyId)
+    .eq("element_type", "mapImage").eq("element_key", "main").order("id", { ascending: false }).limit(1);
+  const u = (data?.[0] as any)?.data?.url;
+  return typeof u === "string" && /^https:\/\//.test(u) ? u : null;
+}
