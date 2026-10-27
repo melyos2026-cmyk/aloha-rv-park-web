@@ -82,7 +82,7 @@ export async function POST(req: Request) {
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
   if (phone.length < 7) return NextResponse.json({ error: "Enter a phone number the dock office can call." }, { status: 400 });
   if (rules.maxDaysYear) {
-    const { data: past } = await supabaseAdmin.from("marina_reservations").select("start_date, end_date").eq("company_id", company.id).ilike("guest_email", email.replace(/[%_\\]/g, "\\$&")).in("status", ["confirmed", "pending", "checked_in", "checked_out"]).gte("end_date", addDays(today, -365));
+    const { data: past } = await supabaseAdmin.from("marina_reservations").select("start_date, end_date").eq("company_id", company.id).ilike("guest_email", email.replace(/[%_\\]/g, "\\$&")).in("status", ["confirmed", "checked_in", "checked_out"]).gte("end_date", addDays(today, -365));
     const used = (past || []).reduce((t: number, r: any) => t + Math.max(0, Math.round((Date.parse(r.end_date + "T12:00:00Z") - Date.parse(r.start_date + "T12:00:00Z")) / 86400000)), 0);
     if (used + nights > rules.maxDaysYear) return NextResponse.json({ error: `This marina allows up to ${rules.maxDaysYear} nights a year of short stays per boater (you have ${used}). For a longer stay, use "Request a slip".`, longStay: true }, { status: 400 });
   }
@@ -238,6 +238,7 @@ export async function POST(req: Request) {
     terms_accepted_at: new Date().toISOString(), terms_accepted_ip: (req.headers.get("x-forwarded-for") || "").split(",")[0].trim().slice(0, 60) || null,
     terms_hash: crypto.createHash("sha256").update(rules.dockageTerms, "utf8").digest("hex"),
   }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
+  await supabaseAdmin.from("marina_reservations").update({ terms_text: rules.dockageTerms.slice(0, 6000) }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null); // the exact words accepted
 
   const origin = `https://${company.domain}`;
   const pay = await startInvoicePayment({

@@ -52,7 +52,10 @@ export async function POST(req: Request) {
   if (!length) return NextResponse.json({ error: "Enter your boat length." }, { status: 400 });
   const beam = feet(b.boat_beam_ft), draft = feet(b.boat_draft_ft);
   const power = ["30A", "50A", "100A"].includes(String(b.power_needed)) ? String(b.power_needed) : null;
-  const stay = String(b.stay_type);
+  // Oct 27 (review): with a term, the server decides the stay and months — never the browser.
+  const TERM_STAY: Record<string, [string, number]> = { month_to_month: ["monthly", 1], "3_months": ["monthly", 3], "6_months": ["seasonal", 6], annual: ["annual", 12] };
+  const termIn = TERM_STAY[String(b.term)] ? String(b.term) : null;
+  const stay = termIn ? TERM_STAY[termIn][0] : String(b.stay_type);
   if (!["monthly", "seasonal", "annual"].includes(stay)) return NextResponse.json({ error: "Choose monthly, seasonal or annual." }, { status: 400 });
   const start = text(b.start_date, 10);
   const today = todayET();
@@ -66,7 +69,7 @@ export async function POST(req: Request) {
     if (!rules.offered[term]) return NextResponse.json({ error: "This marina doesn't offer that term. Choose another." }, { status: 400 });
   }
   const payInFull = !!term && term !== "month_to_month" && b.pay_in_full === true;
-  const months = stay === "annual" ? 12 : Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(b.months) || (stay === "seasonal" ? 6 : 1))));
+  const months = termIn ? TERM_STAY[termIn][1] : stay === "annual" ? 12 : Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(b.months) || (stay === "seasonal" ? 6 : 1))));
   const end = addDaysISO(addMonthsISO(start, months), -1);
   const type = ["wet", "lift", "dry"].includes(String(b.slip_type)) ? String(b.slip_type) : null;
 
@@ -89,8 +92,8 @@ export async function POST(req: Request) {
       boat_length_ft: length, boat_beam_ft: beam, boat_draft_ft: draft, power_needed: power, stay_type: stay, slip_type_wanted: type,
       start_date: start, end_date: end, preferred_slip_id: pref?.id || null, recommended_slip_ids: ranked.slice(0, 5).map((x) => x.slip.id), notes: text(b.notes, 1000) || null,
     }).select("*").single();
-    if (!data && error && /date_of_birth/.test(error.message || "")) { withDob = false; i--; continue; } // SQL 89 not run yet
-    if (!data && error && /term|pay_in_full/.test(error.message || "")) { withTerm = false; i--; continue; } // SQL 91 not run yet
+    if (!data && error && withDob && /date_of_birth/.test(error.message || "")) { withDob = false; i--; continue; } // SQL 89 not run yet
+    if (!data && error && withTerm && /\bterm\b|pay_in_full/.test(error.message || "")) { withTerm = false; i--; continue; } // SQL 91 not run yet
     if (data) row = data; else if (error?.code !== "23505") return NextResponse.json({ error: /marina_slip_requests/.test(error?.message || "") ? "Slip requests are not set up yet. Please call the marina." : "Could not send your request. Please try again." }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: "Could not send your request. Please try again." }, { status: 500 });

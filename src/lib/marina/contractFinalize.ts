@@ -140,7 +140,7 @@ export async function finalizeSignedContract(p: {
       .eq("company_id", w.company.id).eq("member_id", w.memberId).in("status", ["sent", "viewed"]);
     if (!pending) {
       const { id: _id, status: _s, viewed_at: _v, signed_at: _sa, signer_name: _sn, signer_email: _se, signer_ip: _si, signer_agent: _sg,
-        signature_image: _img, pdf_path: _p, document_id: _d, invoice_ids: _ii, cancelled_at: _c, cancel_reason: _cr, created_at: _ca, renewal_id: _r, ...copy } = k as any;
+        signature_image: _img, pdf_path: _p, document_id: _d, invoice_ids: _ii, cancelled_at: _c, cancel_reason: _cr, created_at: _ca, renewal_id: _r, notice_given_at: _ng, notice_given_by: _nb, ends_on: _eo, ...copy } = k as any;
       await supabaseAdmin.from("marina_contracts").insert({ ...copy, status: "sent", sent_at: new Date().toISOString() }).then(() => {}, () => {});
     }
   }

@@ -80,7 +80,7 @@ export async function autoQuote(company: MarinaCompany, r: any): Promise<{ ok: t
   // Oct 27 (per Mely): month-to-month bills one month at a time; a fixed term is paid monthly or in full (boater's choice).
   const m2m = r.term === "month_to_month";
   const billing = m2m ? "single" : r.term ? (r.pay_in_full ? "single" : "monthly") : r.stay_type === "annual" ? "single" : "monthly";
-  const body = { contract_type: r.stay_type, start_date: r.start_date, end_date: r.end_date, billing, month_to_month: m2m, slip_id: pick.slip.id, member_id: r.member_id, deposit: true, extras: [] as string[] };
+  const body = { contract_type: r.stay_type, start_date: r.start_date, end_date: r.end_date, billing, month_to_month: m2m, pay_in_full: !!r.pay_in_full && !m2m, slip_id: pick.slip.id, member_id: r.member_id, deposit: true, extras: [] as string[] };
   const price = await priceFor(company.id, body);
   if ("error" in price) return { ok: false, reason: price.error || "No rate for this stay in Slips & Rates." };
   const ex = await extrasFor(company.id, body, price.months);
@@ -133,7 +133,7 @@ export async function autoContract(company: MarinaCompany, r: any): Promise<{ ok
   }
   await supabaseAdmin.from("marina_boat_documents").update({ boat_id: boatId }).eq("company_id", company.id).eq("request_id", r.id).is("boat_id", null).then(() => null, () => null);
   const sent = await sendContract(company.id, { name: "Automatic" }, {
-    contract_type: r.stay_type, start_date: q.start || r.start_date, end_date: q.end || r.end_date, billing: q.billing, month_to_month: !!q.month_to_month || r.term === "month_to_month", slip_id: q.slip_id || r.slip_id,
+    contract_type: r.stay_type, start_date: q.start || r.start_date, end_date: q.end || r.end_date, billing: q.billing, month_to_month: !!q.month_to_month || r.term === "month_to_month", pay_in_full: !!r.pay_in_full, slip_id: q.slip_id || r.slip_id,
     member_id: memberId, boat_id: boatId, deposit: q.deposit_on !== false, extras: q.extras_names || [], template_id: templateId,
     override: q.override || undefined, amount: q.override_amount ?? undefined, override_reason: q.override_reason || undefined,
   });

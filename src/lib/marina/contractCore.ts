@@ -73,7 +73,7 @@ export async function priceFor(companyId: string, b: any) {
     ? `Slips & Rates · Monthly ${which} ${money(Number(unit))} × ${months} month${months === 1 ? "" : "s"}`
     : `Slips & Rates · ${TYPE_LABEL[type]} ${which}`;
   // Oct 27 (per Mely): the marina's discount for paying the whole term at once (Rental terms setting).
-  if (billing === "single" && months > 1 && !b.month_to_month) {
+  if (billing === "single" && months > 1 && !b.month_to_month && b.pay_in_full === true) {
     const { data: bs } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
     const pct = Number((bs as any)?.prepay_discount_pct || 0);
     if (pct > 0 && pct < 50) { amount = round2(amount * (1 - pct / 100)); source += ` · ${pct}% off for paying in full`; }
@@ -124,6 +124,14 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
     const r = await supabaseAdmin.from("marina_slips").select("id, slip_name, dock, slip_type, length_ft, max_beam_ft, max_draft_ft, has_power, has_water, utilities_mode, utilities_flat_monthly").eq("id", slipId).eq("company_id", companyId).maybeSingle();
     slip = r.data;
   }
+  // Oct 27 (review): a month-to-month contract's first period is exactly one month, set here (not by the browser).
+  if (body.month_to_month && body.contract_type === "monthly" && DATE_RE.test(String(body.start_date || ""))) {
+    const [y, m, d] = String(body.start_date).split("-").map(Number);
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const next = new Date(Date.UTC(y, m, Math.min(d, lastDay)));
+    next.setUTCDate(next.getUTCDate() - 1);
+    body = { ...body, end_date: next.toISOString().slice(0, 10), billing: "single" };
+  }
   const price = await priceFor(companyId, { ...body, member_id: member.id, slip_id: slip?.id || null });
   if ("error" in price) return { error: price.error || "Check the price.", status: 400 };
   const { start, end, amount } = price;
@@ -156,9 +164,11 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
   // Oct 27 (per Mely — how real marinas do it): month-to-month renews by itself each month until either
   // side gives written notice; a fixed term just ends on its date (renewal is a new contract).
   const { data: rt } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
-  const noticeDays = Math.max(0, Math.min(120, Math.round(Number((rt as any)?.notice_days ?? 30)) || 30));
+  const nd0 = Math.round(Number((rt as any)?.notice_days ?? 30));
+  const noticeDays = Number.isFinite(nd0) ? Math.max(0, Math.min(120, nd0)) : 30;
   const m2m = !!body.month_to_month && price.type === "monthly";
   values.notice_days = String(noticeDays);
+  if (m2m) { values.end_date = "month-to-month, until ended by written notice"; values.amount = `${money(amount)} per month`; }
   if (m2m) values.payment_terms = `${money(amount)} per month, the first due on ${longDate(start)} and each following month on the same day, while the Agreement continues`;
   values.term = m2m ? "Month-to-month" : `${price.months} month${price.months === 1 ? "" : "s"}${price.type === "annual" ? " (annual)" : ""}`;
   values.renewal_terms = m2m
@@ -188,7 +198,11 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
   };
   const termCols = { month_to_month: m2m, notice_days: noticeDays };
   let { data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig, ...termCols }).select("id").single();
-  if (error && /month_to_month|notice_days/.test(error.message)) ({ data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig }).select("id").single());
+  if (error && /month_to_month|notice_days/.test(error.message)) {
+    // without the columns a month-to-month could never renew: refuse it; a fixed term still goes out
+    if (m2m) return { error: "Month-to-month contracts need scripts/marina_91_rental_terms.sql run in Supabase first.", status: 500 };
+    ({ data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig }).select("id").single());
+  }
   if (error && /sent_by_signature|sent_by_title|countersign|prepared_by_name/.test(error.message)) ({ data: k, error } = await supabaseAdmin.from("marina_contracts").insert(row).select("id").single());
   if (error || !k) return { error: error?.message || "Could not create the contract.", status: 500 };
 

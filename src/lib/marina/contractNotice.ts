@@ -10,10 +10,15 @@ function addMonthsISO(d: string, n: number): string {
   const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
   return new Date(Date.UTC(y, m - 1 + n, Math.min(day, last))).toISOString().slice(0, 10);
 }
-export function endsOnFor(k: { end_date: string }, noticeDate: string, noticeDays: number): string {
+// periods are anniversaries of the start date (same as the admin app's nextPeriod)
+function nextPeriod(start: string, end: string): [string, string] {
+  for (let i = 1; i < 600; i++) { const ps = addMonthsISO(start, i); if (ps > end) return [ps, addDays(addMonthsISO(start, i + 1), -1)]; }
+  return [addDays(end, 1), addDays(addMonthsISO(addDays(end, 1), 1), -1)];
+}
+export function endsOnFor(k: { start_date: string; end_date: string }, noticeDate: string, noticeDays: number): string {
   const target = addDays(noticeDate, Math.max(0, noticeDays));
   let end = k.end_date;
-  for (let i = 0; i < 240 && end < target; i++) end = addDays(addMonthsISO(addDays(end, 1), 1), -1);
+  for (let i = 0; i < 600 && end < target; i++) end = nextPeriod(k.start_date || k.end_date, end)[1];
   return end;
 }
 export async function giveNotice(companyId: string, k: any, by: string): Promise<{ error?: string; endsOn?: string }> {
