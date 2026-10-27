@@ -298,13 +298,15 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
 const usd = (v: number | string) => { const x = Number(v); return `$${x.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(x) ? 0 : 2, maximumFractionDigits: 2 })}`; };
 
 function SlipFacts({ s }: { s: PublicSlip }) {
-  const price = (t: "monthly" | "transient_weekly" | "transient_daily") => {
-    const r = s.rates[t]; const v = r ? (r.non_resident ?? r.resident) : null;
-    return v == null ? null : `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(Number(v)) ? 0 : 2, maximumFractionDigits: 2 })}`;
-  };
+  // Oct 27 (per Mely — "la información del mapa sea la que muestra el admin"): the same prices as
+  // Slips & Rates — annual, seasonal, monthly, weekly and nightly, resident and non-resident.
+  const money = (v: number | null | undefined) => (v == null ? null : `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(Number(v)) ? 0 : 2, maximumFractionDigits: 2 })}`);
+  const RATE_ROWS: [keyof PublicSlip["rates"], string][] = [["annual", "Annual"], ["seasonal", "Seasonal"], ["monthly", "Monthly"], ["transient_weekly", "Weekly"], ["transient_daily", "Nightly"]];
+  const rateRows = RATE_ROWS.map(([k, label]) => ({ label, r: (s.rates as any)[k] as { resident: number | null; non_resident: number | null } | undefined }))
+    .filter((x) => x.r && (x.r.resident != null || x.r.non_resident != null));
+  const twoPrices = rateRows.some((x) => x.r!.resident != null && x.r!.non_resident != null && Number(x.r!.resident) !== Number(x.r!.non_resident));
   const fits = [s.length_ft ? `${s.length_ft} ft long` : null, s.max_beam_ft ? `${Math.round(s.max_beam_ft * 10) / 10} ft beam` : null, s.max_draft_ft ? `${s.max_draft_ft} ft draft` : null].filter(Boolean).join(" · ");
   const power = !s.has_power ? "No" : `${s.power_amps ? s.power_amps.replace("/", " / ").replace(/A/g, " amp").replace("amp /", "/") : "Yes"}${s.utilities_mode === "included" ? " · included" : s.utilities_mode === "metered" ? " · metered" : ""}`;
-  const prices: [string, string | null][] = [["Monthly", price("monthly")], ["Weekly", price("transient_weekly")], ["Nightly", price("transient_daily")]];
   const extras = (s.amenities || "").split(/\s*[·|•;]\s*/).filter(Boolean);
   return (
     <>
@@ -313,10 +315,18 @@ function SlipFacts({ s }: { s: PublicSlip }) {
         <span>Power <b>{power}</b></span>
         <span>Water <b>{s.has_water ? "Yes" : "No"}</b></span>
       </div>
-      {prices.some(([, v]) => v) && (
-        <div className="mr-prices">
-          {prices.filter(([, v]) => v).map(([k, v]) => <div key={k}><small>{k}</small><b>{v}</b></div>)}
-        </div>
+      {rateRows.length > 0 && (
+        <table className="mr-rate-table">
+          {twoPrices && <thead><tr><th /><th>City/County resident</th><th>Non-resident</th></tr></thead>}
+          <tbody>
+            {rateRows.map(({ label, r }) => (
+              <tr key={label}>
+                <th>{label}</th>
+                {twoPrices ? <><td>{money(r!.resident) || "—"}</td><td>{money(r!.non_resident) || "—"}</td></> : <td>{money(r!.non_resident ?? r!.resident)}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       {extras.length > 0 && <div className="mr-extras">{extras.map((e) => <span key={e}>{e}</span>)}</div>}
     </>
