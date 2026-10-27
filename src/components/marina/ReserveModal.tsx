@@ -200,7 +200,12 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                 <div className="mr-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label></div>
                 {/* Oct 27 (per Mely): check-in/out times and when they expect to arrive */}
                 {R && <p className="mr-note">Check-in from <b>{t12(R.checkin)}</b> · check-out by <b>{t12(R.checkout)}</b></p>}
-                <label>Expected arrival time (optional)<input type="time" value={eta} onChange={(e) => setEta(e.target.value)} /></label>
+                <label>Expected arrival time (optional)
+                  <select value={eta} onChange={(e) => setEta(e.target.value)}>
+                    <option value="">I&apos;m not sure yet</option>
+                    {(() => { const out: string[] = []; const [h0] = String(R?.checkin || "14:00").split(":").map(Number); for (let m = Math.max(6, h0 - 4) * 60; m <= 21 * 60; m += 30) out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`); return out; })().map((t) => <option key={t} value={t}>{t12(t)}</option>)}
+                  </select>
+                </label>
                 {/* Oct 27 (per Mely): the resident rate — proven with an ID the system reads */}
                 {R?.residentPricing && !terms?.resident && Object.values(slip.rates).some((r) => r && r.resident != null && r.resident !== r.non_resident) && (
                   <div className="mr-terms" style={{ display: "grid", gap: 8 }}>
