@@ -1,4 +1,5 @@
 "use client";
+import { stayPrice } from "@/lib/marina/stayPrice";
 import { useBookingTerms, unitPriceFor } from "./useBookingTerms";
 import { useMemo, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
@@ -55,6 +56,12 @@ export default function SlipFinder({ slips, onPick }: { slips: PublicSlip[]; onP
     const r = (s.rates as any)[key];
     const unit = r ? unitPriceFor(r, !!terms?.resident) || null : null;
     if (unit == null) return null;
+    // Oct 27: short stays get the best rate by themselves (same rule as the booking window)
+    if (stay === "transient_daily" || stay === "transient_weekly") {
+      const res = !!terms?.resident;
+      const best = stayPrice(stay, units, { daily: unitPriceFor((s.rates as any).transient_daily, res), weekly: unitPriceFor((s.rates as any).transient_weekly, res), monthly: unitPriceFor((s.rates as any).monthly, res) });
+      if (best) return { unit, total: best.total };
+    }
     return { unit, total: stay === "seasonal" || stay === "annual" ? unit : unit * units };
   };
 

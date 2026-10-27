@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
 import FitBox from "./FitBox";
 import { useBookingTerms, unitPriceFor, splitFor } from "./useBookingTerms";
+import { stayPrice } from "@/lib/marina/stayPrice";
 
 type Stay = "transient_daily" | "transient_weekly" | "monthly";
 const STAYS: { key: Stay; title: string; unit: string; max: number }[] = [
@@ -40,6 +41,11 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
   const [demo, setDemo] = useState(false);
   const [accept, setAccept] = useState(false); // Oct 27: the marina's dockage terms
   const [longStay, setLongStay] = useState(false);
+  // Oct 27 (per Mely): resident rate proven with an ID (read automatically), and the arrival time
+  const [claim, setClaim] = useState(false);
+  const [resCheck, setResCheck] = useState<{ id: string; status: string; message: string } | null>(null);
+  const [resBusy, setResBusy] = useState(false);
+  const [eta, setEta] = useState("");
   const terms = useBookingTerms();
 
   useEffect(() => {
@@ -51,9 +57,29 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
 
   const cur = STAYS.find((s) => s.key === stay)!;
   const rate = slip.rates[stay];
-  const resident = !!terms?.resident && rate?.resident != null;
-  const unitPrice = unitPriceFor(rate, !!terms?.resident);
-  const total = unitPrice * units;
+  const resOk = !!terms?.resident || (!!resCheck && ["approved", "pending"].includes(resCheck.status));
+  const resident = resOk && rate?.resident != null;
+  const unitPrice = unitPriceFor(rate, resOk);
+  // the same best-rate rule as the server: 7+ nights weekly, 28+ monthly
+  const best = stayPrice(stay, units, { daily: unitPriceFor(slip.rates.transient_daily, resOk), weekly: unitPriceFor(slip.rates.transient_weekly, resOk), monthly: unitPriceFor(slip.rates.monthly, resOk) });
+  const total = best?.total ?? unitPrice * units;
+  const nightsNow = stay === "transient_daily" ? units : stay === "transient_weekly" ? units * 7 : 30;
+  const R = terms?.rules;
+  const t12 = (t?: string) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
+
+  async function checkResidency(form: HTMLFormElement | null) {
+    if (!form) return;
+    const fd = new FormData();
+    const g = (n: string) => (form.elements.namedItem(n) as HTMLInputElement | null);
+    fd.set("full_name", g("guest_name")?.value || ""); fd.set("email", g("guest_email")?.value || ""); fd.set("nights", String(nightsNow));
+    for (const n of ["id", "support1", "support2"]) { const f = g(`res_${n}`)?.files?.[0]; if (f) fd.set(n, f); }
+    setResBusy(true); setResCheck(null);
+    const r = await fetch("/api/marina/residency", { method: "POST", body: fd });
+    const j = await r.json().catch(() => ({}));
+    setResBusy(false);
+    if (!r.ok) { setResCheck({ id: "", status: "error", message: j.error || "Could not check it. Try again." }); return; }
+    setResCheck({ id: j.checkId, status: j.status, message: j.message });
+  }
   const split = splitFor(terms, total, unitPrice, stay, start);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -61,7 +87,8 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
     setError("");
     setState("sending");
     const body = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, unknown>;
-    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept });
+    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept, arrival_time: eta || undefined, residency_check_id: resCheck && ["approved", "pending"].includes(resCheck.status) ? resCheck.id : undefined });
+    for (const k of ["res_id", "res_support1", "res_support2"]) delete (body as any)[k];
     setLongStay(false);
     try {
       const res = await fetch("/api/marina/reserve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -153,8 +180,27 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                   <label>Phone<input type="tel" name="guest_phone" required autoComplete="tel" /></label>
                 </div>
                 <div className="mr-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label></div>
+                {/* Oct 27 (per Mely): check-in/out times and when they expect to arrive */}
+                {R && <p className="mr-note">Check-in from <b>{t12(R.checkin)}</b> · check-out by <b>{t12(R.checkout)}</b></p>}
+                <label>Expected arrival time (optional)<input type="time" value={eta} onChange={(e) => setEta(e.target.value)} /></label>
+                {/* Oct 27 (per Mely): the resident rate — proven with an ID the system reads */}
+                {R?.residentPricing && !terms?.resident && Object.values(slip.rates).some((r) => r && r.resident != null && r.resident !== r.non_resident) && (
+                  <div className="mr-terms" style={{ display: "grid", gap: 8 }}>
+                    <label className="mr-check"><input type="checkbox" checked={claim} onChange={(e) => { setClaim(e.target.checked); if (!e.target.checked) setResCheck(null); }} /> I live in {R.residentArea || "the city/county"} (resident rate)</label>
+                    {claim && <>
+                      <label>Photo of your ID with your address (driver&apos;s license, state ID or vehicle registration)<input type="file" name="res_id" accept="image/*,application/pdf" /></label>
+                      {R.residentProof === "id_plus_2" && nightsNow >= 7 && <>
+                        <label>Document 1 with the same name and address (lease, utility bill from the last 90 days, deed, voter card)<input type="file" name="res_support1" accept="image/*,application/pdf" /></label>
+                        <label>Document 2<input type="file" name="res_support2" accept="image/*,application/pdf" /></label>
+                      </>}
+                      <button type="button" className="mr-btn" disabled={resBusy} onClick={(e) => checkResidency((e.currentTarget as HTMLButtonElement).form)}>{resBusy ? "Checking…" : "Check my documents"}</button>
+                      {resCheck && <div className={resCheck.status === "approved" ? "mr-ok" : resCheck.status === "pending" ? "mr-note" : "mr-error"}>{resCheck.message}</div>}
+                      <p className="mr-note">Enter your full name and email above first. Your documents are only used to confirm the resident rate.</p>
+                    </>}
+                  </div>
+                )}
                 <div className="mr-total">
-                  <span>{units} {cur.unit}{units > 1 ? "s" : ""} × {money(unitPrice)}{resident ? " (resident rate)" : ""}</span>
+                  <span>{best?.label || `${units} ${cur.unit}${units > 1 ? "s" : ""}`}{resident ? " (resident rate)" : ""}</span>
                   <b>{money(total)}</b>
                 </div>
                 {split.balance > 0 && (

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getMarinaForPage } from "@/lib/marina/company";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { loadBookingByLink, bookingMoney } from "@/lib/marina/booking";
+import { loadBookingByLink, bookingMoney, loadTransientRules } from "@/lib/marina/booking";
 import PayLinkButton from "@/components/marina/PayLinkButton";
 
 // Oct 26 (per Mely): the guest's private booking page (link in the confirmation email). Shows the
@@ -20,10 +20,13 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   if (!company) notFound();
   const r = await loadBookingByLink(company.id, id, String(sp.t || ""));
   if (!r) notFound();
-  const [{ data: slip }, m] = await Promise.all([
+  const [{ data: slip }, m, rules] = await Promise.all([
     supabaseAdmin.from("marina_slips").select("slip_name, dock").eq("id", r.slip_id).eq("company_id", company.id).maybeSingle(),
     bookingMoney(company.id, r),
+    loadTransientRules(company.id),
   ]);
+  // Oct 27 (per Mely): check-in/out times
+  const t12 = (t?: string | null) => { if (!t) return ""; const [h, mm] = String(t).split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(mm || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
   const slipLabel = `${slip?.slip_name || ""}${slip?.dock ? ` · ${slip.dock}` : ""}`;
   const head =
     r.status === "cancelled" ? { cls: "off", title: "This booking was cancelled", sub: company.contact_phone ? `Questions? Call ${company.contact_phone}.` : "" }
@@ -43,8 +46,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
           <div className="mr-order-label">Your booking</div>
           <div className="mr-order-where" style={{ marginTop: 8 }}>
             <div><div className="mr-order-label">Slip</div><b>{slipLabel}</b></div>
-            <div><div className="mr-order-label">Arrive</div><b>{day(r.start_date)}</b></div>
-            <div><div className="mr-order-label">Depart</div><b>{day(r.end_date)}</b></div>
+            <div><div className="mr-order-label">Arrive</div><b>{day(r.start_date)}</b><div style={{ fontSize: 13, color: "var(--mr-muted)" }}>Check-in from {t12(rules.checkin)}{r.arrival_time ? ` · you expect ${t12(r.arrival_time)}` : ""}</div></div>
+            <div><div className="mr-order-label">Depart</div><b>{day(r.end_date)}</b><div style={{ fontSize: 13, color: "var(--mr-muted)" }}>Check-out by {t12(rules.checkout)}</div></div>
             <div><div className="mr-order-label">Boat</div><b>{r.boat_name || "Your boat"}</b>{r.boat_length_ft ? <div style={{ fontSize: 13, color: "var(--mr-muted)" }}>{r.boat_length_ft} ft</div> : null}</div>
           </div>
         </section>

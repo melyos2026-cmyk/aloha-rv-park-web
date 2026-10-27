@@ -8,6 +8,7 @@ import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { fitCheck } from "@/lib/marina/fit";
 import { getMarinaSession } from "@/lib/marina/session";
 import { loadBookingSettings, splitPayment, residentPricingFor, newBookingToken, loadTransientRules } from "@/lib/marina/booking";
+import { stayPrice } from "@/lib/marina/stayPrice";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -129,20 +130,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "That slip is already taken for those dates. Try other dates or another slip." }, { status: 409 });
   }
 
-  const { data: rate } = await supabaseAdmin
-    .from("marina_slip_rates")
-    .select("resident_rate, non_resident_rate")
-    .eq("slip_id", slip.id)
-    .eq("company_id", company.id)
-    .eq("rate_type", stay)
-    .maybeSingle();
-  // Oct 26 (per Mely): a signed-in city/county resident gets the resident rate (when the marina uses them).
+  // Oct 27 (per Mely): all of the slip's short-stay rates, so the best one applies by itself (7+ nights
+  // weekly, 28+ monthly — stayPrice), and the resident rate for a signed-in resident or a guest whose
+  // proof of residency was approved (or is waiting for the office: then the difference is charged if refused).
+  const { data: rateRows } = await supabaseAdmin.from("marina_slip_rates").select("rate_type, resident_rate, non_resident_rate")
+    .eq("slip_id", slip.id).eq("company_id", company.id).in("rate_type", ["transient_daily", "transient_weekly", "monthly"]);
   const session = await getMarinaSession(req);
   const memberId = session && session.companyId === company.id ? session.memberId : null;
-  const resident = await residentPricingFor(company.id, memberId);
-  const unitPrice = Number((resident ? rate?.resident_rate ?? rate?.non_resident_rate : rate?.non_resident_rate ?? rate?.resident_rate) ?? 0);
-  if (!(unitPrice > 0)) return NextResponse.json({ error: "This stay length is not offered online for this slip. Call the dock office." }, { status: 400 });
-  const amount = round2(unitPrice * units);
+  let resident = await residentPricingFor(company.id, memberId);
+  let residency: { id: string; status: string } | null = null;
+  if (!resident && rules.residentPricing && b.residency_check_id && /^[0-9a-f-]{36}$/.test(String(b.residency_check_id))) {
+    const { data: rc } = await supabaseAdmin.from("marina_residency_checks").select("id, status, email, created_at").eq("id", String(b.residency_check_id)).eq("company_id", company.id).maybeSingle().then((x) => x, () => ({ data: null } as any));
+    if (rc && String(rc.email).toLowerCase() === email && ["approved", "pending"].includes(rc.status) && Date.parse(rc.created_at) > Date.now() - 24 * 3600 * 1000) { resident = true; residency = { id: rc.id, status: rc.status }; }
+  }
+  const pick = (t: string, res: boolean) => { const r: any = (rateRows || []).find((x: any) => x.rate_type === t); return r ? Number((res ? r.resident_rate ?? r.non_resident_rate : r.non_resident_rate ?? r.resident_rate) ?? 0) : 0; };
+  const ratesFor = (res: boolean) => ({ daily: pick("transient_daily", res), weekly: pick("transient_weekly", res), monthly: pick("monthly", res) });
+  const unitPrice = pick(stay, resident);
+  const priced = stayPrice(stay, units, ratesFor(resident));
+  if (!(unitPrice > 0) || !priced) return NextResponse.json({ error: "This stay length is not offered online for this slip. Call the dock office." }, { status: 400 });
+  const amount = priced.total;
+  const nonResidentAmount = residency ? stayPrice(stay, units, ratesFor(false))?.total ?? amount : null;
   // Oct 26 (per Mely): deposit now, balance later — when the marina chose it.
   const split = splitPayment(await loadBookingSettings(company.id), amount, unitPrice, stay, start);
 
@@ -239,6 +246,10 @@ export async function POST(req: Request) {
     terms_hash: crypto.createHash("sha256").update(rules.dockageTerms, "utf8").digest("hex"),
   }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
   await supabaseAdmin.from("marina_reservations").update({ terms_text: rules.dockageTerms.slice(0, 6000) }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null); // the exact words accepted
+  // Oct 27: when they expect to arrive (the dock office sees it in Today), and the residency proof used
+  const eta = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.arrival_time || "")) ? String(b.arrival_time) : null;
+  if (eta) await supabaseAdmin.from("marina_reservations").update({ arrival_time: eta }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
+  if (residency) await supabaseAdmin.from("marina_reservations").update({ residency_check_id: residency.id, non_resident_amount: nonResidentAmount, resident_status: residency.status }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
 
   const origin = `https://${company.domain}`;
   const pay = await startInvoicePayment({

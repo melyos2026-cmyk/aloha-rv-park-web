@@ -107,5 +107,14 @@ export async function loadTransientRules(companyId: string) {
   const maxDaysYear = d.transient_max_days_year ? Math.round(Number(d.transient_max_days_year)) : null;
   const dockageTerms = String(d.dockage_terms || "").trim() || DEFAULT_DOCKAGE_TERMS;
   const offered = { month_to_month: true, "3_months": true, "6_months": true, annual: true, ...(d.offered_terms || {}) } as Record<string, boolean>;
-  return { maxNights, maxDaysYear, dockageTerms, offered, noticeDays: Number(d.notice_days ?? 30), prepayPct: Number(d.prepay_discount_pct || 0) };
+  const tm = (v: any, def: string) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || "")) ? String(v) : def);
+  const { data: rp } = await supabaseAdmin.from("company_modules").select("enabled").eq("company_id", companyId).eq("module_name", "marina_resident_pricing").maybeSingle();
+  return {
+    maxNights, maxDaysYear, dockageTerms, offered, noticeDays: Number(d.notice_days ?? 30), prepayPct: Number(d.prepay_discount_pct || 0),
+    // Oct 27 (per Mely): check-in/out and the resident rate (proven with an ID, read automatically)
+    checkin: tm(d.checkin_time, "14:00"), checkout: tm(d.checkout_time, "11:00"),
+    residentPricing: !!rp?.enabled, residentArea: String(d.resident_area || "").trim() || null,
+    residentZips: String(d.resident_zips || "").split(/[\s,;]+/).filter((z: string) => /^\d{5}$/.test(z)),
+    residentProof: d.resident_proof === "id_plus_2" ? "id_plus_2" : "id",
+  };
 }

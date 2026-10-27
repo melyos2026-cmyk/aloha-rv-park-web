@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 // signed-in boater gets resident rates. Fetched once per page.
 export type BookingTerms = { deposit_mode: "full" | "percent" | "first_night"; deposit_percent: number; balance_due: "arrival" | "days_before"; balance_days_before: number; resident: boolean;
   // Oct 27: short-stay rules and the long-term terms the marina offers
-  rules?: { maxNights: number; maxDaysYear: number | null; dockageTerms: string; offered: Record<string, boolean>; noticeDays: number; prepayPct: number } };
+  rules?: { maxNights: number; maxDaysYear: number | null; dockageTerms: string; offered: Record<string, boolean>; noticeDays: number; prepayPct: number; checkin: string; checkout: string; residentPricing: boolean; residentArea: string | null; residentZips?: string[]; residentProof: "id" | "id_plus_2" } };
 let cache: Promise<BookingTerms | null> | null = null;
 
 export function useBookingTerms() {
