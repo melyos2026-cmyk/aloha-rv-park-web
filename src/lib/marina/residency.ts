@@ -61,18 +61,18 @@ Copy what is printed; do not guess. Dates printed as MM/DD/YYYY must be converte
     const str = (v: any, n = 120) => (v ? String(v).slice(0, n) : null);
     const date = (v: any) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null);
     return {
-      readable: x.readable !== false, kind: str(x.kind, 40), holder_names: Array.isArray(x.holder_names) ? x.holder_names.map(String).slice(0, 8) : [],
+      readable: x.readable === true, kind: str(x.kind, 40), holder_names: Array.isArray(x.holder_names) ? x.holder_names.map(String).slice(0, 8) : [],
       street: str(x.street), city: str(x.city), state: str(x.state, 4), zip: /^\d{5}/.test(String(x.zip || "")) ? String(x.zip).slice(0, 5) : null, county: str(x.county),
       expires_on: date(x.expires_on), issued_on: date(x.issued_on), in_area: typeof x.in_area === "boolean" ? x.in_area : null, notes: str(x.notes, 300),
     };
   } catch { return null; }
 }
 
-function nameMatches(owner: string, names: string[]) {
+export function nameMatches(owner: string, names: string[]) {
   const parts = norm(owner).split(" ").filter((p) => p.length > 1);
   if (!parts.length) return false;
   const last = parts[parts.length - 1], first = parts[0];
-  return names.some((n) => { const t = norm(n).split(" "); return t.includes(last) && (t.includes(first) || t.some((w) => w[0] === first[0])); });
+  return names.some((n) => { const t = norm(n).split(" "); return parts.length > 1 && t.includes(last) && t.includes(first); }); // full first + last name
 }
 const sameAddress = (a: ResDoc, b: ResDoc) => !!a.zip && a.zip === b.zip && !!a.street && !!b.street && norm(a.street).split(" ")[0] === norm(b.street).split(" ")[0];
 const addDays = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -105,7 +105,9 @@ export function verifyResidency(docs: (ResDoc | null)[], p: { fullName: string; 
   }
   const failed = checks.filter((c) => c.ok === false);
   const unknown = checks.filter((c) => c.ok === null && c.label !== "Expiration");
-  if (!failed.length && !unknown.length && kindOk && nameOk && areaOk === true) return { decision: "approved", checks, message: "Approved! You get the resident rate.", address: addr, expires_on: id.expires_on, docs };
+  // Oct 27 (review): approved by itself only when the marina's ZIP list confirms the address — the
+  // reader's own opinion of "in the area" is never enough on its own.
+  if (!failed.length && !unknown.length && kindOk && nameOk && areaOk === true && zipOk === true) return { decision: "approved", checks, message: "Approved! You get the resident rate.", address: addr, expires_on: id.expires_on, docs };
   const first = failed[0] || unknown[0];
-  return { decision: "pending", checks, message: `Thank you! The office will confirm your residency${first ? ` (${first.label.toLowerCase()}: ${first.detail})` : ""}. If it isn't approved, the difference to the regular rate is charged.`, address: addr, expires_on: id.expires_on, docs };
+  return { decision: "pending", checks, message: `Thank you! The office will confirm your residency${first ? ` (${first.label.toLowerCase()}: ${first.detail})` : ""} and email you, usually within a business day. Then book with the resident rate — or book now at the regular rate.`, address: addr, expires_on: id.expires_on, docs };
 }

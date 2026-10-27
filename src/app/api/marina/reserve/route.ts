@@ -9,6 +9,7 @@ import { fitCheck } from "@/lib/marina/fit";
 import { getMarinaSession } from "@/lib/marina/session";
 import { loadBookingSettings, splitPayment, residentPricingFor, newBookingToken, loadTransientRules } from "@/lib/marina/booking";
 import { stayPrice } from "@/lib/marina/stayPrice";
+import { nameMatches } from "@/lib/marina/residency";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -140,13 +141,19 @@ export async function POST(req: Request) {
   let resident = await residentPricingFor(company.id, memberId);
   let residency: { id: string; status: string } | null = null;
   if (!resident && rules.residentPricing && b.residency_check_id && /^[0-9a-f-]{36}$/.test(String(b.residency_check_id))) {
-    const { data: rc } = await supabaseAdmin.from("marina_residency_checks").select("id, status, email, created_at").eq("id", String(b.residency_check_id)).eq("company_id", company.id).maybeSingle().then((x) => x, () => ({ data: null } as any));
-    if (rc && String(rc.email).toLowerCase() === email && ["approved", "pending"].includes(rc.status) && Date.parse(rc.created_at) > Date.now() - 24 * 3600 * 1000) { resident = true; residency = { id: rc.id, status: rc.status }; }
+    // Oct 27 (review): only an APPROVED proof lowers the price — same email AND same name as the
+    // booking, ID not expired, from the last 30 days, and with the 2 extra documents when required.
+    const { data: rc } = await supabaseAdmin.from("marina_residency_checks").select("id, status, email, full_name, created_at, expires_on, ai").eq("id", String(b.residency_check_id)).eq("company_id", company.id).maybeSingle().then((x) => x, () => ({ data: null } as any));
+    const needSupport = rules.residentProof === "id_plus_2" && nights >= 7;
+    if (rc && rc.status === "approved" && String(rc.email).toLowerCase() === email && nameMatches(name, [String(rc.full_name)]) && nameMatches(String(rc.full_name), [name])
+      && Date.parse(rc.created_at) > Date.now() - 30 * 86400000 && (!rc.expires_on || rc.expires_on > today) && (!needSupport || rc.ai?.needSupport === true)) {
+      resident = true; residency = { id: rc.id, status: rc.status };
+    }
   }
   const pick = (t: string, res: boolean) => { const r: any = (rateRows || []).find((x: any) => x.rate_type === t); return r ? Number((res ? r.resident_rate ?? r.non_resident_rate : r.non_resident_rate ?? r.resident_rate) ?? 0) : 0; };
   const ratesFor = (res: boolean) => ({ daily: pick("transient_daily", res), weekly: pick("transient_weekly", res), monthly: pick("monthly", res) });
-  const unitPrice = pick(stay, resident);
   const priced = stayPrice(stay, units, ratesFor(resident));
+  const unitPrice = pick(stay, resident) || pick("transient_daily", resident) * (stay === "transient_weekly" ? 7 : 1); // first-night deposit base
   if (!(unitPrice > 0) || !priced) return NextResponse.json({ error: "This stay length is not offered online for this slip. Call the dock office." }, { status: 400 });
   const amount = priced.total;
   const nonResidentAmount = residency ? stayPrice(stay, units, ratesFor(false))?.total ?? amount : null;

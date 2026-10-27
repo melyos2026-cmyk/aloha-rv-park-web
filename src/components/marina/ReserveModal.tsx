@@ -57,7 +57,7 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
 
   const cur = STAYS.find((s) => s.key === stay)!;
   const rate = slip.rates[stay];
-  const resOk = !!terms?.resident || (!!resCheck && ["approved", "pending"].includes(resCheck.status));
+  const resOk = !!terms?.resident || resCheck?.status === "approved"; // only an approved proof lowers the price
   const resident = resOk && rate?.resident != null;
   const unitPrice = unitPriceFor(rate, resOk);
   // the same best-rate rule as the server: 7+ nights weekly, 28+ monthly
@@ -67,12 +67,30 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
   const R = terms?.rules;
   const t12 = (t?: string) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
 
+  // a new name/email/length means a new check (the server ties the proof to all three)
+  useEffect(() => { setResCheck(null); }, [stay, units]);
+  // the office approved it later: the email's link brings the approval here (the server checks it again)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("residency");
+    if (id && /^[0-9a-f-]{36}$/.test(id)) { setClaim(true); setResCheck({ id, status: "approved", message: "Your resident rate is approved. Use the same name and email." }); }
+  }, [stay, units]);
+  // phone photos are shrunk before upload (the server takes small requests only)
+  async function shrink(f: File): Promise<Blob> {
+    if (!f.type.startsWith("image/")) return f;
+    try {
+      const bmp = await createImageBitmap(f);
+      const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
+      return await new Promise<Blob>((res) => c.toBlob((b) => res(b || f), "image/jpeg", 0.82));
+    } catch { return f; }
+  }
   async function checkResidency(form: HTMLFormElement | null) {
     if (!form) return;
     const fd = new FormData();
     const g = (n: string) => (form.elements.namedItem(n) as HTMLInputElement | null);
     fd.set("full_name", g("guest_name")?.value || ""); fd.set("email", g("guest_email")?.value || ""); fd.set("nights", String(nightsNow));
-    for (const n of ["id", "support1", "support2"]) { const f = g(`res_${n}`)?.files?.[0]; if (f) fd.set(n, f); }
+    for (const n of ["id", "support1", "support2"]) { const f = g(`res_${n}`)?.files?.[0]; if (f) fd.set(n, await shrink(f), f.name.replace(/\.[^.]+$/, "") + ".jpg"); }
     setResBusy(true); setResCheck(null);
     const r = await fetch("/api/marina/residency", { method: "POST", body: fd });
     const j = await r.json().catch(() => ({}));
@@ -87,7 +105,7 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
     setError("");
     setState("sending");
     const body = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, unknown>;
-    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept, arrival_time: eta || undefined, residency_check_id: resCheck && ["approved", "pending"].includes(resCheck.status) ? resCheck.id : undefined });
+    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept, arrival_time: eta || undefined, residency_check_id: resCheck?.status === "approved" ? resCheck.id : undefined });
     for (const k of ["res_id", "res_support1", "res_support2"]) delete (body as any)[k];
     setLongStay(false);
     try {
@@ -174,9 +192,9 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                   </label>
                 )}
                 <FitBox slip={slip} length={Number(bLen)} beam={Number(bBeam) || null} draft={Number(bDraft) || null} power={bPower || null} />
-                <label>Full name<input type="text" name="guest_name" required autoComplete="name" /></label>
+                <label>Full name<input type="text" name="guest_name" required autoComplete="name" onChange={() => resCheck && setResCheck(null)} /></label>
                 <div className="two">
-                  <label>Email<input type="email" name="guest_email" required autoComplete="email" /></label>
+                  <label>Email<input type="email" name="guest_email" required autoComplete="email" onChange={() => resCheck && setResCheck(null)} /></label>
                   <label>Phone<input type="tel" name="guest_phone" required autoComplete="tel" /></label>
                 </div>
                 <div className="mr-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label></div>
@@ -195,7 +213,7 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                       </>}
                       <button type="button" className="mr-btn" disabled={resBusy} onClick={(e) => checkResidency((e.currentTarget as HTMLButtonElement).form)}>{resBusy ? "Checking…" : "Check my documents"}</button>
                       {resCheck && <div className={resCheck.status === "approved" ? "mr-ok" : resCheck.status === "pending" ? "mr-note" : "mr-error"}>{resCheck.message}</div>}
-                      <p className="mr-note">Enter your full name and email above first. Your documents are only used to confirm the resident rate.</p>
+                      <p className="mr-note">Enter your full name (as on your ID) and email above first. Bring the same ID at check-in. Your documents are only used to confirm the resident rate.</p>
                     </>}
                   </div>
                 )}
