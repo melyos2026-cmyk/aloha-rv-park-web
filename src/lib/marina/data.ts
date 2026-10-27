@@ -1,3 +1,4 @@
+import { syncSlipStatuses } from "./slipStatus";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 import { RATE_TYPES, RATE_LABEL, type RateType } from "./rates";
@@ -69,6 +70,7 @@ export function todayET(): string {
 // Public slip board: only what a visitor should see. Notes, owners and boats
 // are never included.
 export async function loadPublicSlips(companyId: string): Promise<PublicSlip[]> {
+  await syncSlipStatuses(companyId); // Oct 27: status follows the reservations calendar
   const holdSince = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const [{ data: slips }, { data: rates }, { data: bookings }] = await Promise.all([
     supabaseAdmin
