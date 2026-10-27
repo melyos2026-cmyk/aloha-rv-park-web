@@ -45,7 +45,7 @@ export async function startInvoicePayment(p: {
     .maybeSingle();
   if (!invoice || invoice.status !== "open") return { ok: false, status: 404, error: "Invoice not found." };
   // Oct 27: a booking on a card hold is charged by the hold, never paid a second time
-  if ((invoice as any).on_hold) return { ok: false, status: 409, error: "This booking is on a card hold and will be charged automatically." };
+  if ((invoice as any).on_hold && !p.hold) return { ok: false, status: 409, error: "This booking is on a card hold and will be charged automatically." };
 
   const { data: pays } = await supabaseAdmin
     .from("marina_invoice_payments")
