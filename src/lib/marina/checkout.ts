@@ -34,6 +34,7 @@ export async function startInvoicePayment(p: {
   successUrl: string;
   cancelUrl: string;
   method?: "card" | "ach";   // Oct 24: bank transfer (ACH) — allowed only above the marina's minimum
+  hold?: boolean;            // Oct 27: card hold (authorize now, charge later) — resident rate under review
 }): Promise<StartPaymentResult> {
   const { company } = p;
   const { data: invoice } = await supabaseAdmin
@@ -72,7 +73,7 @@ export async function startInvoicePayment(p: {
     .eq("company_id", company.id)
     .maybeSingle();
   const passFee = feeSettings?.pass_processing_fee_to_resident !== false;
-  const ach = p.method === "ach";
+  const ach = p.method === "ach" && !p.hold; // a hold is always a card
   if (ach && !achAllowed(feeSettings, balance)) return { ok: false, status: 400, error: "Bank payment is not available for this invoice. Please pay by card." };
   const fee = round2(ach ? calculateAchFee(balance) : calculateProcessingFee(balance));
   const chargeAmount = round2(balance + (passFee ? fee : 0));
@@ -107,6 +108,7 @@ export async function startInvoicePayment(p: {
       ...(split
         ? {
             payment_intent_data: {
+              ...(p.hold ? { capture_method: "manual" as const } : {}),
               application_fee_amount: split.applicationFeeAmountCents,
               transfer_data: { destination: split.connectedAccountId },
               ...(split.statementDescriptorSuffix ? { statement_descriptor_suffix: split.statementDescriptorSuffix } : {}),
@@ -121,6 +123,7 @@ export async function startInvoicePayment(p: {
         invoice_amount: String(balance),
         processing_fee_charged: passFee ? String(fee) : "0",
         payment_method: ach ? "ach" : "card",
+        ...(p.hold ? { hold: "1" } : {}),
       },
       // Oct 24: short-lived checkout (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,

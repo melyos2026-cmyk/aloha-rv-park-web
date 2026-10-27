@@ -171,3 +171,37 @@ export async function returnMarinaPaymentRef(companyId: string, reference: strin
     .update({ returned_at: new Date().toISOString(), return_reason: reason.slice(0, 300), recorded_by_name: "Online payment (returned)", pending_at: null })
     .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).is("returned_at", null);
 }
+
+// Oct 27 (per Mely — "un hold como hacen los hoteles"): the guest's card is authorized for the
+// regular price while the office checks their proof of residency. The booking is confirmed now;
+// approved → the resident price is charged and the rest released; not approved (or no answer in
+// 6 days, before the card hold expires) → the regular price is charged. See the admin app
+// lib/marinaHolds.ts. Safe to call twice.
+export async function cardHoldPlaced(companyId: string, invoiceId: string, pi: string, sessionId: string, held: number, feePassed: boolean) {
+  const { data: rows } = await supabaseAdmin.from("marina_reservations")
+    .update({ status: "confirmed", hold_pi: pi, hold_session: sessionId, hold_amount: held, hold_placed_at: new Date().toISOString(), hold_fee_passed: feePassed })
+    .eq("company_id", companyId).eq("invoice_id", invoiceId).eq("status", "pending").select("*");
+  const r: any = rows?.[0];
+  if (!r) return;
+  const [{ data: company }, { data: slip }] = await Promise.all([
+    supabaseAdmin.from("companies").select("company_name, domain, contact_phone, is_demo").eq("id", companyId).maybeSingle(),
+    supabaseAdmin.from("marina_slips").select("slip_name, dock").eq("id", r.slip_id).maybeSingle(),
+  ]);
+  await supabaseAdmin.from("resident_update_notifications").insert({ company_id: companyId, resident_name: r.guest_name, update_type: "document", message: `${r.guest_name} booked slip ${slip?.slip_name || ""} with a card hold while their proof of residency is checked. Approve or refuse it in Document Review → Residency.` }).then(() => null, () => null);
+  if (!company || isDemoCompany(company as any) || !r.guest_email) return;
+  try {
+    await resend.emails.send({
+      from: `${company.company_name} <noreply@aloharvparkfl.com>`,
+      to: r.guest_email,
+      subject: `Your slip reservation at ${company.company_name} is confirmed`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+        <h2 style="margin:0 0 8px;">Reservation confirmed</h2>
+        <p style="color:#444;">Hi ${esc(r.guest_name)}, your slip is booked.</p>
+        <p style="color:#444;line-height:1.7;"><b>Slip:</b> ${esc(slip?.slip_name || "")}${slip?.dock ? ` (${esc(slip.dock)})` : ""}<br/><b>Arrive:</b> ${esc(r.start_date)}<br/><b>Depart:</b> ${esc(r.end_date)}</p>
+        <p style="color:#444;">We placed a <b>hold of $${Number(held).toFixed(2)}</b> on your card (not a charge). When the office confirms your residency, we charge the resident price${r.resident_amount ? ` ($${Number(r.resident_amount).toFixed(2)})` : ""} and release the rest. If it can't be confirmed, the regular price is charged.</p>
+        ${r.access_token && company.domain ? `<p><a href="https://${company.domain}/marina/reservation/${r.id}?t=${r.access_token}" style="display:inline-block;background:#0f2540;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:bold">See my booking</a></p>` : ""}
+        <p style="color:#666;font-size:13px;">${company.contact_phone ? `Questions? Call ${esc(company.contact_phone)}.` : ""}</p>
+      </div>`,
+    });
+  } catch (err: any) { console.error("hold email failed:", err?.message); }
+}

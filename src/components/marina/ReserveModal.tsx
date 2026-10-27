@@ -63,6 +63,10 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
   // the same best-rate rule as the server: 7+ nights weekly, 28+ monthly
   const best = stayPrice(stay, units, { daily: unitPriceFor(slip.rates.transient_daily, resOk), weekly: unitPriceFor(slip.rates.transient_weekly, resOk), monthly: unitPriceFor(slip.rates.monthly, resOk) });
   const total = best?.total ?? unitPrice * units;
+  // Oct 27 (per Mely — like a hotel): proof under review → a card hold for the regular price; the
+  // resident price is charged if approved, the regular price if not.
+  const holdMode = resCheck?.status === "pending";
+  const resTotal = holdMode ? stayPrice(stay, units, { daily: unitPriceFor(slip.rates.transient_daily, true), weekly: unitPriceFor(slip.rates.transient_weekly, true), monthly: unitPriceFor(slip.rates.monthly, true) })?.total ?? null : null;
   const nightsNow = stay === "transient_daily" ? units : stay === "transient_weekly" ? units * 7 : 30;
   const R = terms?.rules;
   const t12 = (t?: string) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
@@ -98,14 +102,14 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
     if (!r.ok) { setResCheck({ id: "", status: "error", message: j.error || "Could not check it. Try again." }); return; }
     setResCheck({ id: j.checkId, status: j.status, message: j.message });
   }
-  const split = splitFor(terms, total, unitPrice, stay, start);
+  const split = holdMode && resTotal != null && resTotal < total ? { payNow: total, balance: 0, balanceDue: null as string | null } : splitFor(terms, total, unitPrice, stay, start);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     setState("sending");
     const body = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, unknown>;
-    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept, arrival_time: eta || undefined, residency_check_id: resCheck?.status === "approved" ? resCheck.id : undefined });
+    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept, arrival_time: eta || undefined, residency_check_id: resCheck && ["approved", "pending"].includes(resCheck.status) ? resCheck.id : undefined });
     for (const k of ["res_id", "res_support1", "res_support2"]) delete (body as any)[k];
     setLongStay(false);
     try {
@@ -238,10 +242,17 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                   <div style={{ whiteSpace: "pre-wrap" }}>{terms?.rules?.dockageTerms || "Loading…"}</div>
                 </details>
                 <label className="mr-check"><input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} required /> I have read and accept the marina&apos;s dockage terms.</label>
+                {holdMode && resTotal != null && resTotal < total && (
+                  <div className="mr-depsplit">
+                    <div><span>Hold on your card now (not a charge)</span><b>{money(total)}</b></div>
+                    <div><span>Charged if your residency is approved</span><span>{money(resTotal)}</span></div>
+                    <div><span>Charged if it isn&apos;t</span><span>{money(total)}</span></div>
+                  </div>
+                )}
                 {error && <div className="mr-error" role="alert">{error}{longStay && <> <button type="button" className="mr-btn link" onClick={() => onLongStay?.()}>Request a slip instead</button></>}</div>}
                 <p className="mr-note">Staying longer than {terms?.rules?.maxNights ?? 30} nights? Use “Request a slip”: the marina sends you a monthly, seasonal or annual contract.</p>
                 <button type="submit" className="mr-btn dark" disabled={state === "sending" || !accept}>
-                  {state === "sending" ? "Processing…" : split.balance > 0 ? `Pay ${money(split.payNow)} deposit and reserve` : `Pay ${money(total)} and reserve`}
+                  {state === "sending" ? "Processing…" : holdMode && resTotal != null && resTotal < total ? `Hold ${money(total)} and reserve` : split.balance > 0 ? `Pay ${money(split.payNow)} deposit and reserve` : `Pay ${money(total)} and reserve`}
                 </button>
                 <p className="mr-note">Taxes and card fees, if any, are shown at checkout. Demo sites do not charge a card.</p>
               </>

@@ -140,14 +140,17 @@ export async function POST(req: Request) {
   const memberId = session && session.companyId === company.id ? session.memberId : null;
   let resident = await residentPricingFor(company.id, memberId);
   let residency: { id: string; status: string } | null = null;
+  let holdMode = false;
   if (!resident && rules.residentPricing && b.residency_check_id && /^[0-9a-f-]{36}$/.test(String(b.residency_check_id))) {
     // Oct 27 (review): only an APPROVED proof lowers the price — same email AND same name as the
     // booking, ID not expired, from the last 30 days, and with the 2 extra documents when required.
     const { data: rc } = await supabaseAdmin.from("marina_residency_checks").select("id, status, email, full_name, created_at, expires_on, ai").eq("id", String(b.residency_check_id)).eq("company_id", company.id).maybeSingle().then((x) => x, () => ({ data: null } as any));
     const needSupport = rules.residentProof === "id_plus_2" && nights >= 7;
-    if (rc && rc.status === "approved" && String(rc.email).toLowerCase() === email && nameMatches(name, [String(rc.full_name)]) && nameMatches(String(rc.full_name), [name])
+    if (rc && ["approved", "pending"].includes(rc.status) && String(rc.email).toLowerCase() === email && nameMatches(name, [String(rc.full_name)]) && nameMatches(String(rc.full_name), [name])
       && Date.parse(rc.created_at) > Date.now() - 30 * 86400000 && (!rc.expires_on || rc.expires_on > today) && (!needSupport || rc.ai?.needSupport === true)) {
-      resident = true; residency = { id: rc.id, status: rc.status };
+      // approved → resident price now; pending → card HOLD for the regular price until the office decides
+      if (rc.status === "approved") resident = true; else holdMode = true;
+      residency = { id: rc.id, status: rc.status };
     }
   }
   const pick = (t: string, res: boolean) => { const r: any = (rateRows || []).find((x: any) => x.rate_type === t); return r ? Number((res ? r.resident_rate ?? r.non_resident_rate : r.non_resident_rate ?? r.resident_rate) ?? 0) : 0; };
@@ -157,8 +160,14 @@ export async function POST(req: Request) {
   if (!(unitPrice > 0) || !priced) return NextResponse.json({ error: "This stay length is not offered online for this slip. Call the dock office." }, { status: 400 });
   const amount = priced.total;
   const nonResidentAmount = residency ? stayPrice(stay, units, ratesFor(false))?.total ?? amount : null;
+  const residentAmount = holdMode ? stayPrice(stay, units, ratesFor(true))?.total ?? null : null;
+  if (holdMode && !(residentAmount && residentAmount < amount)) holdMode = false; // no cheaper resident price: a normal booking
+  if (holdMode) { // the hold columns must exist (SQL 93), or the booking couldn't be confirmed by the hold
+    const { error: hc } = await supabaseAdmin.from("marina_reservations").select("hold_pi, resident_amount").limit(1);
+    if (hc) holdMode = false;
+  }
   // Oct 26 (per Mely): deposit now, balance later — when the marina chose it.
-  const split = splitPayment(await loadBookingSettings(company.id), amount, unitPrice, stay, start);
+  const split = holdMode ? { payNow: amount, balance: 0, balanceDue: null as string | null } : splitPayment(await loadBookingSettings(company.id), amount, unitPrice, stay, start); // a hold is for the whole stay
 
   // Flood guard, then date conflicts (a pending hold only counts for 30 minutes).
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -256,12 +265,13 @@ export async function POST(req: Request) {
   // Oct 27: when they expect to arrive (the dock office sees it in Today), and the residency proof used
   const eta = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.arrival_time || "")) ? String(b.arrival_time) : null;
   if (eta) await supabaseAdmin.from("marina_reservations").update({ arrival_time: eta }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
-  if (residency) await supabaseAdmin.from("marina_reservations").update({ residency_check_id: residency.id, non_resident_amount: nonResidentAmount, resident_status: residency.status }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
+  if (residency) await supabaseAdmin.from("marina_reservations").update({ residency_check_id: residency.id, non_resident_amount: nonResidentAmount, resident_status: holdMode ? "pending" : residency.status, ...(holdMode ? { resident_amount: residentAmount } : {}) }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
 
   const origin = `https://${company.domain}`;
   const pay = await startInvoicePayment({
     company,
     invoiceId: invoice.id,
+    hold: holdMode,
     successUrl: page ? `${origin}${page}&paid=1` : `${origin}/?reserved=success#slips`,
     cancelUrl: `${origin}/?reserved=cancelled#slips`,
   });
@@ -271,6 +281,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: pay.error }, { status: pay.status });
   }
 
-  const summary = { slip: slip.slip_name, dock: slip.dock, start, end, amount, invoice: invoice.invoice_number, paidNow: split.payNow, balance: split.balance, balanceDue: split.balanceDue, page, resident };
+  const summary = { hold: holdMode, residentAmount, slip: slip.slip_name, dock: slip.dock, start, end, amount, invoice: invoice.invoice_number, paidNow: split.payNow, balance: split.balance, balanceDue: split.balanceDue, page, resident };
   return NextResponse.json("url" in pay ? { url: pay.url, summary } : { ok: true, demo: true, summary });
 }

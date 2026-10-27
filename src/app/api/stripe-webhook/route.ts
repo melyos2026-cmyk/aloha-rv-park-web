@@ -1,3 +1,4 @@
+import { cardHoldPlaced } from "@/lib/marina/payments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
@@ -99,6 +100,16 @@ async function handleWebhook(req: Request) {
             pending: ach && session.payment_status !== "paid",
           });
         }
+      }
+      return NextResponse.json({ received: true });
+    }
+    if (session.metadata?.type === "marina_invoice" && session.metadata.hold === "1") {
+      // Oct 27 (per Mely — like a hotel): a card HOLD while the resident rate is reviewed. Nothing is
+      // charged yet: the booking is confirmed and the office later charges the resident or the regular price.
+      const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+      if (pi && session.metadata.company_id && session.metadata.invoice_id) {
+        const intent = await stripe.paymentIntents.retrieve(pi).catch(() => null);
+        if (intent?.status === "requires_capture") await cardHoldPlaced(session.metadata.company_id, session.metadata.invoice_id, pi, session.id, intent.amount / 100, Number(session.metadata.processing_fee_charged || 0) > 0);
       }
       return NextResponse.json({ received: true });
     }

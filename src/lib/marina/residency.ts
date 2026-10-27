@@ -109,5 +109,5 @@ export function verifyResidency(docs: (ResDoc | null)[], p: { fullName: string; 
   // reader's own opinion of "in the area" is never enough on its own.
   if (!failed.length && !unknown.length && kindOk && nameOk && areaOk === true && zipOk === true) return { decision: "approved", checks, message: "Approved! You get the resident rate.", address: addr, expires_on: id.expires_on, docs };
   const first = failed[0] || unknown[0];
-  return { decision: "pending", checks, message: `Thank you! The office will confirm your residency${first ? ` (${first.label.toLowerCase()}: ${first.detail})` : ""} and email you, usually within a business day. Then book with the resident rate — or book now at the regular rate.`, address: addr, expires_on: id.expires_on, docs };
+  return { decision: "pending", checks, message: `Thank you! The office will confirm your residency${first ? ` (${first.label.toLowerCase()}: ${first.detail})` : ""}, usually within a business day. You can book now: we place a hold on your card for the regular price, and charge the resident price if it's approved.`, address: addr, expires_on: id.expires_on, docs };
 }
