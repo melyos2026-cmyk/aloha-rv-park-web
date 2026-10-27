@@ -33,8 +33,16 @@ export async function MarinaShell({ company, children }: { company: MarinaCompan
       <header className="mr-header">
         <div className="mr-wrap">
           <Link href="/" className="mr-brand">
-            {company.logo_url ? <img src={company.logo_url} alt="" /> : <Emblem />}
-            <span className="mr-name">{company.company_name}<small>Marina</small></span>
+            {/* Oct 27 (per Mely — "salen dos logos"): with its own logo, the marina shows only the logo
+                (it already carries the name); without one, the emblem + the name in text */}
+            {company.logo_url ? (
+              <img className="mr-brand-logo" src={company.logo_url} alt={company.company_name} />
+            ) : (
+              <>
+                <Emblem />
+                <span className="mr-name">{company.company_name}<small>Marina</small></span>
+              </>
+            )}
           </Link>
           <MarinaNav services={services} demo={demo} />
         </div>
