@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { fitSlipLabel, slipStroke } from "@/lib/marina/slipLabel";
 import type { PublicSlip, SlipType } from "@/lib/marina/data";
 import { RATE_LABEL, RATE_TYPES } from "@/lib/marina/rates";
@@ -25,15 +25,16 @@ const STATUS_TEXT = { available: "Open", occupied: "Taken", reserved: "Reserved"
 
 export default function SlipBoard({ slips, mapUrl, allowSample = false }: { slips: PublicSlip[]; mapUrl?: string | null; allowSample?: boolean }) {
   // Oct 27 (per Mely): labels sized to each slip so small docks stay readable
-  const mapBox = useRef<HTMLDivElement>(null);
   const [mapDim, setMapDim] = useState<[number, number]>([0, 0]);
-  useEffect(() => {
-    const el = mapBox.current;
+  // a callback ref: one observer per map element; only a real size change updates (a new array on every
+  // notice made the map re-draw in a loop, and it shook)
+  const ro = useRef<ResizeObserver | null>(null);
+  const mapBox = useCallback((el: HTMLDivElement | null) => {
+    ro.current?.disconnect(); ro.current = null;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setMapDim([el.clientWidth, el.clientHeight]));
-    ro.observe(el);
-    return () => ro.disconnect();
-  });
+    ro.current = new ResizeObserver(() => setMapDim((d) => (Math.abs(d[0] - el.clientWidth) < 2 && Math.abs(d[1] - el.clientHeight) < 2 ? d : [el.clientWidth, el.clientHeight])));
+    ro.current.observe(el);
+  }, []);
   const [openOnly, setOpenOnly] = useState(false);
   const [power, setPower] = useState(false);
   const [boat, setBoat] = useState("");
