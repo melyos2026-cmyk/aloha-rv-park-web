@@ -40,7 +40,7 @@ export async function loadWorkOrderByLink(companyId: string, number: string, tok
   const shopFee = r2(labor * Number(st?.shop_fee_pct || 0) / 100);
   const tax = r2((L.filter((l) => l.taxable).reduce((a, l) => a + l.amount, 0) + (shopTaxable ? shopFee : 0)) * Number(st?.parts_tax_pct || 0) / 100);
   return {
-    id: wo.id, number: wo.wo_number, status: wo.status as string, title: wo.title, description: wo.description, category: CATEGORY_LABEL[wo.category] || wo.category,
+    id: wo.id, number: wo.wo_number, status: wo.status as string, title: wo.title, description: wo.description, category: CATEGORY_LABEL[wo.category] || String(wo.category || "").replace(/^custom:/, ""),
     customer_notes: wo.customer_notes, scheduled_start: wo.scheduled_start, scheduled_end: wo.scheduled_end, due_date: wo.due_date,
     approved_at: wo.approved_at, approved_by_name: wo.approved_by_name, declined_reason: wo.declined_reason, invoice_id: wo.invoice_id,
     photos: (Array.isArray(wo.photos) ? wo.photos : []) as { url: string; label: string | null }[],
