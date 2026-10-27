@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 // Oct 26 (per Mely — work orders): Approve (type your name + agree) or Decline (reason) an estimate.
-export default function WorkOrderApprove({ number, token, total, owner }: { number: string; token: string; total: string; owner: string }) {
+export default function WorkOrderApprove({ number, token, total, owner, lien = "" }: { number: string; token: string; total: string; owner: string; lien?: string }) {
   const router = useRouter();
   const [mode, setMode] = useState<"" | "decline">("");
   const [name, setName] = useState("");
@@ -38,7 +38,8 @@ export default function WorkOrderApprove({ number, token, total, owner }: { numb
         <>
           <label className="mr-wo-label">Type your full name to approve</label>
           <input className="mr-wo-input" value={name} onChange={(e) => setName(e.target.value)} placeholder={owner || "Full name"} autoComplete="name" />
-          <label className="mr-wo-check"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I approve this work for <b>{total}</b> and agree to pay it when it&apos;s done. If more work is needed, the marina will ask me first.</label>
+          <label className="mr-wo-check"><input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} /> I approve this work for <b>{total}</b> and agree to pay it when it&apos;s done. If more work is needed, the marina will ask me first.{lien ? " I have read the lien notice below." : ""}</label>
+          {lien && <p className="mr-note" style={{ fontSize: 12.5, margin: "6px 0 0" }}>{lien}</p>}
           <div className="mr-wo-actions">
             <button type="button" className="mr-btn dark" disabled={busy || name.trim().length < 3 || !agree} onClick={() => send("approve")}>{busy ? "Approving…" : `Approve ${total}`}</button>
             <button type="button" className="mr-wo-link" disabled={busy} onClick={() => setMode("decline")}>Decline</button>

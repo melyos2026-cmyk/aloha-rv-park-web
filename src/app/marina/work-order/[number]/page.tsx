@@ -84,7 +84,7 @@ export default async function Page({ params, searchParams }: { params: Promise<{
             <div className="t"><span>Total</span><span>{money(t.total)}</span></div>
           </div>
           {wo.status === "awaiting_approval" ? (
-            <WorkOrderApprove number={wo.number} token={String(sp.t)} total={money(t.total)} owner={wo.owner || ""} />
+            <WorkOrderApprove number={wo.number} token={String(sp.t)} total={money(t.total)} owner={wo.owner || ""} lien={wo.lien_notice || ""} />
           ) : wo.approved_at ? (
             <p style={{ marginTop: 14, color: "#0b6b4f", fontWeight: 700 }}>✓ Approved by {wo.approved_by_name} on {new Date(wo.approved_at).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })}</p>
           ) : null}
