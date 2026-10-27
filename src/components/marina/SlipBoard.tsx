@@ -189,8 +189,10 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
               style={(() => {
                 const xs = selected.map.points.map((p) => p[0]), ys = selected.map.points.map((p) => p[1]);
                 const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-                // Lower half of the map: grow upward so the card is never cut off.
-                const vertical = minY > 40 ? { bottom: `${Math.max(100 - maxY, 2)}%` } : { top: `${Math.max(minY, 2)}%` };
+                // Oct 27 (per Mely — the open cards were cut off at the top/bottom of the map): the card is
+                // centered up-and-down inside the map, beside the slip, and scrolls inside if it's taller.
+                void minY; void maxY;
+                const vertical = { top: "50%", transform: "translateY(-50%)" };
                 return { ...vertical, ...(minX > 50 ? { right: `${100 - minX + 1}%` } : { left: `${maxX + 1}%` }) };
               })()}
               onClick={(e) => e.stopPropagation()}

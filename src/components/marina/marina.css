@@ -268,7 +268,7 @@
 .mr-pop-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: .85rem; color: var(--mr-muted); }
 .mr-pop-rows b { color: var(--mr-ink); }
 .mr-pop .mr-btn { min-height: 38px; font-size: .9rem; }
-@media (max-width: 700px) { .mr-pop { position: fixed; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px !important; width: auto; max-height: 80vh; overflow-y: auto; } }
+@media (max-width: 700px) { .mr-pop { position: fixed; left: 12px !important; right: 12px !important; top: auto !important; bottom: 12px !important; transform: none !important; width: auto; max-height: 80vh !important; overflow-y: auto; } }
 
 .mr-water[hidden] { display: none; }
 
@@ -297,7 +297,7 @@
 
 .mr-pop-photo { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 6px; display: block; }
 .mr-detail .mr-pop-photo { max-width: 360px; }
-.mr-pop { width: min(300px, 64%); }
+.mr-pop { width: min(300px, 64%); max-height: calc(100% - 24px); overflow-y: auto; }
 
 /* Online reservation */
 .mr-modal-back { position: fixed; inset: 0; z-index: 100; background: rgba(15,37,64,.62); display: grid; place-items: center; padding: 16px; overflow-y: auto; }
