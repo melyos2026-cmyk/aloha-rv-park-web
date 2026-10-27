@@ -23,6 +23,8 @@ export type SignedContractInfo = {
   signatureStyle?: string | null; // e.g. 'adopted in the "Great Vibes" style' or 'drawn by hand'
   sentAt?: string | null;
   sentByName?: string | null;
+  sentBySignature?: string | null; // Oct 27: the marina signer's adopted signature (PNG data URL)
+  sentByTitle?: string | null;
   viewedAt?: string | null;
 };
 
@@ -127,7 +129,7 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
   };
   const owner = block(M, "OWNER", `/s/ ${clean(info.signerName)}`, [clean(info.signerName), `Date: ${fmtDay(info.signedAt)}`], info.signatureImage);
   const sentBy = clean(info.sentByName || "Authorized Representative");
-  const marina = block(M + colW + 36, "MARINA", `/s/ ${sentBy}`, [`${clean(info.marinaName)}`, `By: ${sentBy}, Authorized Representative`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`]);
+  const marina = block(M + colW + 36, "MARINA", `/s/ ${sentBy}`, [`${clean(info.marinaName)}`, `By: ${sentBy}, ${clean(info.sentByTitle || "") || "Authorized Representative"}`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`], info.sentBySignature);
   for (const b of [owner, marina]) {
     if (b.image && /^data:image\/png;base64,/.test(b.image)) {
       try {

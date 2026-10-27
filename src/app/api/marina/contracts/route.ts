@@ -60,12 +60,14 @@ export async function GET(req: Request) {
     if (!signed) return NextResponse.json({ error: "Could not open the PDF." }, { status: 500 });
     return NextResponse.json({ url: signed.signedUrl });
   }
-  const { data, error } = await supabaseAdmin.from("marina_contracts")
-    .select("id, title, body, status, sent_at, sent_by_name, viewed_at, signed_at, signer_name, start_date, end_date, pdf_path")
+  const sel = (cols: string) => supabaseAdmin.from("marina_contracts").select(cols)
     .eq("company_id", w.company.id).eq("member_id", w.memberId).neq("status", "cancelled")
     .order("sent_at", { ascending: false }).limit(30);
+  // Oct 27: the marina signer's adopted signature + title (columns from SQL 85; older databases without)
+  let { data, error } = await sel("id, title, body, status, sent_at, sent_by_name, sent_by_signature, sent_by_title, viewed_at, signed_at, signer_name, start_date, end_date, pdf_path") as any;
+  if (error && /sent_by_signature|sent_by_title/.test(error.message)) ({ data, error } = await sel("id, title, body, status, sent_at, sent_by_name, viewed_at, signed_at, signer_name, start_date, end_date, pdf_path") as any);
   if (error) return NextResponse.json({ contracts: [] }); // tables not created yet on this database
-  return NextResponse.json({ contracts: (data || []).map((k) => ({ ...k, hasPdf: !!k.pdf_path, pdf_path: undefined })) });
+  return NextResponse.json({ contracts: (data || []).map((k: any) => ({ ...k, hasPdf: !!k.pdf_path, pdf_path: undefined })) });
 }
 
 // POST { id, action: "view" }  |  { id, action: "sign", name, agree, signature? }
@@ -196,7 +198,7 @@ export async function POST(req: Request) {
       marinaName: company.company_name, marinaAddress: company.address || "", domain: company.domain,
       contractId: k.id, title: k.title, body: k.body, bodyHash: k.body_hash,
       signerName: name, signerEmail: member.email || "", signedAt, ip, userAgent: agent, signatureImage: sig, signatureStyle: sigStyle,
-      sentAt: k.sent_at, sentByName: k.sent_by_name, viewedAt: k.viewed_at || signedAt.toISOString(),
+      sentAt: k.sent_at, sentByName: k.sent_by_name, sentBySignature: (k as any).sent_by_signature || null, sentByTitle: (k as any).sent_by_title || null, viewedAt: k.viewed_at || signedAt.toISOString(),
     });
     const path = `${w.company.id}/contracts/${k.id}.pdf`;
     const up = await supabaseAdmin.storage.from("marina-documents").upload(path, Buffer.from(bytes), { contentType: "application/pdf", upsert: true });

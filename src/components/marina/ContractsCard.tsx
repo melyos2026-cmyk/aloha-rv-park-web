@@ -81,7 +81,7 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
               <button type="button" aria-label="Close" onClick={() => setOpen(null)} style={{ background: "none", border: 0, fontSize: 26, lineHeight: 1, cursor: "pointer", color: "#5b6b78" }}>×</button>
             </div>
             <div style={{ overflowY: "auto", flex: 1, minHeight: 160, border: "1px solid #dbe3e8", borderRadius: 8, padding: "20px 22px", background: "#fff" }}>
-              <ContractText body={open.body} owner={fullName} marina={marinaName} sentBy={open.sent_by_name} sentAt={open.sent_at} />
+              <ContractText body={open.body} owner={fullName} marina={marinaName} sentBy={open.sent_by_name} sentAt={open.sent_at} sentBySignature={(open as any).sent_by_signature} sentByTitle={(open as any).sent_by_title} />
             </div>
             <div style={{ display: "grid", gap: 10 }}>
               <label style={{ fontSize: 14, fontWeight: 600 }}>Type your full name to sign
