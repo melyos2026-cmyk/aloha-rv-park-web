@@ -88,6 +88,10 @@ export async function POST(req: Request) {
     await supabaseAdmin.storage.from("marina-documents").remove([path]).then(() => null, () => null);
     return NextResponse.json({ error: /status|uploaded_by/.test(error.message) ? "Document uploads are not set up yet. Please email it to the office." : "Could not save the document." }, { status: 500 });
   }
+  // Oct 26 (per Mely — Document Review showed the same document twice): a new upload replaces any
+  // earlier one of the same kind still waiting for review, so the office only reviews the latest.
+  await supabaseAdmin.from("marina_boat_documents").update({ status: "rejected", review_note: "Replaced by a newer upload.", reviewed_by_name: "System", reviewed_at: new Date().toISOString() })
+    .eq("company_id", w.company.id).eq("boat_id", boat.id).eq("doc_type", type).eq("status", "pending").eq("uploaded_by", "boater").neq("id", row.id).then(() => null, () => null);
   const { data: m } = await supabaseAdmin.from("marina_members").select("full_name").eq("id", w.memberId).maybeSingle();
   // Oct 26 (per Mely): read it now; approved at once when everything matches.
   const check = await autoCheckDocument({ companyId: w.company.id, marinaName: w.company.company_name, docId: row.id, buf, type: kind.type, docType: type, owner: m?.full_name || "", boat: { id: boat.id, name: boat.boat_name, length: boat.length_ft, hull_id: boat.hull_id, registration: boat.registration_number }, otherBoats: ((await supabaseAdmin.from("marina_boats").select("id, boat_name, length_ft, hull_id, registration_number").eq("company_id", w.company.id).eq("member_id", w.memberId).neq("id", boat.id)).data || []).map((o: any) => ({ id: o.id, name: o.boat_name, length: o.length_ft, hull_id: o.hull_id, registration: o.registration_number })), notify: { memberId: w.memberId, email: (await supabaseAdmin.from("marina_members").select("email").eq("id", w.memberId).maybeSingle()).data?.email || null } }).catch(() => ({ decision: "pending" as const, message: "Thank you! The office will review it." }));

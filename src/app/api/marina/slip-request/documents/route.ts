@@ -50,6 +50,10 @@ export async function POST(req: Request) {
     await supabaseAdmin.storage.from("marina-documents").remove([path]).then(() => null, () => null);
     return NextResponse.json({ error: /request_id|boat_id/.test(error.message) ? "Document uploads with requests are not set up yet. Please email them to the office." : "Could not save the document." }, { status: 500 });
   }
+  // Oct 26 (per Mely — Document Review showed the same document twice): a new upload replaces any
+  // earlier one of the same kind still waiting for review, so the office only reviews the latest.
+  await supabaseAdmin.from("marina_boat_documents").update({ status: "rejected", review_note: "Replaced by a newer upload.", reviewed_by_name: "System", reviewed_at: new Date().toISOString() })
+    .eq("company_id", company.id).eq("request_id", r.id).eq("doc_type", type).eq("status", "pending").eq("uploaded_by", "boater").neq("id", row.id).then(() => null, () => null);
   const check = await autoCheckDocument({ companyId: company.id, marinaName: company.company_name, docId: row.id, buf, type: kind.type, docType: type, owner: r.full_name, boat: { name: r.boat_name, length: Number(r.boat_length_ft) || null }, notify: { memberId: r.member_id, email: r.email, link: `https://${company.domain}/marina/request/${encodeURIComponent(r.request_number)}?t=${r.access_token}` } }).catch(() => ({ decision: "pending" as const, message: "Thank you! The office will review it." }));
   if (check.decision !== "pending") return NextResponse.json({ ok: true, decision: check.decision, message: check.message });
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: r.full_name, update_type: "boat_document", message: `${r.full_name} sent ${LABEL[type].toLowerCase()} with slip request ${r.request_number}. Review it in Document Review.` }).then(() => null, () => null);
