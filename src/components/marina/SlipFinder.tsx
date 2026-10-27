@@ -89,7 +89,7 @@ export default function SlipFinder({ slips, onPick }: { slips: PublicSlip[]; onP
         <ol className="mr-finder-results">
           {results.map((x, i) => {
             const p = priceOf(x.slip);
-            const canBook = !long || (stay === "monthly" && p);
+            const canBook = !long || (stay === "monthly" && units === 1 && p); // Oct 27: online = up to one month; longer = contract
             return (
               <li key={x.slip.id} className={i === 0 ? "best" : ""}>
                 <div className="top">

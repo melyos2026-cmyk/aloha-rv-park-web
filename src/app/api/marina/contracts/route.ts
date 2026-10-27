@@ -1,3 +1,5 @@
+import { isDemoCompany } from "@/lib/marina/host";
+import { giveNotice } from "@/lib/marina/contractNotice";
 import { mailOffice } from "@/lib/marina/slipAuto";
 import { escHtml } from "@/lib/marina/contractCore";
 import { NextResponse } from "next/server";
@@ -44,7 +46,10 @@ export async function GET(req: Request) {
   let { data, error } = await sel("id, title, body, status, sent_at, sent_by_name, sent_by_signature, sent_by_title, countersign_required, countersigned_at, countersigned_by_name, countersign_title, countersign_signature, viewed_at, signed_at, signer_name, start_date, end_date, pdf_path") as any;
   if (error && /sent_by_signature|sent_by_title|countersign/.test(error.message)) ({ data, error } = await sel("id, title, body, status, sent_at, sent_by_name, viewed_at, signed_at, signer_name, start_date, end_date, pdf_path") as any);
   if (error) return NextResponse.json({ contracts: [] }); // tables not created yet on this database
-  return NextResponse.json({ contracts: (data || []).map((k: any) => ({ ...k, hasPdf: !!k.pdf_path, pdf_path: undefined })) });
+  // Oct 27: month-to-month fields (SQL 91), read apart so an older database still works
+  const { data: mt } = await supabaseAdmin.from("marina_contracts").select("id, month_to_month, notice_days, notice_given_at, ends_on").eq("company_id", w.company.id).eq("member_id", w.memberId).then((x) => x, () => ({ data: null } as any));
+  const byId = new Map((mt || []).map((x: any) => [x.id, x]));
+  return NextResponse.json({ contracts: (data || []).map((k: any) => ({ ...k, ...(byId.get(k.id) || {}), hasPdf: !!k.pdf_path, pdf_path: undefined })) });
 }
 
 // POST { id, action: "view" }  |  { id, action: "sign", name, agree, signature? }
@@ -60,6 +65,17 @@ export async function POST(req: Request) {
   if (b.action === "view") {
     if (k.status === "sent") await supabaseAdmin.from("marina_contracts").update({ status: "viewed", viewed_at: new Date().toISOString() }).eq("id", k.id).eq("status", "sent");
     return NextResponse.json({ ok: true });
+  }
+
+  // Oct 27 (per Mely): the boater gives written notice to end a month-to-month agreement.
+  if (b.action === "give_notice") {
+    if (isDemoCompany(w.company)) return NextResponse.json({ error: "Not available in the demo." }, { status: 403 });
+    const { data: me } = await supabaseAdmin.from("marina_members").select("full_name").eq("id", w.memberId).eq("company_id", w.company.id).maybeSingle();
+    const r = await giveNotice(w.company.id, k, `${me?.full_name || "Boat owner"} (boater)`);
+    if (r.error) return NextResponse.json({ error: r.error }, { status: 400 });
+    await supabaseAdmin.from("resident_update_notifications").insert({ company_id: w.company.id, resident_name: me?.full_name || "Boat owner", update_type: "contract", message: `${me?.full_name || "A boater"} gave notice on "${k.title}". Last day: ${r.endsOn}.` }).then(() => null, () => null);
+    await mailOffice(w.company, `Notice to leave: ${me?.full_name || "a boater"} — last day ${r.endsOn}`, [`<b>${escHtml(me?.full_name || "A boater")}</b> gave written notice on <b>${escHtml(k.title)}</b>. The last day is <b>${escHtml(r.endsOn!)}</b>. No more monthly invoices after that.`], undefined, "contracts").catch(() => null);
+    return NextResponse.json({ ok: true, endsOn: r.endsOn });
   }
 
   if (b.action !== "sign") return NextResponse.json({ error: "Unknown action." }, { status: 400 });

@@ -2,13 +2,24 @@
 import { useEffect, useState } from "react";
 import type { PublicSlip } from "@/lib/marina/data";
 import FitBox from "./FitBox";
+import { useBookingTerms } from "./useBookingTerms";
 
 // Oct 26 (per Mely): request a monthly / seasonal / annual slip. The office reviews it and sends a
 // contract; the boater follows every step on a private tracker page.
 type Stay = "monthly" | "seasonal" | "annual";
+type Term = "month_to_month" | "3_months" | "6_months" | "annual";
 export default function RequestModal({ slip, stay: stay0, units: units0, start: start0, boat, onClose }: { slip: PublicSlip | null; stay?: string; units?: number; start?: string; boat?: { length?: string; beam?: string; draft?: string; power?: string }; onClose: () => void }) {
-  const [stay, setStay] = useState<Stay>((["monthly", "seasonal", "annual"].includes(String(stay0)) ? stay0 : "annual") as Stay);
-  const [months, setMonths] = useState(units0 && stay0 !== "annual" ? units0 : stay0 === "seasonal" ? 6 : 1);
+  // Oct 27 (per Mely — like real marinas): the terms this marina offers — month-to-month, 3 months,
+  // 6 months, annual — and paying monthly or the whole term at once.
+  const bt = useBookingTerms();
+  const offered = { month_to_month: true, "3_months": true, "6_months": true, annual: true, ...(bt?.rules?.offered || {}) } as Record<string, boolean>;
+  const TERMS: [Term, string, string][] = ([["month_to_month", "Month-to-month", `Renews each month; ${bt?.rules?.noticeDays ?? 30} days' notice to leave`], ["3_months", "3 months", "Fixed term"], ["6_months", "6 months", "Seasonal"], ["annual", "Annual", "12 months"]] as [Term, string, string][]).filter(([k]) => offered[k]);
+  const term0: Term = stay0 === "annual" ? "annual" : stay0 === "seasonal" ? "6_months" : Number(units0) >= 3 ? "3_months" : "month_to_month";
+  const [term, setTerm] = useState<Term>(term0);
+  const [payInFull, setPayInFull] = useState(false);
+  const termOk = TERMS.some(([k]) => k === term) ? term : (TERMS[0]?.[0] || term);
+  const stay: Stay = termOk === "annual" ? "annual" : termOk === "6_months" ? "seasonal" : "monthly";
+  const months = termOk === "annual" ? 12 : termOk === "6_months" ? 6 : termOk === "3_months" ? 3 : 1;
   const [start, setStart] = useState(start0 || new Date().toISOString().slice(0, 10));
   const [len, setLen] = useState(boat?.length || ""); const [beam, setBeam] = useState(boat?.beam || ""); const [draft, setDraft] = useState(boat?.draft || ""); const [power, setPower] = useState(boat?.power || "");
   const [state, setState] = useState<"idle" | "sending">("idle");
@@ -18,7 +29,7 @@ export default function RequestModal({ slip, stay: stay0, units: units0, start: 
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setErr(""); setState("sending");
-    const body = { ...Object.fromEntries(new FormData(e.currentTarget).entries()), stay_type: stay, months, start_date: start, boat_length_ft: len, boat_beam_ft: beam, boat_draft_ft: draft, power_needed: power, preferred_slip_id: slip?.id, slip_type: slip?.slip_type };
+    const body = { ...Object.fromEntries(new FormData(e.currentTarget).entries()), stay_type: stay, months, term: termOk, pay_in_full: termOk !== "month_to_month" && payInFull, start_date: start, boat_length_ft: len, boat_beam_ft: beam, boat_draft_ft: draft, power_needed: power, preferred_slip_id: slip?.id, slip_type: slip?.slip_type };
     const r = await fetch("/api/marina/slip-request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
     setState("idle");
@@ -42,12 +53,18 @@ export default function RequestModal({ slip, stay: stay0, units: units0, start: 
           <form className="mr-modal-body" onSubmit={submit}>
             <h3 className="mr-modal-h">{slip ? `Request slip ${slip.slip_name}` : "Request a slip"}</h3>
             {slip && <div className="mr-pop-sub">{slip.slip_type === "dry" ? "Dry storage" : slip.slip_type === "lift" ? "Lift slip" : "Wet slip"}{slip.dock ? ` · ${slip.dock}` : ""}{slip.length_ft ? ` · up to ${slip.length_ft} ft` : ""}</div>}
-            <div className="mr-seg" role="group" aria-label="Contract">
-              {(["monthly", "seasonal", "annual"] as Stay[]).map((s) => <button key={s} type="button" aria-pressed={stay === s} onClick={() => { setStay(s); setMonths(s === "seasonal" ? 6 : 1); }}>{s === "monthly" ? "Monthly" : s === "seasonal" ? "Seasonal" : "Annual"}</button>)}
+            <div className="mr-seg" role="group" aria-label="Contract term">
+              {TERMS.map(([k, l]) => <button key={k} type="button" aria-pressed={termOk === k} onClick={() => setTerm(k)}>{l}</button>)}
             </div>
+            <p className="mr-note">{TERMS.find(([k]) => k === termOk)?.[2]}</p>
             <div className="two">
               <label>Start date<input type="date" required value={start} onChange={(e) => setStart(e.target.value)} /></label>
-              {stay !== "annual" ? <label>Months<input type="number" min={1} max={stay === "seasonal" ? 9 : 11} value={months} onChange={(e) => setMonths(Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(e.target.value)) || 1)))} /></label> : <label>Length<input type="text" disabled value="12 months" /></label>}
+              {termOk !== "month_to_month" ? (
+                <label>Payment<select value={payInFull ? "full" : "monthly"} onChange={(e) => setPayInFull(e.target.value === "full")}>
+                  <option value="monthly">Pay monthly</option>
+                  <option value="full">Pay the whole term{Number(bt?.rules?.prepayPct) > 0 ? ` (${bt?.rules?.prepayPct}% off)` : ""}</option>
+                </select></label>
+              ) : <label>Payment<input type="text" disabled value="Each month" /></label>}
             </div>
             <div className="two">
               <label>Boat name<input type="text" name="boat_name" autoComplete="off" /></label>

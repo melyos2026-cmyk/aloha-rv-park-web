@@ -58,13 +58,26 @@ export async function priceFor(companyId: string, b: any) {
     supabaseAdmin.from("company_modules").select("enabled").eq("company_id", companyId).eq("module_name", "marina_resident_pricing").maybeSingle(),
   ]);
   const resident = !!setting?.enabled && !!member?.is_resident;
-  const unit = resident ? (rate?.resident_rate ?? rate?.non_resident_rate) : (rate?.non_resident_rate ?? rate?.resident_rate);
+  let unit = resident ? (rate?.resident_rate ?? rate?.non_resident_rate) : (rate?.non_resident_rate ?? rate?.resident_rate);
+  // Oct 27 (per Mely — real marinas): a 3- or 6-month term with no seasonal rate is priced as months × the monthly rate.
+  let perMonth = type === "monthly";
+  if (!(Number(unit) > 0) && type === "seasonal") {
+    const { data: mr } = await supabaseAdmin.from("marina_slip_rates").select("resident_rate, non_resident_rate").eq("company_id", companyId).eq("slip_id", slipId).eq("rate_type", "monthly").maybeSingle();
+    const mu = resident ? (mr?.resident_rate ?? mr?.non_resident_rate) : (mr?.non_resident_rate ?? mr?.resident_rate);
+    if (Number(mu) > 0) { unit = mu; perMonth = true; }
+  }
   if (!(Number(unit) > 0)) return { error: `Slip ${slip?.slip_name || ""} has no ${TYPE_LABEL[type].toLowerCase()} rate in Slips & Rates. Add it there first (or use a different price with a reason).` };
-  const amount = round2(type === "monthly" ? Number(unit) * months : Number(unit));
+  let amount = round2(perMonth ? Number(unit) * months : Number(unit));
   const which = !setting?.enabled ? "rate" : resident ? "resident rate" : "non-resident rate";
-  const source = type === "monthly"
+  let source = perMonth
     ? `Slips & Rates · Monthly ${which} ${money(Number(unit))} × ${months} month${months === 1 ? "" : "s"}`
     : `Slips & Rates · ${TYPE_LABEL[type]} ${which}`;
+  // Oct 27 (per Mely): the marina's discount for paying the whole term at once (Rental terms setting).
+  if (billing === "single" && months > 1 && !b.month_to_month) {
+    const { data: bs } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
+    const pct = Number((bs as any)?.prepay_discount_pct || 0);
+    if (pct > 0 && pct < 50) { amount = round2(amount * (1 - pct / 100)); source += ` · ${pct}% off for paying in full`; }
+  }
   return { type, start, end, months, billing, installments, amount, source, reason: null as string | null };
 }
 
@@ -140,7 +153,20 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
     extras: extrasText(ex.chosen),
     deposit: ex.deposit ? money(ex.deposit) : "none",
   };
-  const text = String(tpl.body).replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k) => (k in values ? values[k] : m));
+  // Oct 27 (per Mely — how real marinas do it): month-to-month renews by itself each month until either
+  // side gives written notice; a fixed term just ends on its date (renewal is a new contract).
+  const { data: rt } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
+  const noticeDays = Math.max(0, Math.min(120, Math.round(Number((rt as any)?.notice_days ?? 30)) || 30));
+  const m2m = !!body.month_to_month && price.type === "monthly";
+  values.notice_days = String(noticeDays);
+  if (m2m) values.payment_terms = `${money(amount)} per month, the first due on ${longDate(start)} and each following month on the same day, while the Agreement continues`;
+  values.term = m2m ? "Month-to-month" : `${price.months} month${price.months === 1 ? "" : "s"}${price.type === "annual" ? " (annual)" : ""}`;
+  values.renewal_terms = m2m
+    ? `This Agreement is month-to-month. It begins on ${longDate(start)} and renews automatically for one more month at the end of each month, at the slip's monthly rate in effect, until either party gives the other at least ${noticeDays} days' written notice. The Agreement then ends on the last day of the monthly period in which the notice period ends. Each month's dockage is due on the first day of that monthly period.`
+    : `This Agreement is for a fixed term from ${longDate(start)} to ${longDate(end)}. It does not renew automatically; any renewal requires a new agreement.`;
+  let tplBody = String(tpl.body);
+  if (!/\{\{\s*renewal_terms\s*\}\}/.test(tplBody)) tplBody += `\n\n## TERM AND RENEWAL\n{{renewal_terms}}`;
+  const text = tplBody.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k) => (k in values ? values[k] : m));
   const title = String(body.title || "").trim().slice(0, 120) || `${tpl.name.replace(/\s*\(sample\)\s*$/i, "")}${slip ? ` — Slip ${slip.slip_name}` : ""}`;
   // Oct 27 (per Mely): the marina's signer (setting) and the second signature, same as the office app.
   const { data: cs } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
@@ -160,7 +186,9 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
     billing: price.billing, installments: price.installments, extras: ex.chosen, deposit: ex.deposit,
     ...(body.renewal_id ? { renewal_id: body.renewal_id } : {}),
   };
-  let { data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig }).select("id").single();
+  const termCols = { month_to_month: m2m, notice_days: noticeDays };
+  let { data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig, ...termCols }).select("id").single();
+  if (error && /month_to_month|notice_days/.test(error.message)) ({ data: k, error } = await supabaseAdmin.from("marina_contracts").insert({ ...row, ...sig }).select("id").single());
   if (error && /sent_by_signature|sent_by_title|countersign|prepared_by_name/.test(error.message)) ({ data: k, error } = await supabaseAdmin.from("marina_contracts").insert(row).select("id").single());
   if (error || !k) return { error: error?.message || "Could not create the contract.", status: 500 };
 

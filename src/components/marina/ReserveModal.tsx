@@ -8,7 +8,7 @@ type Stay = "transient_daily" | "transient_weekly" | "monthly";
 const STAYS: { key: Stay; title: string; unit: string; max: number }[] = [
   { key: "transient_daily", title: "By the night", unit: "night", max: 30 },
   { key: "transient_weekly", title: "By the week", unit: "week", max: 8 },
-  { key: "monthly", title: "By the month", unit: "month", max: 12 },
+  { key: "monthly", title: "One month", unit: "month", max: 1 }, // Oct 27: longer = Request a slip (contract)
 ];
 const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const todayISO = () => {
@@ -20,7 +20,7 @@ type Summary = { slip: string; dock: string | null; start: string; end: string; 
 
 export type BoatPrefill = { name?: string; length?: string; beam?: string; draft?: string; power?: string };
 
-export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefill, unitsPrefill }: { slip: PublicSlip; startDate?: string; onClose: () => void; boat?: BoatPrefill; stayPrefill?: Stay; unitsPrefill?: number }) {
+export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefill, unitsPrefill, onLongStay }: { slip: PublicSlip; startDate?: string; onClose: () => void; onLongStay?: () => void; boat?: BoatPrefill; stayPrefill?: Stay; unitsPrefill?: number }) {
   // Oct 26 (per Mely): boat details are kept so the "Does it fit?" box updates as they type.
   const [bLen, setBLen] = useState(boat?.length || "");
   const [bBeam, setBBeam] = useState(boat?.beam || "");
@@ -38,6 +38,8 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
   const [error, setError] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [demo, setDemo] = useState(false);
+  const [accept, setAccept] = useState(false); // Oct 27: the marina's dockage terms
+  const [longStay, setLongStay] = useState(false);
   const terms = useBookingTerms();
 
   useEffect(() => {
@@ -59,11 +61,12 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
     setError("");
     setState("sending");
     const body = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, unknown>;
-    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start });
+    Object.assign(body, { slip_id: slip.id, stay_type: stay, units, start_date: start, accept_terms: accept });
+    setLongStay(false);
     try {
       const res = await fetch("/api/marina/reserve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Could not complete your reservation. Please try again.");
+      if (!res.ok) { if (data.longStay) setLongStay(true); throw new Error(data.error || "Could not complete your reservation. Please try again."); }
       if (data.url) { window.location.href = data.url; return; }
       setSummary(data.summary);
       setDemo(!!data.demo);
@@ -160,8 +163,15 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                     <div><span>Balance by {fmtDate(split.balanceDue || start)}</span><span>{money(split.balance)}</span></div>
                   </div>
                 )}
-                {error && <div className="mr-error" role="alert">{error}</div>}
-                <button type="submit" className="mr-btn dark" disabled={state === "sending"}>
+                {/* Oct 27 (per Mely — like real marinas): short stays accept the marina's dockage terms */}
+                <details className="mr-terms">
+                  <summary>Dockage terms</summary>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{terms?.rules?.dockageTerms || "Loading…"}</div>
+                </details>
+                <label className="mr-check"><input type="checkbox" checked={accept} onChange={(e) => setAccept(e.target.checked)} required /> I have read and accept the marina&apos;s dockage terms.</label>
+                {error && <div className="mr-error" role="alert">{error}{longStay && <> <button type="button" className="mr-btn link" onClick={() => onLongStay?.()}>Request a slip instead</button></>}</div>}
+                <p className="mr-note">Staying longer than {terms?.rules?.maxNights ?? 30} nights? Use “Request a slip”: the marina sends you a monthly, seasonal or annual contract.</p>
+                <button type="submit" className="mr-btn dark" disabled={state === "sending" || !accept}>
                   {state === "sending" ? "Processing…" : split.balance > 0 ? `Pay ${money(split.payNow)} deposit and reserve` : `Pay ${money(total)} and reserve`}
                 </button>
                 <p className="mr-note">Taxes and card fees, if any, are shown at checkout. Demo sites do not charge a card.</p>

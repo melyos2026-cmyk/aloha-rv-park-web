@@ -57,6 +57,15 @@ export async function POST(req: Request) {
   const start = text(b.start_date, 10);
   const today = todayET();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start < today || start > addDaysISO(today, 400)) return NextResponse.json({ error: "Choose a start date from today to a year from now." }, { status: 400 });
+  // Oct 27 (per Mely): the term the boater picked must be one this marina offers.
+  const TERMS = ["month_to_month", "3_months", "6_months", "annual"];
+  const term = TERMS.includes(String(b.term)) ? String(b.term) : null;
+  if (term) {
+    const { loadTransientRules } = await import("@/lib/marina/booking");
+    const rules = await loadTransientRules(company.id);
+    if (!rules.offered[term]) return NextResponse.json({ error: "This marina doesn't offer that term. Choose another." }, { status: 400 });
+  }
+  const payInFull = !!term && term !== "month_to_month" && b.pay_in_full === true;
   const months = stay === "annual" ? 12 : Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(b.months) || (stay === "seasonal" ? 6 : 1))));
   const end = addDaysISO(addMonthsISO(start, months), -1);
   const type = ["wet", "lift", "dry"].includes(String(b.slip_type)) ? String(b.slip_type) : null;
@@ -71,16 +80,17 @@ export async function POST(req: Request) {
 
   const token = newRequestToken();
   let row: any = null;
-  let withDob = true;
+  let withDob = true, withTerm = true;
   for (let i = 0; i < 5 && !row; i++) {
     const number = `SR-${today.replace(/-/g, "").slice(2)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
     const { data, error } = await supabaseAdmin.from("marina_slip_requests").insert({
       company_id: company.id, request_number: number, access_token: token, member_id: memberId,
-      full_name: name, email, phone, ...(withDob ? { date_of_birth: dob } : {}), boat_name: text(b.boat_name, 80) || null, boat_make_model: text(b.boat_make_model, 120) || null,
+      full_name: name, email, phone, ...(withDob ? { date_of_birth: dob } : {}), ...(withTerm && term ? { term, pay_in_full: payInFull } : {}), boat_name: text(b.boat_name, 80) || null, boat_make_model: text(b.boat_make_model, 120) || null,
       boat_length_ft: length, boat_beam_ft: beam, boat_draft_ft: draft, power_needed: power, stay_type: stay, slip_type_wanted: type,
       start_date: start, end_date: end, preferred_slip_id: pref?.id || null, recommended_slip_ids: ranked.slice(0, 5).map((x) => x.slip.id), notes: text(b.notes, 1000) || null,
     }).select("*").single();
     if (!data && error && /date_of_birth/.test(error.message || "")) { withDob = false; i--; continue; } // SQL 89 not run yet
+    if (!data && error && /term|pay_in_full/.test(error.message || "")) { withTerm = false; i--; continue; } // SQL 91 not run yet
     if (data) row = data; else if (error?.code !== "23505") return NextResponse.json({ error: /marina_slip_requests/.test(error?.message || "") ? "Slip requests are not set up yet. Please call the marina." : "Could not send your request. Please try again." }, { status: 500 });
   }
   if (!row) return NextResponse.json({ error: "Could not send your request. Please try again." }, { status: 500 });

@@ -285,7 +285,7 @@ export default function SlipBoard({ slips }: { slips: PublicSlip[] }) {
         </div>
       )}
 
-      {booking && <ReserveModal slip={booking} startDate={pick?.slip.id === booking.id ? pick.start : onDate || undefined} boat={pick?.slip.id === booking.id ? pick.boat : undefined} stayPrefill={pick?.slip.id === booking.id && ["transient_daily", "transient_weekly", "monthly"].includes(pick.stay) ? (pick.stay as any) : undefined} unitsPrefill={pick?.slip.id === booking.id ? pick.units : undefined} onClose={() => { setBooking(null); setPick(null); }} />}
+      {booking && <ReserveModal onLongStay={() => { const sl = booking; setBooking(null); setRequesting({ slip: sl }); }} slip={booking} startDate={pick?.slip.id === booking.id ? pick.start : onDate || undefined} boat={pick?.slip.id === booking.id ? pick.boat : undefined} stayPrefill={pick?.slip.id === booking.id && ["transient_daily", "transient_weekly", "monthly"].includes(pick.stay) ? (pick.stay as any) : undefined} unitsPrefill={pick?.slip.id === booking.id ? pick.units : undefined} onClose={() => { setBooking(null); setPick(null); }} />}
       {requesting && <RequestModal slip={requesting.slip} stay={pick?.stay} units={pick?.units} start={pick?.start} boat={pick?.boat} onClose={() => { setRequesting(null); setPick(null); }} />}
     </div>
   );

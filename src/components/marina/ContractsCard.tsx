@@ -66,7 +66,18 @@ export default function ContractsCard({ fullName, marinaName }: { fullName: stri
       {done && <div className="mr-ok" role="status">{done}</div>}
       {list.map((k) => (
         <div className="mr-inv" key={k.id}>
-          <div>{k.title}<small>{k.status === "signed" ? `Signed ${day(k.signed_at)}` : `Sent ${day(k.sent_at)}`}{k.start_date ? ` · ${day(k.start_date)} – ${day(k.end_date)}` : ""}</small></div>
+          <div>{k.title}<small>{k.status === "signed" ? `Signed ${day(k.signed_at)}` : `Sent ${day(k.sent_at)}`}{(k as any).month_to_month ? ` · Month-to-month${(k as any).ends_on ? ` · last day ${day((k as any).ends_on)}` : ` · paid through ${day(k.end_date)}`}` : k.start_date ? ` · ${day(k.start_date)} – ${day(k.end_date)}` : ""}</small>
+            {/* Oct 27 (per Mely): a month-to-month boater gives written notice to leave */}
+            {k.status === "signed" && (k as any).month_to_month && !(k as any).notice_given_at && (
+              <button type="button" className="mr-btn link" onClick={async () => {
+                if (!window.confirm(`Give the marina written notice that you're leaving? Your agreement ends on the last day of the month in which ${(k as any).notice_days ?? 30} days from today falls. You pay until then.`)) return;
+                const r = await fetch("/api/marina/contracts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: k.id, action: "give_notice" }) });
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok) { window.alert(j.error || "Could not send your notice."); return; }
+                setDone(`Notice sent. Your last day is ${day(j.endsOn)}.`); load();
+              }}>Give notice to leave</button>
+            )}
+          </div>
           {k.status === "signed"
             ? (k.hasPdf ? <button className="mr-btn ghost" onClick={() => pdf(k.id)}>Download PDF</button> : <span className="mr-note">{(k as any).countersign_required && !(k as any).countersigned_at ? "Signed · waiting for the marina's signature" : "Signed"}</span>)
             : <button className="mr-btn" onClick={() => show(k)}>Read and sign</button>}

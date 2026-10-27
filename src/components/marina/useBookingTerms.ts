@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 
 // Oct 26 (per Mely): how this marina takes online bookings (all now or a deposit) and whether the
 // signed-in boater gets resident rates. Fetched once per page.
-export type BookingTerms = { deposit_mode: "full" | "percent" | "first_night"; deposit_percent: number; balance_due: "arrival" | "days_before"; balance_days_before: number; resident: boolean };
+export type BookingTerms = { deposit_mode: "full" | "percent" | "first_night"; deposit_percent: number; balance_due: "arrival" | "days_before"; balance_days_before: number; resident: boolean;
+  // Oct 27: short-stay rules and the long-term terms the marina offers
+  rules?: { maxNights: number; maxDaysYear: number | null; dockageTerms: string; offered: Record<string, boolean>; noticeDays: number; prepayPct: number } };
 let cache: Promise<BookingTerms | null> | null = null;
 
 export function useBookingTerms() {

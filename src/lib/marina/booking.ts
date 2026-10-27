@@ -96,3 +96,16 @@ export async function createBalanceInvoice(companyId: string, r: any) {
     if (error?.code !== "23505") return;
   }
 }
+
+// Oct 27 (per Mely — like real marinas): online booking is for SHORT stays (transient). The guest
+// accepts the marina's dockage terms when paying; longer stays go through Request a slip (contract).
+export const DEFAULT_DOCKAGE_TERMS = "Check-in after 2:00 PM, check-out by 11:00 AM. Proof of boat insurance is shown on arrival. The boat must fit the slip as described. Follow the dockmaster's instructions and the marina rules. Fuel, electricity and other services are paid separately unless included. Cancellations: as stated by the marina office.";
+export async function loadTransientRules(companyId: string) {
+  const { data } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null } as any));
+  const d: any = data || {};
+  const maxNights = Math.max(1, Math.min(31, Math.round(Number(d.transient_max_nights ?? 30)) || 30));
+  const maxDaysYear = d.transient_max_days_year ? Math.round(Number(d.transient_max_days_year)) : null;
+  const dockageTerms = String(d.dockage_terms || "").trim() || DEFAULT_DOCKAGE_TERMS;
+  const offered = { month_to_month: true, "3_months": true, "6_months": true, annual: true, ...(d.offered_terms || {}) } as Record<string, boolean>;
+  return { maxNights, maxDaysYear, dockageTerms, offered, noticeDays: Number(d.notice_days ?? 30), prepayPct: Number(d.prepay_discount_pct || 0) };
+}

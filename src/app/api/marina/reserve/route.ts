@@ -7,7 +7,7 @@ import { round2, todayET } from "@/lib/marina/data";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { fitCheck } from "@/lib/marina/fit";
 import { getMarinaSession } from "@/lib/marina/session";
-import { loadBookingSettings, splitPayment, residentPricingFor, newBookingToken } from "@/lib/marina/booking";
+import { loadBookingSettings, splitPayment, residentPricingFor, newBookingToken, loadTransientRules } from "@/lib/marina/booking";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -19,7 +19,7 @@ const feet = (v: unknown): number | null => {
 const STAYS = {
   transient_daily: { max: 30, label: "night" },
   transient_weekly: { max: 8, label: "week" },
-  monthly: { max: 12, label: "month" },
+  monthly: { max: 1, label: "month" }, // Oct 27: one month at most online; longer = Request a slip (contract)
 } as const;
 type Stay = keyof typeof STAYS;
 
@@ -66,6 +66,14 @@ export async function POST(req: Request) {
   }
   const end = stay === "transient_daily" ? addDays(start, units) : stay === "transient_weekly" ? addDays(start, 7 * units) : addMonths(start, units);
 
+  // Oct 27 (per Mely — like real marinas): online = short stays only, and the guest accepts the
+  // marina's dockage terms. Longer stays: Request a slip (contract).
+  const rules = await loadTransientRules(company.id);
+  const nights = Math.round((Date.parse(end + "T12:00:00Z") - Date.parse(start + "T12:00:00Z")) / 86400000);
+  const monthOk = stay === "monthly" && units === 1 && rules.maxNights >= 28;
+  if (nights > rules.maxNights && !monthOk) return NextResponse.json({ error: `Online booking is for stays up to ${rules.maxNights} nights. For a longer stay, use "Request a slip" — the marina sends you a contract.`, longStay: true }, { status: 400 });
+  if (b.accept_terms !== true) return NextResponse.json({ error: "Please read and accept the marina's dockage terms." }, { status: 400 });
+
   const name = text(b.guest_name, 120);
   const email = text(b.guest_email, 160).toLowerCase();
   const phone = text(b.guest_phone, 40);
@@ -73,6 +81,11 @@ export async function POST(req: Request) {
   if (name.length < 2) return NextResponse.json({ error: "Enter your full name." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
   if (phone.length < 7) return NextResponse.json({ error: "Enter a phone number the dock office can call." }, { status: 400 });
+  if (rules.maxDaysYear) {
+    const { data: past } = await supabaseAdmin.from("marina_reservations").select("start_date, end_date").eq("company_id", company.id).ilike("guest_email", email.replace(/[%_\\]/g, "\\$&")).in("status", ["confirmed", "pending", "checked_in", "checked_out"]).gte("end_date", addDays(today, -365));
+    const used = (past || []).reduce((t: number, r: any) => t + Math.max(0, Math.round((Date.parse(r.end_date + "T12:00:00Z") - Date.parse(r.start_date + "T12:00:00Z")) / 86400000)), 0);
+    if (used + nights > rules.maxDaysYear) return NextResponse.json({ error: `This marina allows up to ${rules.maxDaysYear} nights a year of short stays per boater (you have ${used}). For a longer stay, use "Request a slip".`, longStay: true }, { status: 400 });
+  }
   if (!boatLen) return NextResponse.json({ error: "Enter your boat length in feet." }, { status: 400 });
   const boatBeam = feet(b.boat_beam_ft);
   const boatDraft = feet(b.boat_draft_ft);
@@ -220,6 +233,11 @@ export async function POST(req: Request) {
     split.payNow = amount; split.balance = 0; split.balanceDue = null;
   }
   const page = extraErr ? null : `/marina/reservation/${reservation.id}?t=${token}`;
+  // the dockage terms the guest accepted: when, from where, and exactly which text (fingerprint)
+  await supabaseAdmin.from("marina_reservations").update({
+    terms_accepted_at: new Date().toISOString(), terms_accepted_ip: (req.headers.get("x-forwarded-for") || "").split(",")[0].trim().slice(0, 60) || null,
+    terms_hash: crypto.createHash("sha256").update(rules.dockageTerms, "utf8").digest("hex"),
+  }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
 
   const origin = `https://${company.domain}`;
   const pay = await startInvoicePayment({
