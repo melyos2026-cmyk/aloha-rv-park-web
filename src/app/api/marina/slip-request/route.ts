@@ -63,10 +63,12 @@ export async function POST(req: Request) {
   // Oct 27 (per Mely): the term the boater picked must be one this marina offers.
   const TERMS = ["month_to_month", "3_months", "6_months", "annual"];
   const term = TERMS.includes(String(b.term)) ? String(b.term) : null;
-  if (term) {
+  {
     const { loadTransientRules } = await import("@/lib/marina/booking");
     const rules = await loadTransientRules(company.id);
-    if (!rules.offered[term]) return NextResponse.json({ error: "This marina doesn't offer that term. Choose another." }, { status: 400 });
+    if (term && !rules.offered[term]) return NextResponse.json({ error: "This marina doesn't offer that term. Choose another." }, { status: 400 });
+    // a marina that turned some terms off: the request must name one of the offered terms
+    if (!term && Object.values(rules.offered).some((v) => !v)) return NextResponse.json({ error: "Choose one of the terms this marina offers." }, { status: 400 });
   }
   const payInFull = !!term && term !== "month_to_month" && b.pay_in_full === true;
   const months = termIn ? TERM_STAY[termIn][1] : stay === "annual" ? 12 : Math.max(1, Math.min(stay === "seasonal" ? 9 : 11, Math.floor(Number(b.months) || (stay === "seasonal" ? 6 : 1))));
