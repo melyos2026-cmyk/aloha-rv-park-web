@@ -67,7 +67,7 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
   const R = terms?.rules;
   const t12 = (t?: string) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${((h + 11) % 12) + 1}:${String(m || 0).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`; };
 
-  // a new name/email/length means a new check (the server ties the proof to all three)
+  // a new stay length may need more documents: check again (the server also checks name and email)
   useEffect(() => { setResCheck(null); }, [stay, units]);
   // the office approved it later: the email's link brings the approval here (the server checks it again)
   useEffect(() => {
@@ -192,9 +192,9 @@ export default function ReserveModal({ slip, startDate, onClose, boat, stayPrefi
                   </label>
                 )}
                 <FitBox slip={slip} length={Number(bLen)} beam={Number(bBeam) || null} draft={Number(bDraft) || null} power={bPower || null} />
-                <label>Full name<input type="text" name="guest_name" required autoComplete="name" onChange={() => resCheck && setResCheck(null)} /></label>
+                <label>Full name<input type="text" name="guest_name" required autoComplete="name" /></label>
                 <div className="two">
-                  <label>Email<input type="email" name="guest_email" required autoComplete="email" onChange={() => resCheck && setResCheck(null)} /></label>
+                  <label>Email<input type="email" name="guest_email" required autoComplete="email" /></label>
                   <label>Phone<input type="tel" name="guest_phone" required autoComplete="tel" /></label>
                 </div>
                 <div className="mr-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabIndex={-1} autoComplete="off" /></label></div>

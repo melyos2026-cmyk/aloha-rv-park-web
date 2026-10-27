@@ -4,7 +4,7 @@ import { getMarinaForRequest } from "@/lib/marina/company";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { sniff } from "@/lib/marina/fileType";
 import { loadTransientRules } from "@/lib/marina/booking";
-import { readResidencyDoc, verifyResidency } from "@/lib/marina/residency";
+import { readResidencyDoc, verifyResidency, nameMatches } from "@/lib/marina/residency";
 import { mailOffice } from "@/lib/marina/slipAuto";
 import { getMarinaSession } from "@/lib/marina/session";
 
@@ -65,8 +65,11 @@ export async function POST(req: Request) {
     // marked resident for future bookings — never an account just because an email was typed.
     const ses = await getMarinaSession(req);
     if (ses && ses.companyId === company.id) {
-      const { data: m } = await supabaseAdmin.from("marina_members").select("id, email").eq("id", ses.memberId).eq("company_id", company.id).maybeSingle();
-      if (m && String(m.email || "").toLowerCase() === email) await supabaseAdmin.from("marina_members").update({ is_resident: true }).eq("id", m.id).eq("company_id", company.id).then(() => null, () => null);
+      const { data: m } = await supabaseAdmin.from("marina_members").select("id, email, full_name").eq("id", ses.memberId).eq("company_id", company.id).maybeSingle();
+      if (m && String(m.email || "").toLowerCase() === email && nameMatches(String(m.full_name || ""), [fullName]) && nameMatches(fullName, [String(m.full_name || "")])) {
+        await supabaseAdmin.from("marina_members").update({ is_resident: true }).eq("id", m.id).eq("company_id", company.id).then(() => null, () => null);
+        await supabaseAdmin.from("marina_residency_checks").update({ member_id: m.id }).eq("id", row.id).eq("company_id", company.id); // so a refusal can undo it
+      }
     }
   } else if (r.decision === "pending") {
     await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: fullName, update_type: "document", message: `${fullName} sent proof of residency for the resident rate. Check it in Document Review.` }).then(() => null, () => null);
