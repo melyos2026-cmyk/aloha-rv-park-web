@@ -175,4 +175,16 @@ export async function notifyOfficeOfOrder(companyId: string, orderId: string) {
     company_id: companyId, resident_name: o.customer_name, update_type: "store_order",
     message: `New ${storeName} order ${o.order_number}: $${Number(o.total).toFixed(2)} (${o.payment === "account" ? "charged to account" : "paid by card"}), ${o.fulfillment === "slip" ? `bring to slip ${o.slip_name}` : "pickup at the store"}${o.wanted_at ? `, ${o.wanted_at}` : ""}.`,
   }).then(() => null, () => null);
+  // Oct 27 (per Mely): also by email to the admins who turned on "Ship Store orders" (not the office inbox).
+  try {
+    const { data: co } = await supabaseAdmin.from("companies").select("id, company_name, domain, is_demo, contact_phone, contact_email").eq("id", companyId).maybeSingle();
+    if (co) {
+      const { mailOffice } = await import("./slipAuto");
+      const esc = (x: unknown) => String(x ?? "").replace(/[<>&"]/g, "");
+      await mailOffice(co as any, `New ${storeName} order ${o.order_number}: $${Number(o.total).toFixed(2)}`, [
+        `<b>${esc(o.customer_name)}</b> ordered $${Number(o.total).toFixed(2)} (${o.payment === "account" ? "charged to account" : "paid by card"}).`,
+        `${o.fulfillment === "slip" ? `Bring it to slip <b>${esc(o.slip_name)}</b>` : "Pickup at the store"}${o.wanted_at ? `, ${esc(o.wanted_at)}` : ""}. Open Ship Store → Orders.`,
+      ], undefined, "store", { office: false });
+    }
+  } catch (e: any) { console.error("store order email failed:", e?.message); }
 }

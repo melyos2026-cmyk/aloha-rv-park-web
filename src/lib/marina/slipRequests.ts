@@ -86,10 +86,10 @@ async function requestEmails(companyId: string, r: any, step: "signed" | "confir
   const { data: slip } = r.slip_id ? await supabaseAdmin.from("marina_slips").select("slip_name, dock").eq("id", r.slip_id).eq("company_id", companyId).maybeSingle() : { data: null as any };
   const name = String(r.full_name).replace(/[<>&"]/g, "");
   if (step === "signed") {
-    await auto.mailOffice(company, `${r.full_name} signed the contract for slip ${slip?.slip_name || ""}`, [`<b>${name}</b> signed the contract for slip <b>${slip?.slip_name || ""}</b> (request ${r.request_number}). When the deposit is paid the slip is confirmed automatically.`]);
+    await auto.mailOffice(company, `${r.full_name} signed the contract for slip ${slip?.slip_name || ""}`, [`<b>${name}</b> signed the contract for slip <b>${slip?.slip_name || ""}</b> (request ${r.request_number}). When the deposit is paid the slip is confirmed automatically.`], undefined, "requests");
     return;
   }
-  await auto.mailOffice(company, `Confirmed: slip ${slip?.slip_name || ""} for ${r.full_name}`, [`The deposit is paid. <b>${name}</b> is confirmed in slip <b>${slip?.slip_name || ""}</b> from ${r.start_date} (request ${r.request_number}). The boat is placed in the slip.`]);
+  await auto.mailOffice(company, `Confirmed: slip ${slip?.slip_name || ""} for ${r.full_name}`, [`The deposit is paid. <b>${name}</b> is confirmed in slip <b>${slip?.slip_name || ""}</b> from ${r.start_date} (request ${r.request_number}). The boat is placed in the slip.`], undefined, "requests");
   await auto.mailBoater(company, r.email, `Confirmed: slip ${slip?.slip_name || ""} is yours`, `Welcome aboard, ${String(r.full_name).split(" ")[0]}!`, [
     `Your deposit was received and slip <b>${slip?.slip_name || ""}</b>${slip?.dock ? ` (${slip.dock})` : ""} is confirmed from ${r.start_date}.`,
     "Your contract, invoices and marina pass are in your boater account.",

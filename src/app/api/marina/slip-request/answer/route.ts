@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   }).then(() => null, () => null);
   await mailOffice(company, accept ? `${r.full_name} accepted slip ${q.slip_name || ""} (${r.request_number})` : `${r.full_name} said no to the price (${r.request_number})`, accept
     ? [`<b>${esc(r.full_name)}</b> accepted slip <b>${esc(q.slip_name)}</b> at <b>${money(total)}</b>.`, k?.ok ? "The contract was sent automatically. When they sign and pay the deposit, the slip is confirmed and the boat is placed in it." : `<b>Needs you:</b> the contract could not be sent automatically (${esc(k && !k.ok ? k.reason : "")}). Open Slip Requests → Price accepted → Send contract.`]
-    : [`<b>${esc(r.full_name)}</b> turned down the price for slip ${esc(q.slip_name)}${reason ? `: “${esc(reason)}”` : ""}.`, r.waitlist_id ? "They stay on the waitlist; the slip will be offered to the next boat in line." : "The slip is free again."]);
+    : [`<b>${esc(r.full_name)}</b> turned down the price for slip ${esc(q.slip_name)}${reason ? `: “${esc(reason)}”` : ""}.`, r.waitlist_id ? "They stay on the waitlist; the slip will be offered to the next boat in line." : "The slip is free again."], undefined, "requests");
   if (accept && !k?.ok) {
     await mailBoater(company, r.email, `Thank you, we got your answer (${r.request_number})`, "Thank you!", ["The office is preparing your contract and will email it to you shortly."], { label: "Track my request", url: trackerLink(company, r) });
   }

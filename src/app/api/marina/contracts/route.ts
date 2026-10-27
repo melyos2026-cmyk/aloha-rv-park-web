@@ -1,3 +1,5 @@
+import { mailOffice } from "@/lib/marina/slipAuto";
+import { escHtml } from "@/lib/marina/contractCore";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -116,10 +118,16 @@ export async function POST(req: Request) {
   // confirmation and the signed PDF wait for it. The office is told.
   if ((k as any).countersign_required && !(k as any).countersigned_at) {
     await supabaseAdmin.from("resident_update_notifications").insert({ company_id: w.company.id, resident_name: member.full_name, update_type: "contract", message: `${member.full_name} signed "${k.title}". It needs the marina's second signature${(k as any).countersign_title ? ` (${(k as any).countersign_title})` : ""} in Contracts.` }).then(() => null, () => null);
+    // Oct 27: email the person who signs second (always) + admins with "Contracts" on — not the office inbox.
+    await mailOffice(w.company, `Needs your signature: ${member.full_name} signed "${k.title}"`, [
+      `<b>${escHtml(member.full_name)}</b> signed <b>${escHtml(k.title)}</b>. It needs the marina's second signature${(k as any).countersign_title ? ` (${escHtml((k as any).countersign_title)})` : ""}.`,
+      "Open Contracts → Sign for the marina. The invoices and the boater's copy go out after that.",
+    ], undefined, "contracts", { office: false, alsoIds: (k as any).countersigner_id ? [(k as any).countersigner_id] : [] }).catch(() => null);
     return NextResponse.json({ ok: true, waitingCountersign: true, message: "Signed. Thank you! The marina adds its final signature next, and then you'll get your copy and your invoices." });
   }
 
   await finalizeSignedContract({ company: w.company, memberId: w.memberId, member: { full_name: member.full_name, email: member.email }, k, name, signedAt, ip, agent, sig, sigStyle });
+  await mailOffice(w.company, `${member.full_name} signed "${k.title}"`, [`<b>${escHtml(member.full_name)}</b> signed <b>${escHtml(k.title)}</b>. The signed copy is in the boat's Documents.`], undefined, "contracts", { office: false }).catch(() => null);
 
   return NextResponse.json({ ok: true });
 }

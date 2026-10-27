@@ -205,7 +205,7 @@ export async function autopayBankFailed(companyId: string, piId: string, reason:
     `Your bank didn't complete the autopay payment from ${esc(m.autopay_label || "your account")}: ${esc(reason)}. The invoices are open again.`,
     pause ? "Autopay is paused after two returned payments. Please pay in your account and turn autopay on again with a card or another account." : "Please make sure the account has funds, or pay in your account.",
   ], { label: "Open my account", url: `https://${company.domain}/marina/account#autopay` });
-  await mailOffice(company, `Autopay bank payment returned: ${m.full_name}`, [`${esc(m.full_name)}'s bank returned an autopay payment (${esc(reason)}). The invoices are open again.${pause ? " Autopay was paused after the second return." : ""}`]);
+  await mailOffice(company, `Autopay bank payment returned: ${m.full_name}`, [`${esc(m.full_name)}'s bank returned an autopay payment (${esc(reason)}). The invoices are open again.${pause ? " Autopay was paused after the second return." : ""}`], undefined, "payments");
 }
 
 // Pending bank payments and stuck attempts: ask Stripe and settle, record or fail them.
@@ -256,7 +256,7 @@ export async function runMarinaAutopay(company: MarinaCompany) {
     await mailOffice(company, `Autopay today: ${done.length} paid${failed.length ? `, ${failed.length} failed` : ""}`, [
       done.length ? `<b>Charged:</b> ${done.map((d) => `${esc(d.name)} ${money(d.amount)}`).join(", ")}. Total ${money(done.reduce((a, d) => a + d.amount, 0))}.` : "",
       failed.length ? `<b>Failed:</b> ${failed.map((f) => `${esc(f.name)} ${money(f.amount)} (${esc(f.error)})`).join("; ")}. They were emailed; we try again tomorrow.` : "",
-    ].filter(Boolean));
+    ].filter(Boolean), undefined, "payments");
     await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: "Autopay", update_type: "autopay_run", message: `Autopay today: ${done.length} paid${failed.length ? `, ${failed.length} failed (${failed.map((f) => f.name).join(", ")})` : ""}.` }).then(() => null, () => null);
   }
   return { paid: done.length, failed: failed.length };

@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     `<b>${esc(name)}</b> (${esc(email)}, ${esc(phone)}) asked for a <b>${esc(STAY_LABEL[stay].toLowerCase())}</b> slip from ${esc(start)} to ${esc(end)} for a ${boatTxt}.`,
     auto.ok ? `The system offered <b>slip ${esc(auto.details.slip_name)}</b> at <b>${money(auto.details.total)}</b>${auto.details.deposit ? ` + ${money(auto.details.deposit)} deposit` : ""}. Nothing to do: when they accept, the contract is sent by itself.` : `<b>Needs you:</b> ${esc(auto.reason)} Open Slip Requests to choose a slip and send the price, or decline.`,
     ...(row.notes ? [`Their note: “${esc(row.notes)}”`] : []),
-  ]);
+  ], undefined, "requests");
   if (auto.ok) {
     await mailBoater(company, email, `Your price for slip ${auto.details.slip_name} (${row.request_number})`, `Your price is ready, ${name.split(" ")[0]}!`, [
       `Slip <b>${esc(auto.details.slip_name)}</b>${auto.details.dock ? ` (${esc(auto.details.dock)})` : ""} fits your ${boatTxt}, from ${esc(start)} to ${esc(end)}: <b>${money(auto.details.total)}</b>${auto.details.deposit ? ` plus a refundable deposit of ${money(auto.details.deposit)}` : ""}, paid ${esc(auto.details.terms)}.`,

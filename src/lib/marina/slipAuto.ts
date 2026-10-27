@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { MarinaCompany } from "./company";
 import { isDemoCompany } from "./host";
+import { personalRecipients, type MarinaNotifyKind } from "./marinaNotify";
 import { recommendSlips } from "./slipRequests";
 import { priceFor, extrasFor, paymentTerms, sendContract, resend, escHtml, money } from "./contractCore";
 
@@ -33,10 +34,13 @@ async function officeAddress(company: MarinaCompany) {
 }
 
 // Short email to the office. Demo marinas never email.
-export async function mailOffice(company: MarinaCompany, subject: string, lines: string[], button?: { label: string; url: string }) {
+// Oct 27: `kind` also sends it to each admin who turned that kind on (Settings → Notification
+// Preferences); `office: false` = only those people; `alsoIds` = admins who must get it (e.g. the second signer).
+export async function mailOffice(company: MarinaCompany, subject: string, lines: string[], button?: { label: string; url: string }, kind?: MarinaNotifyKind, opts: { office?: boolean; alsoIds?: string[] } = {}) {
   if (isDemoCompany(company) || !company.domain) return;
-  const to = await officeAddress(company);
-  if (!to) return;
+  const office = opts.office === false ? null : await officeAddress(company);
+  const to = [...new Set([...(office ? [office.toLowerCase()] : []), ...(await personalRecipients(company.id, kind, opts.alsoIds || []))])];
+  if (!to.length) return;
   try {
     await resend.emails.send({
       from: `MelyOS for ${company.company_name} <noreply@aloharvparkfl.com>`, to, subject,
