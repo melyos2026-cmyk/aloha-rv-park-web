@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
+import RvWaitlist from "@/components/RvWaitlist";
 
 export default function RvHome() {
   const { company, loading: companyLoading } = useCompany();
@@ -15,6 +16,12 @@ export default function RvHome() {
   // mechanism. 1300 is just the fallback shown before that first report
   // arrives.
   const [mapHeight, setMapHeight] = useState(1300);
+  // Oct 28 (per Mely): "Join the waitlist" appears only when the park is full (storage spaces don't count).
+  const [parkFull, setParkFull] = useState(false);
+  useEffect(() => {
+    if (!company?.id) return;
+    fetch("/api/rv-waitlist", { cache: "no-store" }).then((r) => r.json()).then((j) => setParkFull(j.full === true)).catch(() => setParkFull(false));
+  }, [company?.id]);
 
   useEffect(() => {
     function handleMapHeight(event: MessageEvent) {
@@ -107,6 +114,15 @@ export default function RvHome() {
             }}>
               View Lot Map
             </a>
+            {parkFull && (
+              <a href="#waitlist" style={{
+                background: "var(--mint)", color: "var(--red-dark)",
+                padding: "16px 32px", borderRadius: 4, fontWeight: 700,
+                fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase"
+              }}>
+                Join the Waitlist
+              </a>
+            )}
             <Link href="/apply" style={{
               background: "transparent", color: "var(--white)",
               padding: "16px 32px", borderRadius: 4, fontWeight: 700,
@@ -131,11 +147,13 @@ export default function RvHome() {
         </div>
       </section>
 
+      {parkFull && <RvWaitlist parkName={company?.company_name} />}
+
       {/* Map Section */}
       <section id="map" style={{ padding: "80px 24px", background: "var(--white)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Available Now</div>
+            <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>{parkFull ? "Fully Booked" : "Available Now"}</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Lot Map</h2>
             <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green or orange lot to check availability and book your spot</p>
             {company?.park_id ? (
