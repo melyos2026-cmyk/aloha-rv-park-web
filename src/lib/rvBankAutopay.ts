@@ -96,6 +96,9 @@ async function markerExists(id: string): Promise<boolean> {
   return !!data;
 }
 const cancelledMarker = (piId: string) => `rv_autopay_cancelled:${piId}`;
+// Oct 28 (review): every bank-autopay failure issue names the payment method it happened on, so a
+// failure of an OLD bank account never blocks a NEW one (see failedSinceAuthorization).
+const pmTag = (pmId: string | null | undefined) => (pmId ? ` [pm ${pmId}]` : "");
 const flipMarker = (piId: string) => `rv_autopay_flip:${piId}`;
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
@@ -152,20 +155,23 @@ async function turnOffAutopay(resident: { id: string; company_id?: string | null
   if (error && resident.company_id) {
     await logSystemHealthIssue({
       companyId: resident.company_id, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
-      message: `Could not turn off autopay for ${resident.full_name || "a resident"} after a failed bank payment (${error.message}). Turn it off by hand in their account. Autopay will not charge their bank again until they set it up again.`,
+      message: `Could not turn off autopay for ${resident.full_name || "a resident"} after a failed bank payment (${error.message}). Turn it off by hand in their account. Autopay will not charge this bank account again until they set it up again.${pmTag(pmId)}`,
     });
   }
 }
 
-// Bank failures logged for this resident since they last accepted the autopay authorization: if any,
-// bank autopay does not charge (they must set it up again) — even if turning autopay off failed.
+// Bank failures logged for this resident's CURRENTLY saved bank account since they last accepted the
+// autopay authorization: if any, bank autopay does not charge (they must set it up again) — even if
+// turning autopay off failed. A failure of a previously saved account (another [pm …]) doesn't count.
 async function failedSinceAuthorization(resident: AutopayResident, companyId: string): Promise<boolean> {
+  if (!resident.stripe_payment_method_id) return true;
   let q = supabase
     .from("system_health_issues")
     .select("id")
     .eq("company_id", companyId)
     .eq("resident_id", resident.id)
-    .in("issue_type", ["rv_bank_autopay_failed", "rv_bank_payment_returned"]);
+    .in("issue_type", ["rv_bank_autopay_failed", "rv_bank_payment_returned"])
+    .like("message", `%${pmTag(resident.stripe_payment_method_id).trim()}%`);
   if (resident.autopay_authorized_at) q = q.gte("detected_at", resident.autopay_authorized_at);
   const { data, error } = await q.limit(1);
   if (error) return true; // can't check → don't charge today
@@ -238,7 +244,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} — the saved bank account is no longer usable. Autopay has been turned off for them.`);
     await logSystemHealthIssue({
       companyId, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
-      message: `Bank autopay for ${resident.full_name || "a resident"} was not charged: the saved payment method is not their bank account any more. Autopay was turned off; they need to set it up again.`,
+      message: `Bank autopay for ${resident.full_name || "a resident"} was not charged: the saved payment method is not their bank account any more. Autopay was turned off; they need to set it up again.${pmTag(resident.stripe_payment_method_id)}`,
     });
     return { status: "failed", amount: totalAmount, detail: "payment_method_not_bank" };
   }
@@ -275,8 +281,12 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     if (error && !isMissingTable(error, CLAIMS)) return { status: "skipped", detail: `claim: ${error.message}` };
     claimRowId = data?.id || null; // table missing → degrade: no claim record (stuck check still flags)
   }
-  const setClaim = async (patch: Record<string, unknown>) => {
-    if (claimRowId) await supabase.from(CLAIMS).update(patch).eq("id", claimRowId).then(() => null, () => null);
+  // Claim states: "claimed" = never sent to Stripe (the only state reconcile may undo by itself),
+  // "sending" = create was attempted (outcome only known from Stripe), "charged", "failed", "released".
+  const setClaim = async (patch: Record<string, unknown>): Promise<boolean> => {
+    if (!claimRowId) return true;
+    const { error } = await supabase.from(CLAIMS).update(patch).eq("id", claimRowId);
+    return !error;
   };
 
   // Claim the invoices (Pending → Processing, only rows still Pending). A second run, or a resident
@@ -303,10 +313,19 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} (bank, ${money(chargeAmount)}): ${why}. Autopay has been turned off for them.`);
     await logSystemHealthIssue({
       companyId, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
-      message: `Bank autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}) was refused by Stripe/the bank before it was sent: ${why}. Nothing was taken and no returned-payment fee was added; the invoice(s) are Pending again and autopay was turned off.${piId ? ` Stripe payment ${piId}.` : ""}`,
+      message: `Bank autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}) was refused by Stripe/the bank before it was sent: ${why}. Nothing was taken and no returned-payment fee was added; the invoice(s) are Pending again and autopay was turned off.${piId ? ` Stripe payment ${piId}.` : ""}${pmTag(resident.stripe_payment_method_id)}`,
     });
     return { status: "failed" as const, amount: totalAmount, detail: why };
   };
+
+  // Mark the claim "sending" BEFORE calling Stripe. If that can't be recorded, don't send: the claim
+  // stays "claimed" (= never sent), so undoing it later is always safe.
+  if (!(await setClaim({ status: "sending" }))) {
+    await reopenProcessing(invoiceIds, resident.id);
+    await setClaim({ status: "released", note: "could not record sending" }); // if this fails too, it stays "claimed" (safe)
+    console.error(`bank autopay: could not mark claim ${claimRowId} as sending — not charged today`);
+    return { status: "skipped", detail: "claim_not_recorded" };
+  }
 
   let pi: Stripe.PaymentIntent;
   try {
@@ -346,19 +365,27 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     } else if (!errPi && (e?.type === "StripeConnectionError" || e?.type === "StripeAPIError" || e?.type === "StripeRateLimitError")) {
       // Outcome unknown (Stripe didn't answer). The invoices stay "Processing" — never charge again
       // blindly. The next run's reconcile looks for this claim's payment in Stripe after an hour:
-      // found → handled normally; not found → invoices back to Pending. The office is told now.
+      // found → handled normally; not found → review by the office (never undone automatically).
       await logSystemHealthIssue({
         companyId, residentId: resident.id, issueType: "rv_bank_autopay_unknown", source: "process_autopay",
-        message: `Bank autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}) got no answer from Stripe (${String(e?.message || "").slice(0, 200)}). The invoice(s) were left "Processing" so they are not charged twice; the next autopay run checks Stripe and fixes them.${claimRowId ? "" : " (Claim records are not set up — run rv_ach_autopay.sql — so check Stripe → Payments by hand: if there is no payment, set the invoice(s) back to Pending.)"}`,
+        message: `Bank autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}) got no answer from Stripe (${String(e?.message || "").slice(0, 200)}). The invoice(s) were left "Processing" so they are not charged twice; the next autopay run checks Stripe; if it finds no payment, the office is asked to review it.${claimRowId ? "" : " (Claim records are not set up — run rv_ach_autopay.sql — so check Stripe → Payments by hand: if there is no payment, set the invoice(s) back to Pending.)"}`,
       });
-      return { status: "unknown", amount: totalAmount };
+      return { status: "unknown", amount: totalAmount }; // claim stays "sending" → never auto-undone
     } else {
       return revertAndStop(String(e?.raw?.message || e?.message || "the bank payment was refused").slice(0, 200), errPi?.id || null);
     }
   }
 
   if (pi.status !== "processing" && pi.status !== "succeeded") return revertAndStop(`payment ${pi.status.replace(/_/g, " ")}`, pi.id);
-  await setClaim({ status: "charged", payment_intent_id: pi.id });
+  // Retried once; if it still fails the claim stays "sending" — reconcile then links it by claim_id
+  // or (if Stripe search misses it) sends it to review, never back to Pending.
+  if (!(await setClaim({ status: "charged", payment_intent_id: pi.id })) && !(await setClaim({ status: "charged", payment_intent_id: pi.id }))) {
+    console.error(`bank autopay: claim ${claimRowId} charged with ${pi.id} but could not be marked charged`);
+    await logSystemHealthIssue({
+      companyId, residentId: resident.id, issueType: "rv_bank_autopay_claim_unrecorded", source: "process_autopay",
+      message: `Bank autopay charged ${resident.full_name || "a resident"} ${money(chargeAmount)} (Stripe payment ${pi.id}), but the claim record ${claimRowId} could not be updated. Nothing to do unless this payment later shows up for review; it is settled normally when the bank confirms.`,
+    });
+  }
   if (pi.status === "succeeded") {
     await settleRvBankAutopay(pi);
     return { status: "succeeded", amount: totalAmount };
@@ -574,33 +601,42 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
     }
   }
 
-  // Autopay off (a failed bank payment must not be retried automatically tomorrow), unless the
-  // resident already saved another method since. The cron also refuses to charge by bank while a
-  // bank failure has been logged since their last authorization (the issue logged just below).
-  const pmId = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id;
-  await turnOffAutopay(resident, pmId || resident.stripe_payment_method_id);
-  await notifyOffice(resident, "autopay_failed", `Autopay bank payment for ${resident.full_name || "a resident"} ${neverSubmitted ? "failed" : "was RETURNED by the bank"} — autopay has been turned off for them.`);
+  // Autopay off (a failed bank payment must not be retried automatically tomorrow) — but only when
+  // the failed payment used the bank account that is saved NOW. A late return of an older account
+  // (the resident has since saved a new one) leaves the current autopay alone, and says so.
+  const failedPm = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id || null;
+  const currentPm = resident.stripe_payment_method_id || null;
+  const samePm = !failedPm || !currentPm || failedPm === currentPm;
+  if (samePm) await turnOffAutopay(resident, failedPm || currentPm);
+  const autopayNote = samePm
+    ? "Autopay was turned off."
+    : "This was an OLDER bank account — the resident has saved a different payment method since, so their current autopay was NOT changed.";
+  await notifyOffice(resident, "autopay_failed", samePm
+    ? `Autopay bank payment for ${resident.full_name || "a resident"} ${neverSubmitted ? "failed" : "was RETURNED by the bank"} — autopay has been turned off for them.`
+    : `An older autopay bank payment for ${resident.full_name || "a resident"} (from a previously saved bank account) ${neverSubmitted ? "failed" : "was RETURNED by the bank"}. Their current autopay was not changed.`);
   const reason = pi.last_payment_error?.message || "";
   const n = invoiceIds.length === 1 ? "The invoice is" : "The invoices are";
   await logSystemHealthIssue({
     companyId, residentId,
     issueType: neverSubmitted ? "rv_bank_autopay_failed" : "rv_bank_payment_returned",
     source: "stripe_webhook",
-    message: neverSubmitted
-      ? `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} failed before reaching the bank${reason ? ` (${reason})` : ""}. Nothing was taken and no returned-payment fee was added. ${(reopened || []).length ? `${n} back to Pending. ` : ""}Autopay was turned off. Stripe payment ${pi.id}.`
-      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${n} back to Pending (owed again) and autopay was turned off. ${feeInvoice ? `A ${money(ACH_RETURN_FEE)} returned bank payment fee was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(ACH_RETURN_FEE)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`,
+    message: (neverSubmitted
+      ? `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} failed before reaching the bank${reason ? ` (${reason})` : ""}. Nothing was taken and no returned-payment fee was added. ${(reopened || []).length ? `${n} back to Pending. ` : ""}${autopayNote} Stripe payment ${pi.id}.`
+      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(ACH_RETURN_FEE)} returned bank payment fee was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(ACH_RETURN_FEE)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
   });
   return { ok: true };
 }
 
-// Claims the cron recorded but never charged (the run died between claiming the invoices and
-// creating the PaymentIntent). After 1 hour: if Stripe has a payment with this claim_id, link it
-// (settled/failed by the normal path); if not, put EXACTLY those invoices back to Pending (only rows
-// still Processing with the claim's own processing_since stamp) and tell the office once.
+// Claims the cron recorded but never finished. After 1 hour, Stripe is searched by claim_id:
+//  - found → link it (settled/failed by the normal path);
+//  - not found + "claimed" (never sent to Stripe) → put EXACTLY those invoices back to Pending (only
+//    rows still Processing with the claim's own processing_since stamp) and tell the office once;
+//  - not found + "sending" (create was attempted — the search may simply miss it) → "needs_review" +
+//    one System Health issue. Never undone automatically.
 async function reconcileAbandonedClaims(): Promise<{ released: number; linked: number }> {
   let released = 0, linked = 0;
   const hourAgo = new Date(Date.now() - 3600000).toISOString();
-  const { data: claims, error } = await supabase.from(CLAIMS).select("*").eq("status", "claimed").lt("claimed_at", hourAgo).limit(100);
+  const { data: claims, error } = await supabase.from(CLAIMS).select("*").in("status", ["claimed", "sending"]).lt("claimed_at", hourAgo).limit(100);
   if (error) {
     if (!isMissingTable(error, CLAIMS)) console.error("reconcileAbandonedClaims:", error.message);
     return { released, linked }; // table missing → degrade (the 7-day stuck check still flags them)
@@ -617,6 +653,15 @@ async function reconcileAbandonedClaims(): Promise<{ released: number; linked: n
       continue;
     }
     const ids = String(c.invoice_ids || "").split(",").filter(Boolean);
+    if (c.status !== "claimed") {
+      const { error: revErr } = await supabase.from(CLAIMS).update({ status: "needs_review", note: "sent to Stripe, no payment found by search" }).eq("id", c.id).eq("status", c.status);
+      if (revErr) continue; // try again next run (one issue only once the claim is marked)
+      await logSystemHealthIssue({
+        companyId: c.company_id, residentId: c.resident_id, issueType: "rv_bank_autopay_needs_review", source: "process_autopay",
+        message: `A bank autopay charge was sent to Stripe for invoice(s) ${ids.join(", ")}, but its result could not be confirmed (Stripe search finds no payment for claim ${c.id}). The invoice(s) were left "Processing" and NOT changed automatically. Check Stripe → Payments for this resident: if a payment exists it will be settled when the bank confirms; if there is none, set the invoice(s) back to Pending.`,
+      });
+      continue;
+    }
     const { data: back, error: backErr } = await supabase
       .from("resident_invoices")
       .update({ status: "Pending" })
