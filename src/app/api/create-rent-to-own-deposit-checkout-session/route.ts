@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import {
+  applicationHoldRef, attachSessionToHold, expireOlderSession, lotSessionExpiresAt, otherPaidHolder,
+  releaseLotCheckoutHold, takeLotCheckoutHold, LOT_TAKEN_MESSAGE,
+} from "@/lib/lotCheckoutHold";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -21,7 +25,7 @@ export async function POST(req: Request) {
 
     const { data: application, error } = await supabase
       .from("resident_applications")
-      .select("id, full_name, email, rent_to_own_deposit, rent_to_own_deposit_paid, company_id")
+      .select("id, full_name, email, rent_to_own_deposit, rent_to_own_deposit_paid, company_id, space_id, status")
       .eq("id", applicationId)
       .single();
 
@@ -91,27 +95,62 @@ export async function POST(req: Request) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(application.company_id); if (demoBlocked) return demoBlocked; }
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      customer_email: application.email || undefined,
-      line_items: lineItems,
-      ...(connectSplit
-        ? {
-            payment_intent_data: {
-              application_fee_amount: connectSplit.applicationFeeAmountCents,
-              transfer_data: { destination: connectSplit.connectedAccountId },
-              ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
-            },
-          }
-        : {}),
-      metadata: {
-        type: "rent_to_own_deposit",
-        application_id: application.id,
-      },
-      success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl}/apply?application_id=${application.id}`,
-    });
+
+    // Oct 28 (per Mely — two people paying for the same lot at once): another live application
+    // already paid for this lot → stop; otherwise hold the lot for this application while it checks
+    // out (same hold as its application-fee checkout — one ref per application).
+    const holdRef = applicationHoldRef(application.id);
+    let hold: Awaited<ReturnType<typeof takeLotCheckoutHold>> | null = null;
+    // Oct 28 (review): an APPROVED applicant's lot is already theirs (e.g. the buyer of a resident's
+    // for-sale lot) — no paid-holder check and no hold, so a Pending applicant can't block them.
+    if (application.space_id && application.company_id && application.status !== "Approved") {
+      const other = await otherPaidHolder(application.company_id, application.space_id, application.id);
+      if (other.error) return NextResponse.json({ error: "Could not check this lot right now. Please try again." }, { status: 503 });
+      if (other.holder) return NextResponse.json({ error: LOT_TAKEN_MESSAGE }, { status: 409 });
+      hold = await takeLotCheckoutHold(application.space_id, application.company_id, holdRef);
+      if (!hold.ok) return NextResponse.json({ error: hold.message }, { status: hold.reason === "held" ? 409 : 503 });
+    }
+
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        customer_email: application.email || undefined,
+        line_items: lineItems,
+        expires_at: lotSessionExpiresAt(), // Oct 28: ends before the lot hold does
+        // Oct 28 (per Mely): authorize only; stripe-webhook captures after re-checking the lot, or
+        // cancels the authorization if it went to someone else. The Connect split happens at capture.
+        payment_intent_data: {
+          capture_method: "manual",
+          metadata: { lot_checkout: "rent_to_own_deposit", application_id: application.id, ...(application.company_id ? { company_id: application.company_id } : {}) },
+          ...(connectSplit
+            ? {
+                application_fee_amount: connectSplit.applicationFeeAmountCents,
+                transfer_data: { destination: connectSplit.connectedAccountId },
+                ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
+              }
+            : {}),
+        },
+        metadata: {
+          type: "rent_to_own_deposit",
+          application_id: application.id,
+          lot_id: application.space_id || "",
+          lot_hold_ref: application.space_id ? holdRef : "",
+          capture: "manual",
+        },
+        success_url: `${siteUrl}/apply/confirmation?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${siteUrl}/apply?application_id=${application.id}`,
+      });
+    } catch (createErr) {
+      if (hold?.ok && hold.supported && hold.newlyTaken && application.space_id) await releaseLotCheckoutHold(application.space_id, holdRef);
+      throw createErr;
+    }
+
+    if (hold?.ok && hold.supported && application.space_id) {
+      await attachSessionToHold(application.space_id, holdRef, session.id);
+      await expireOlderSession(hold.previousSessionId, session.id, "rent_to_own_deposit");
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {

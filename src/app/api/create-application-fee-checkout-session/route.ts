@@ -4,6 +4,10 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { resolveConnectSplit, calculateProcessingFee } from "@/lib/platformFee";
 import { computeStayAndDeposit, leaseDefaultValue } from "@/lib/applicationPricing";
+import {
+  applicationHoldRef, attachSessionToHold, expireOlderSession, lotOpenForApplication, lotSessionExpiresAt,
+  otherPaidHolder, releaseLotCheckoutHold, takeLotCheckoutHold, LOT_TAKEN_MESSAGE,
+} from "@/lib/lotCheckoutHold";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -110,46 +114,23 @@ export async function POST(req: Request) {
     // lot — the same underlying fact every other part of this flow
     // today (the locked Move-In date, the conflict-check bypass) already
     // relies on to know this occupied-but-being-sold case is legitimate.
+    // Oct 28: the same check, moved to src/lib/lotCheckoutHold.ts (the webhook re-checks it before
+    // capturing) and scoped to the application's own company.
     let lotDailyRate: number | null = null;
-    if (application.space_id) {
-      const { data: lot } = await supabase
-        .from("rv_lots")
-        .select("status, lot_name, company_id, daily_rate")
-        .eq("id", application.space_id)
-        .maybeSingle();
+    if (application.space_id && application.company_id) {
+      const { lot, open } = await lotOpenForApplication(application.space_id, application.company_id);
       lotDailyRate = lot?.daily_rate ?? null;
-
-      let hasActiveSaleListing = false;
-      if (lot?.lot_name && lot.company_id) {
-        const { data: companyRow } = await supabase
-          .from("companies")
-          .select("park_id")
-          .eq("id", lot.company_id)
-          .maybeSingle();
-        if (companyRow?.park_id) {
-          const { data: listing } = await supabase
-            .from("real_estate_listings")
-            .select("id")
-            .eq("park_id", companyRow.park_id)
-            .eq("lot_key", lot.lot_name)
-            .eq("sold", false)
-            .eq("seller_type", "resident")
-            .in("type", ["sale", "rent-to-own"])
-            .maybeSingle();
-          hasActiveSaleListing = !!listing;
-        }
+      if (!open) {
+        return NextResponse.json({ error: LOT_TAKEN_MESSAGE }, { status: 409 });
       }
-
-      if (
-        lot &&
-        lot.status !== "available" &&
-        lot.status !== "for_sale" &&
-        !hasActiveSaleListing
-      ) {
-        return NextResponse.json(
-          { error: "This lot is on hold — please choose a different lot and try again." },
-          { status: 409 }
-        );
+      // Oct 28 (per Mely): another live application already PAID for this lot (e.g. a for-sale lot,
+      // whose status a payment doesn't change) — stop before any card is touched.
+      const other = await otherPaidHolder(application.company_id, application.space_id, application.id);
+      if (other.error) {
+        return NextResponse.json({ error: "Could not check this lot right now. Please try again." }, { status: 503 });
+      }
+      if (other.holder) {
+        return NextResponse.json({ error: LOT_TAKEN_MESSAGE }, { status: 409 });
       }
     }
 
@@ -385,21 +366,46 @@ export async function POST(req: Request) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(application.company_id); if (demoBlocked) return demoBlocked; }
-    const session = await stripe.checkout.sessions.create({
+
+    // Oct 28 (per Mely — two people paying for the same lot at once): hold the lot for this
+    // application while it checks out (atomic; 36 min, longer than the 31-min Stripe session).
+    // Someone else holding it → 409. This same application again → its own hold is extended.
+    const holdRef = applicationHoldRef(application.id);
+    let hold: Awaited<ReturnType<typeof takeLotCheckoutHold>> | null = null;
+    if (application.space_id && application.company_id) {
+      hold = await takeLotCheckoutHold(application.space_id, application.company_id, holdRef);
+      if (!hold.ok) {
+        return NextResponse.json({ error: hold.message }, { status: hold.reason === "held" ? 409 : 503 });
+      }
+    }
+
+    let session: Stripe.Checkout.Session;
+    try {
+    session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: application.email || undefined,
       line_items: lineItems,
-      ...(connectSplit
-        ? {
-            payment_intent_data: {
+      // Oct 28: the session ends before the lot hold does.
+      expires_at: lotSessionExpiresAt(),
+      // Oct 28 (per Mely): authorize only — stripe-webhook assigns the lot first and captures only
+      // if that worked; if the lot went to someone else the authorization is canceled (no charge, no
+      // Stripe fee). The Connect split (application_fee_amount + transfer) happens at capture.
+      payment_intent_data: {
+        capture_method: "manual",
+        metadata: { lot_checkout: "application_fee", application_id: application.id, ...(application.company_id ? { company_id: application.company_id } : {}) },
+        ...(connectSplit
+          ? {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
               transfer_data: { destination: connectSplit.connectedAccountId },
               ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       metadata: {
+        lot_id: application.space_id || "",
+        lot_hold_ref: application.space_id ? holdRef : "",
+        capture: "manual",
         type: "application_fee",
         application_id: application.id,
         // Oct 20 (security review): server-derived (see requiresBgCheck above).
@@ -419,6 +425,18 @@ export async function POST(req: Request) {
       // resubmit) still sees the in-person-payment option.
       cancel_url: `${siteUrl}/apply?application_id=${application.id}${isWalkIn ? "&walkin=true" : ""}`,
     });
+    } catch (createErr) {
+      // Don't leave a fresh hold behind for a checkout that never opened.
+      if (hold?.ok && hold.supported && hold.newlyTaken && application.space_id) await releaseLotCheckoutHold(application.space_id, holdRef);
+      throw createErr;
+    }
+
+    if (hold?.ok && hold.supported && application.space_id) {
+      await attachSessionToHold(application.space_id, holdRef, session.id);
+      // Their older still-open session (they went back and pressed Pay again) is closed AFTER the
+      // hold points to the new one, so its "expired" event can't release the new hold.
+      await expireOlderSession(hold.previousSessionId, session.id, "application_fee");
+    }
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {

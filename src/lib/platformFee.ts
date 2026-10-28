@@ -32,6 +32,33 @@ export const ACH_RETURN_FEE = 4.0;
 // charge_type of that invoice line (written by the Stripe webhook).
 export const RETURNED_ACH_FEE_CHARGE_TYPE = "Returned bank payment fee";
 
+// Oct 28 (per Mely — owner-approved, RV PARKS only; marinas keep the flat $4 for now): the fee the
+// RESIDENT pays when their bank returns a payment = Stripe's $4.00 bank cost + a service charge as
+// allowed by Florida Statute 68.065 (capped at $31): returned amount ≤ $50 → $25; ≤ $300 → $30;
+// above $300 → $31. Totals $29 / $34 / $35. ALL of it goes to MelyOS (returnedAchFeesOnInvoices
+// takes it out of the park's share when the resident pays online). If the resident never pays it,
+// nobody is charged — the park is never responsible for it.
+export function rvReturnedAchServiceCharge(returnedAmount: number): number {
+  const a = Math.round(Number(returnedAmount || 0) * 100) / 100;
+  if (a <= 50) return 25;
+  if (a <= 300) return 30;
+  return 31;
+}
+export function rvReturnedAchFee(returnedAmount: number): { total: number; bankFee: number; serviceCharge: number; description: string } {
+  const serviceCharge = rvReturnedAchServiceCharge(returnedAmount);
+  const bankFee = ACH_RETURN_FEE;
+  return {
+    total: Math.round((bankFee + serviceCharge) * 100) / 100,
+    bankFee,
+    serviceCharge,
+    description: `Bank returned payment $${Number(returnedAmount || 0).toFixed(2)} ($${bankFee.toFixed(2)} bank fee + $${serviceCharge.toFixed(2)} service charge, Fla. Stat. 68.065)`,
+  };
+}
+// Shown to RV residents wherever bank payments / bank autopay are offered.
+export const RV_RETURNED_ACH_FEE_MIN = 29;
+export const RV_RETURNED_ACH_FEE_MAX = 35;
+export { RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
+
 // Oct 28 (per Mely): the returned-payment fee is Stripe's charge to MelyOS, so when an invoice that
 // carries it is paid, that amount goes to MelyOS (application fee), not to the park. Callers subtract
 // this from the park's share (never below $0); invoice totals are not changed. Best-effort: if the
@@ -49,7 +76,7 @@ export async function returnedAchFeesOnInvoices(invoiceIds: string[], companyId?
     if (companyId) {
       await logSystemHealthIssue({
         companyId, issueType: "melyos_fee_split", source: "stripe",
-        message: `Could not check invoices ${ids.join(", ")} for a returned bank payment fee before charging (${error.message}). If one is there, its $${ACH_RETURN_FEE.toFixed(2)} went to the park instead of MelyOS.`,
+        message: `Could not check invoices ${ids.join(", ")} for a returned bank payment fee before charging (${error.message}). If one is there, that fee went to the park instead of MelyOS.`,
       }).catch(() => null);
     }
     return 0;

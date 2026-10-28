@@ -3,19 +3,20 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
-import { alertCheckrFailure } from "@/lib/alertCheckrFailure";
-import { createCheckrInvitation, computeAggregateStatus, CheckrResultEntry } from "@/lib/checkr";
+import { createCheckrInvitation } from "@/lib/checkr";
 import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
-import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
-import { ACH_RETURN_FEE, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
+import { RETURNED_ACH_FEE_CHARGE_TYPE, rvReturnedAchFee } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
 import { autopayBankFailed } from "@/lib/marina/autopay";
 import { isRvBankAutopayIntent, settleRvBankAutopay, failRvBankAutopay, markInvoicesProcessing, RV_AUTOPAY_SETUP_TYPE } from "@/lib/rvBankAutopay";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
+import { sendBankPaymentReturnedEmail } from "@/lib/sendBankPaymentReturnedEmail";
+import { releaseLotCheckoutHold } from "@/lib/lotCheckoutHold";
+import { handleApplicationFeePaid, handleRentToOwnDepositPaid, logLotPaymentRetry } from "@/lib/lotPaymentHandlers";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
@@ -179,7 +180,10 @@ async function handleWebhook(req: Request) {
     }
 
     if (session.metadata?.type === "application_fee") {
-      await handleApplicationFeePaid(session);
+      if ((await handleApplicationFeePaid(session)) === "retry") {
+        await logLotPaymentRetry(session, "application fee");
+        return NextResponse.json({ error: "retry" }, { status: 500 });
+      }
       return NextResponse.json({ received: true });
     }
 
@@ -189,7 +193,10 @@ async function handleWebhook(req: Request) {
     }
 
     if (session.metadata?.type === "rent_to_own_deposit") {
-      await handleRentToOwnDepositPaid(session);
+      if ((await handleRentToOwnDepositPaid(session)) === "retry") {
+        await logLotPaymentRetry(session, "Rent-to-Own deposit");
+        return NextResponse.json({ error: "retry" }, { status: 500 });
+      }
       return NextResponse.json({ received: true });
     }
 
@@ -854,6 +861,13 @@ async function handleWebhook(req: Request) {
     if (isRvInvoiceSession(session)) return NextResponse.json({ received: true });
     // Oct 28: an abandoned "save my bank account for autopay" page is not a failed payment either.
     if (session.metadata?.type === RV_AUTOPAY_SETUP_TYPE) return NextResponse.json({ received: true });
+    // Oct 28 (per Mely): a lot checkout ended unpaid — free its lot hold (only if the hold still
+    // belongs to THIS session; a newer checkout by the same person keeps its own).
+    if (session.metadata?.lot_id && session.metadata?.lot_hold_ref) {
+      await releaseLotCheckoutHold(session.metadata.lot_id, session.metadata.lot_hold_ref, session.id);
+    }
+    // Oct 28 (review): replaced by a newer checkout of the same person — not a failed payment.
+    if (session.metadata?.superseded === "1") return NextResponse.json({ received: true });
     const email = session.customer_details?.email || session.customer_email || "unknown";
     const amount = ((session.amount_total || 0) / 100).toFixed(2);
     const companyId = await resolveCompanyIdFromMetadata(session.metadata);
@@ -930,6 +944,11 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
   const residentId = session.metadata?.resident_id || "";
   const invoiceIds = String(session.metadata?.invoice_ids || "").split(",").filter(Boolean);
   const ref = returnedFeeRef(session.id);
+  // Oct 28 (per Mely): tiered RV fee — $4 bank cost + Fla. Stat. 68.065 service charge, by amount returned.
+  // Oct 28 (review): tiered on the INVOICE amount — what was collected minus the bank transfer fee and
+  // the sales tax this payment added.
+  const returnFee = rvReturnedAchFee(Math.max(
+    (session.amount_total || 0) / 100 - Number(session.metadata?.processing_fee_charged || 0) - Number(session.metadata?.tax_charged || 0), 0));
 
   const { error: reopenErr } = await supabase
     .from("resident_invoices")
@@ -976,8 +995,8 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
       const { error: insertErr } = await supabase.from("resident_invoice_items").insert({
         invoice_id: target.id,
         charge_type: RETURNED_ACH_FEE_TYPE,
-        description: `Returned bank payment fee (ref ${ref})`,
-        amount: ACH_RETURN_FEE,
+        description: `${returnFee.description} (ref ${ref})`,
+        amount: returnFee.total,
       });
       if (insertErr) {
         console.error("stripe-webhook: could not add returned ACH fee:", insertErr.message);
@@ -1018,10 +1037,13 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
   if (alreadyLogged && alreadyLogged.length > 0) return NextResponse.json({ received: true, duplicate: true });
 
   let reason = "";
+  let reasonCode: string | null = null;
   const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
   if (pi) {
-    const intent = await stripe.paymentIntents.retrieve(pi).catch(() => null);
+    const intent = await stripe.paymentIntents.retrieve(pi, { expand: ["latest_charge"] }).catch(() => null);
     reason = intent?.last_payment_error?.message || "";
+    const ch = intent?.latest_charge && typeof intent.latest_charge !== "string" ? intent.latest_charge : null;
+    reasonCode = ch?.failure_code || intent?.last_payment_error?.code || null;
   }
 
   const amount = ((session.amount_total || 0) / 100).toFixed(2);
@@ -1030,8 +1052,31 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
     residentId: residentId || null,
     issueType: "rv_bank_payment_returned",
     source: "stripe_webhook",
-    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${ACH_RETURN_FEE.toFixed(2)} returned bank payment fee was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${ACH_RETURN_FEE.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
+    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${returnFee.total.toFixed(2)} returned bank payment fee ($${returnFee.bankFee.toFixed(2)} bank fee + $${returnFee.serviceCharge.toFixed(2)} service charge; all of it goes to MelyOS when paid) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${returnFee.total.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
   });
+  // Oct 28 (per Mely): email the resident — once (the issue above makes a redelivery stop at
+  // alreadyLogged; the email also has its own per-session marker). One-time payment: autopay untouched.
+  if (residentId) {
+    const { data: openNow } = await supabase.from("resident_invoices").select("invoice_month, status").in("id", invoiceIds).eq("resident_id", residentId);
+    const owed = (openNow || []).filter((i) => i.status === "Pending");
+    await sendBankPaymentReturnedEmail({
+      paymentRef: session.id,
+      residentId,
+      companyId,
+      amount: (session.amount_total || 0) / 100,
+      invoiceLabels: owed.map((i) => i.invoice_month || "an invoice"),
+      invoicesOwedAgain: owed.length > 0,
+      returnedByBank: true,
+      reasonCode,
+      reasonMessage: reason || null,
+      feeAdded: !!feeInvoice,
+      feeAmount: returnFee.total,
+      feeBankPart: returnFee.bankFee,
+      feeServicePart: returnFee.serviceCharge,
+      autopayTurnedOff: false,
+      isAutopay: false,
+    });
+  }
   return NextResponse.json({ received: true });
 }
 
@@ -1097,617 +1142,9 @@ async function reopenRvInvoicesForLostBankDispute(session: Stripe.Checkout.Sessi
   });
 }
 
-async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {
-  const applicationId = session.metadata?.application_id;
-  if (!applicationId) {
-    console.log("Application fee webhook missing application_id metadata");
-    return;
-  }
-
-  // Defaults to true so any older/other caller of this checkout route
-  // (without this metadata) keeps the pre-existing always-run-Checkr behavior.
-  const requiresBackgroundCheck =
-    session.metadata?.requires_background_check !== "false";
-  const stayAmount = Number(session.metadata?.stay_amount) || 0;
-  const depositAmount = Number(session.metadata?.deposit_amount) || 0;
-  const cardProcessingFee = Number(session.metadata?.card_processing_fee) || 0;
-  // Aug 20 (per Mely — real-money design decision): true when MelyOS's
-  // Checkr cost was already deducted from Aloha's share right in this
-  // same checkout, via Stripe Connect — checkr-billing-report.ts (which
-  // tracks money still owed by other means) needs to exclude these so
-  // Aloha is never billed twice for the same background check.
-  const checkrFeeChargedViaConnect = session.metadata?.checkr_fee_charged_via_connect === "true";
-    const checkrFeeDeductedAmount = Number(session.metadata?.checkr_fee_deducted_amount) || 0;
-
-  const amountPaid = (session.amount_total || 0) / 100;
-
-  const paymentIntentId =
-    typeof session.payment_intent === "string"
-      ? session.payment_intent
-      : session.payment_intent?.id ?? null;
-
-  // Oct 20 (security review — webhook idempotency): if this application is
-  // ALREADY marked paid, a second run would re-send the receipt, the admin
-  // emails and — worst — a second set of Checkr invitations (real cost).
-  // Skip it. Same payment intent = Stripe re-delivering the same event
-  // (normal, nothing to do). A different/absent one means the fee was
-  // already collected another way (e.g. Mark Fee Collected) and the
-  // applicant ALSO paid online — flag it in System Health for a refund
-  // review instead of silently ignoring real money.
-  {
-    const { data: existing } = await supabase
-      .from("resident_applications")
-      .select("application_fee_paid, application_fee_stripe_payment_intent_id, checkr_invitation_sent_at, company_id, full_name")
-      .eq("id", applicationId)
-      .maybeSingle();
-    if (existing?.application_fee_paid) {
-      const samePayment =
-        !!paymentIntentId && existing.application_fee_stripe_payment_intent_id === paymentIntentId;
-      console.warn(
-        `stripe-webhook: application ${applicationId} already marked paid — skipping (${samePayment ? "duplicate delivery" : "different payment"}).`
-      );
-      if (!samePayment && existing.company_id) {
-        await logSystemHealthIssue({
-          companyId: existing.company_id,
-          issueType: "refund_review",
-          source: "stripe_webhook",
-          message: `${existing.full_name || "An applicant"} paid the application fee online ($${((session.amount_total || 0) / 100).toFixed(2)}), but the application was already marked paid. Check for a double payment and refund if needed (Stripe ${paymentIntentId || session.id}).`,
-        });
-      }
-      return;
-    }
-  }
-
-  const { data: application, error } = await supabase
-    .from("resident_applications")
-    .update({
-      application_fee_paid: true,
-      application_fee_paid_at: new Date().toISOString(),
-      application_fee_stripe_payment_intent_id: paymentIntentId,
-      background_check_status: requiresBackgroundCheck
-        ? "payment_confirmed"
-        : "not_required",
-      // Aug 17 (per Mely — "si el background no se paga, este cargo se
-      // cobra junto con el primer mes, renta y depósito"): persisted so
-      // Approve Application (melyos-builder) can see what was already
-      // collected here and avoid double-charging the same first month's
-      // rent/deposit again through the normal billing-profile/first-
-      // invoice flow. NOT YET WIRED UP on the approval side — see Mely's
-      // note in system-connections-audit.md before relying on this.
-      rent_prepaid_amount: stayAmount || null,
-      deposit_prepaid_amount: depositAmount || null,
-      checkr_fee_charged_via_connect: checkrFeeChargedViaConnect,
-      checkr_fee_deducted_amount: checkrFeeDeductedAmount,
-    })
-    .eq("id", applicationId)
-    .select(
-      "id, full_name, email, application_fee_total, application_fee_primary, application_fee_per_additional, application_fee_additional_count, application_processing_fee, background_check_required, company_id, occupants, space_id, park_share_total"
-    )
-    .single();
-
-  // Aug 11 (per Mely): the DB's unique_active_application_lot_hold index
-  // already blocks a SECOND active paid application from holding the
-  // same lot — but only discovers the conflict here, AFTER this
-  // person's card was already charged (see the 23505 handler below,
-  // which then has to clear their space_id and alert admin to sort out
-  // a refund). This is the actual fix: the moment payment is confirmed,
-  // pull the lot from 'available' immediately so a second applicant
-  // never sees it as selectable in the first place — the constraint
-  // above becomes a last-resort safety net for a genuine same-instant
-  // race, not the primary defense.
-  if (!error && application?.space_id) {
-    await supabase
-      .from("rv_lots")
-      .update({ status: "reserved" })
-      .eq("id", application.space_id)
-      .eq("status", "available");
-  }
-
-  // Aug 21 (per Mely): records an itemized, permanent row the company
-  // can see for themselves under Settings > Billing > Charges — amount
-  // is MelyOS's own cut (what was deducted), markup is what the company
-  // actually netted from this same background check.
-  if (!error && checkrFeeChargedViaConnect && checkrFeeDeductedAmount > 0 && application?.company_id) {
-    // Aug 21 (per Mely — "si se hacen '3' background check por ejemplo
-    // eso se vera ahi?"): amount/markup here are the TOTAL across all
-    // people on this application (1 primary + N additional), combined
-    // into one row — the description needs to say how many, or it
-    // reads as if only one check happened when it might be several.
-    const totalCheckCount = 1 + (Number(application.application_fee_additional_count) || 0);
-    await recordMelyOSBillingCharge({
-      companyId: application.company_id,
-      chargeType: "Background Check",
-      source: "MelyOS",
-      description: `Background Check (${totalCheckCount}) — ${application.full_name}`,
-      amount: checkrFeeDeductedAmount,
-      markup: Math.max(0, Number(application.park_share_total || 0) - checkrFeeDeductedAmount),
-      residentApplicationId: application.id,
-    });
-  }
-
-  // Aug 20 (per Mely — "no se vio la notificacion que el residente
-  // pago"): every OTHER successful checkout in this codebase (propane,
-  // etc.) notifies the admin via resident_update_notifications — this
-  // one only ever did it for the lot-conflict edge case below, never
-  // for a normal successful payment with no conflict at all.
-  if (!error && application?.company_id) {
-    const backgroundCheckLabel = requiresBackgroundCheck
-      ? " (includes background check)"
-      : "";
-    await supabase.from("resident_update_notifications").insert({
-      company_id: application.company_id,
-      resident_name: application.full_name,
-      update_type: "application_fee_paid",
-           message: `${application.full_name} paid their application fee${backgroundCheckLabel}: $${amountPaid.toFixed(2)}.`,
-    });
-  }
-
-  if (error) {
-    // Aug 6 (per Mely: every function must work correctly with several
-    // applicants at once) — unique_active_application_lot_hold can reject
-    // this exact update if someone else's application already grabbed
-    // this lot a moment earlier. The applicant's card was ALREADY charged
-    // by Stripe before this webhook runs, so we can't just drop this
-    // silently: record the payment anyway (clearing space_id so it
-    // doesn't collide with the constraint), and alert admin urgently
-    // since a real person paid for a lot they can no longer have.
-    if (error.code === "23505" && error.message?.includes("unique_active_application_lot_hold")) {
-      const { data: retryApplication } = await supabase
-        .from("resident_applications")
-        .update({
-          application_fee_paid: true,
-          application_fee_paid_at: new Date().toISOString(),
-          application_fee_stripe_payment_intent_id: paymentIntentId,
-          background_check_status: requiresBackgroundCheck ? "payment_confirmed" : "not_required",
-          space_id: null,
-          checkr_fee_charged_via_connect: checkrFeeChargedViaConnect,
-          checkr_fee_deducted_amount: checkrFeeDeductedAmount,
-        })
-        .eq("id", applicationId)
-        .select("id, full_name, email, company_id, application_fee_total, park_share_total, application_fee_additional_count")
-        .single();
-
-      if (checkrFeeChargedViaConnect && checkrFeeDeductedAmount > 0 && retryApplication?.company_id) {
-        const totalCheckCount = 1 + (Number(retryApplication.application_fee_additional_count) || 0);
-        await recordMelyOSBillingCharge({
-          companyId: retryApplication.company_id,
-          chargeType: "Background Check",
-          source: "MelyOS",
-          description: `Background Check (${totalCheckCount}) — ${retryApplication.full_name}`,
-          amount: checkrFeeDeductedAmount,
-          markup: Math.max(0, Number(retryApplication.park_share_total || 0) - checkrFeeDeductedAmount),
-          residentApplicationId: applicationId,
-        });
-      }
-
-      if (retryApplication?.company_id) {
-        await supabase.from("resident_update_notifications").insert({
-          company_id: retryApplication.company_id,
-          resident_name: retryApplication.full_name,
-          update_type: "application_lot_conflict",
-                  message: `${retryApplication.full_name} paid their application fee ($${amountPaid.toFixed(2)}), but their selected lot was just taken by another applicant. Please contact them to choose a different lot (payment already collected).`,
-        });
-      }
-
-      console.log(`Application ${applicationId}: lot conflict on fee payment, admin notified.`);
-      return;
-    }
-
-    console.log("Error updating resident_applications after fee payment:", error.message);
-    return;
-  }
-
-  // Aug 6 (per Mely): once the application fee (incl. background check)
-  // is paid, hold the selected lot as "reserved" (yellow on the map) so
-  // it doesn't look free to book/apply for while this application is
-  // still pending admin's decision. Flips to occupied on approval, or
-  // back to available on denial — same "reserved" convention already
-  // used for confirmed reservations and pending move-outs.
-  if (application?.space_id) {
-    await supabase
-      .from("rv_lots")
-      .update({ status: "reserved" })
-      .eq("id", application.space_id)
-      .eq("status", "available");
-  }
-
-  console.log(
-      `Application fee paid for ${application?.full_name} ($${amountPaid.toFixed(2)}).` +
-      (requiresBackgroundCheck
-        ? " Background check status: payment_confirmed."
-        : ` No background check required for this stay (short stay${stayAmount > 0 ? `, $${stayAmount.toFixed(2)} stay charge included` : ""}).`)
-  );
-
-  // Each park sets their own notification email under Business Profile
-  // (companies.contact_email) — this used to be a single hardcoded env var
-  // shared across every company, which doesn't work once there's more than
-  // one client on the platform. Falls back to the env var only if the park
-  // hasn't set one yet.
-  let adminNotifyEmail = process.env.APPLICATION_FEE_ADMIN_EMAIL || "melyos2026@gmail.com";
-  if (application?.company_id) {
-    const { data: notifyCompany } = await supabase
-      .from("companies")
-      .select("contact_email")
-      .eq("id", application.company_id)
-      .maybeSingle();
-    if (notifyCompany?.contact_email) {
-      adminNotifyEmail = notifyCompany.contact_email;
-    }
-  }
-
-  // Aug 5 (per Mely — real bug she caught: some notification emails said
-  // "MelyOS" as the sender instead of the actual park's name): fetch the
-  // company name ONCE at function scope so every email sent from here —
-  // not just the applicant's receipt — uses the real company name.
-  let company: { company_name: string | null; address: string | null; logo_url: string | null } | null = null;
-  if (application?.company_id) {
-    const { data: companyRow } = await supabase
-      .from("companies")
-      .select("company_name, address, logo_url")
-      .eq("id", application.company_id)
-      .maybeSingle();
-    company = companyRow;
-  }
-
-  // Send the applicant an actual PDF receipt (company name, amount,
-  // description, receipt/transaction numbers) — the confirmation page
-  // promises "a receipt has been sent to your email", so this needs to be
-  // a real receipt, not just the Checkr invitation email's paragraph of
-  // instructions.
-  if (application?.email && process.env.RESEND_API_KEY) {
-    try {
-          const paymentDate = new Date(session.created * 1000);
-
-      // Build the itemized breakdown from what was actually stored on the
-      // application at submission time — not re-derived from the total,
-      // so it always matches what the applicant agreed to.
-      const lineItems: { description: string; qty: number; unitPrice: number; amount: number }[] = [];
-
-      if (application.background_check_required) {
-        const primaryFee = Number(application.application_fee_primary) || 0;
-        if (primaryFee > 0) {
-          lineItems.push({
-            description: "Background Check (Primary Applicant)",
-            qty: 1,
-            unitPrice: primaryFee,
-            amount: primaryFee,
-          });
-        }
-        const additionalCount = Number(application.application_fee_additional_count) || 0;
-        const additionalFee = Number(application.application_fee_per_additional) || 0;
-        if (additionalCount > 0 && additionalFee > 0) {
-          lineItems.push({
-            description: "Additional Background Checks",
-            qty: additionalCount,
-            unitPrice: additionalFee,
-            amount: additionalFee * additionalCount,
-          });
-        }
-      }
-
-      const processingFee = Number(application.application_processing_fee) || 0;
-      if (processingFee > 0) {
-        lineItems.push({
-          description: "Application Fee",
-          qty: 1,
-          unitPrice: processingFee,
-          amount: processingFee,
-        });
-      }
-
-      if (stayAmount > 0) {
-        lineItems.push({
-          description: "RV Lot Stay Charge",
-          qty: 1,
-          unitPrice: stayAmount,
-          amount: stayAmount,
-        });
-      }
-
-      // Aug 17 (per Mely — "el pdf que me llego de pago no dice todo lo
-      // que se cobro"): depositAmount was already parsed above but never
-      // actually pushed onto the receipt — the deposit and card fee were
-      // silently missing from the itemized breakdown even though the
-      // Amount Paid total (computed from the real Stripe charge) was
-      // always correct. Same gap for the card processing surcharge,
-      // which this receipt-builder didn't even know existed until now.
-      if (depositAmount > 0) {
-        lineItems.push({
-          description: "Security Deposit",
-          qty: 1,
-          unitPrice: depositAmount,
-          amount: depositAmount,
-        });
-      }
-
-      if (cardProcessingFee > 0) {
-        lineItems.push({
-          description: "Card Processing Fee",
-          qty: 1,
-          unitPrice: cardProcessingFee,
-          amount: cardProcessingFee,
-        });
-      }
-
-      // Fallback in case none of the stored breakdown fields are populated
-      // (e.g. an application submitted before this itemization existed) —
-      // still show something rather than an empty table.
-      if (lineItems.length === 0) {
-        lineItems.push({
-          description: "Lease Application Fee",
-          qty: 1,
-          unitPrice: amountPaid,
-          amount: amountPaid,
-        });
-      }
-
-      // Simple, human-readable receipt number instead of a raw Stripe ID —
-      // date + time is unique enough for a receipt label (not a DB key).
-      const receiptNumber = `APP-${paymentDate
-        .toLocaleDateString("en-US", { timeZone: "America/New_York" })
-        .replace(/\//g, "")}-${paymentDate
-        .toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false })
-        .replace(/:/g, "")
-        .slice(0, 4)}`;
-
-      const receiptPdf = await generateApplicationFeeReceiptPdf({
-        companyName: company?.company_name || "Aloha RV Park",
-        companyAddress: company?.address || null,
-        companyLogoUrl: company?.logo_url || null,
-        applicantName: application.full_name || "Applicant",
-        lineItems,
-        totalPaid: amountPaid,
-        receiptNumber,
-        transactionId: session.id,
-        paymentDate,
-      });
-
-      await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
-          to: application.email,
-          subject: `Receipt — Application Fee Paid ($${amountPaid.toFixed(2)})`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
-              <h2>✅ Payment Confirmed</h2>
-              <p>Thank you, ${application.full_name || "Applicant"}. Your application fee payment of
-              $${amountPaid.toFixed(2)} was received. Your receipt is attached as a PDF.</p>
-            </div>
-          `,
-          attachments: [
-            {
-              filename: "application-fee-receipt.pdf",
-              content: receiptPdf.toString("base64"),
-            },
-          ],
-        }),
-      });
-    } catch (receiptErr) {
-      console.error("Failed to send application fee receipt PDF:", receiptErr);
-    }
-  }
-
-  if (!requiresBackgroundCheck) {
-    try {
-      if (process.env.RESEND_API_KEY) {
-        const emailRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
-            to: adminNotifyEmail,
-            subject: `Short-stay application fee${stayAmount > 0 ? " + stay charge" : ""} paid for ${application?.full_name || "applicant"} — no background check needed`,
-            html: `<p>${application?.full_name || "An applicant"} just paid their application fee${
-              stayAmount > 0 ? ` and $${stayAmount.toFixed(2)} stay charge` : ""
-            } for a short stay. No background check was required.</p>`,
-          }),
-        });
-        const emailJson = await emailRes.json();
-        if (!emailRes.ok) {
-          console.error("Resend admin email failed:", emailJson);
-        }
-      }
-    } catch (emailErr) {
-      console.error("Failed to send short-stay admin notification:", emailErr);
-    }
-    return;
-  }
-
-  const people: { personKey: string; name: string; email: string }[] = [];
-
-  if (application?.email) {
-    people.push({
-      personKey: "primary",
-      name: application.full_name || "Applicant",
-      email: application.email,
-    });
-  }
-
-  const occupants = (application?.occupants || []) as Array<{
-    name?: string;
-    date_of_birth?: string;
-    email?: string;
-  }>;
-  occupants.forEach((occ, i) => {
-    if (!occ?.name || !occ?.date_of_birth) return;
-    const age = calculateAge(occ.date_of_birth);
-    if (age === null || age < 18) return;
-    people.push({
-      personKey: `occupant:${i}`,
-      name: occ.name,
-      email: occ.email || application!.email,
-    });
-  });
-
-  const results: CheckrResultEntry[] = [];
-
-  // Aug 10 (per Mely): same integration/settings as the main admin-
-  // triggered flow — reads the company's configured Work Location State
-  // + Default Package from Lease Defaults instead of a hardcoded package.
-  let checkrWorkLocationState = "";
-  let checkrPackageSlug = "basic_plus_criminal";
-  if (application.company_id) {
-    const { data: settings } = await supabase
-      .from("park_settings")
-      .select("checkr_work_location_state, checkr_default_package_slug")
-      .eq("company_id", application.company_id)
-      .maybeSingle();
-    checkrWorkLocationState = settings?.checkr_work_location_state || "";
-    checkrPackageSlug = settings?.checkr_default_package_slug || "basic_plus_criminal";
-  }
-
-  if (!checkrWorkLocationState) {
-    console.log(
-      "Application background check: company hasn't set Checkr Work Location State in Lease Defaults — skipping all Checkr invitations for this application."
-    );
-    // Aug 11: FOUND REAL BUG — this used to just `return` here with no
-    // admin notification at all, unlike every other failure path in this
-    // function (which at least emails admin). That meant a paid
-    // application fee with a missing Work Location State setting failed
-    // COMPLETELY silently — applicant never got a background check
-    // invite, admin never knew why. Now sends the same kind of alert as
-    // the invitation-failed case below, with the specific reason.
-    try {
-      if (process.env.RESEND_API_KEY) {
-        await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
-            to: adminNotifyEmail,
-            subject: `Application fee paid — background check NOT sent (Checkr Work Location State missing) for ${application?.full_name || "applicant"}`,
-                      html: `<p>${application?.full_name || "An applicant"} just paid their $${amountPaid.toFixed(2)} application fee, but NO background check invitation was sent because "Checkr Work Location State" isn't set in Lease Defaults for this company.</p>
-                   <p>Set it in Lease Defaults → Background Check, then invite this applicant's background check manually from the Applications tab.</p>`,
-          }),
-        });
-      }
-    } catch (emailErr) {
-      console.error("Failed to send missing-work-location-state admin alert:", emailErr);
-    }
-    return;
-  }
-
-   const appFailures: { name: string; reason: string }[] = [];
-  let primaryCandidateId: string | undefined;
-  let primaryInvitationId: string | undefined;
-  let primaryInvitationUrl: string | undefined;
-
-  for (const person of people) {
-    try {
-      const { candidateId, invitationId, invitationUrl } = await createCheckrInvitation({
-        applicationId: application.id,
-        personKey: person.personKey,
-        email: person.email,
-        fullName: person.name,
-        state: checkrWorkLocationState,
-        packageSlug: checkrPackageSlug,
-      });
-      results.push({
-        personKey: person.personKey,
-        name: person.name,
-        candidateId,
-        status: "invitation_sent",
-      });
-      if (person.personKey === "primary") {
-        primaryCandidateId = candidateId;
-        primaryInvitationId = invitationId;
-        primaryInvitationUrl = invitationUrl;
-      }
-    } catch (checkrErr: any) {
-      console.error(`Checkr invitation failed for person ${person.personKey}:`, checkrErr.message);
-      results.push({ personKey: person.personKey, name: person.name, status: "invitation_failed" });
-      appFailures.push({ name: person.name, reason: String(checkrErr?.message || "Unknown Checkr error").slice(0, 300) });
-    }
-  }
-
-  if (appFailures.length > 0) {
-    // Park admin is already emailed below; this adds the real reason + a MelyOS copy.
-    await alertCheckrFailure({
-      applicationId: application.id,
-      applicantName: application.full_name || "Applicant",
-      companyId: application.company_id,
-      failures: appFailures,
-      notifyPark: false,
-    });
-  }
-
-  const aggregateStatus = computeAggregateStatus(results);
-  const anyInvitationSent = results.some((r) => r.status !== "invitation_failed");
-  await supabase
-    .from("resident_applications")
-    .update({
-      checkr_results: results,
-      background_check_status: aggregateStatus,
-      ...(anyInvitationSent
-        ? {
-            checkr_package_slug: checkrPackageSlug,
-            checkr_invitation_sent_at: new Date().toISOString(),
-            checkr_environment: process.env.CHECKR_ENVIRONMENT || "staging",
-          }
-        : {}),
-      ...(primaryCandidateId ? { checkr_candidate_id: primaryCandidateId } : {}),
-      ...(primaryInvitationId ? { checkr_invitation_id: primaryInvitationId } : {}),
-      ...(primaryInvitationUrl ? { checkr_invitation_url: primaryInvitationUrl } : {}),
-    })
-    .eq("id", application.id);
-
-  const checkrInvited = results.length > 0 && results.every((r) => r.status !== "invitation_failed");
-
-  try {
-    if (process.env.RESEND_API_KEY) {
-      const emailRes = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: `${company?.company_name || "Aloha RV Park"} <noreply@aloharvparkfl.com>`,
-          to: adminNotifyEmail,
-         subject: checkrInvited
-            ? `Background check application sent for ${application?.full_name || "applicant"} (${results.length} ${results.length === 1 ? "person" : "people"})`
-            : `Application fee paid — background check FAILED to send for ${application?.full_name || "applicant"}, check manually`,
-          html: checkrInvited
-            ? `<p>${application?.full_name || "An applicant"} just paid their $${amountPaid.toFixed(2)} application fee.</p>
-               <p>The background check application has been sent for ${results.length} ${results.length === 1 ? "person" : "people"} on this application. You'll be notified again once results are in.</p>`
-            : `<p>${application?.full_name || "An applicant"} just paid their $${amountPaid.toFixed(2)} application fee, but the background check failed to send.</p>
-               <p>Check the Applications tab for details on who still needs to be invited manually.</p>`,
-        }),
-      });
-      const emailJson = await emailRes.json();
-      if (!emailRes.ok) {
-        console.error("Resend admin email failed:", emailJson);
-      } else {
-        console.log("Admin notification email sent:", emailJson.id);
-      }
-    } else {
-      console.log("RESEND_API_KEY not set — skipping admin notification email.");
-    }
-  } catch (emailErr) {
-    console.error("Failed to send background check admin notification:", emailErr);
-  }
-}
-
-function calculateAge(dateOfBirth: string): number | null {
-  const dob = new Date(dateOfBirth);
-  if (isNaN(dob.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const m = today.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-  return age;
-}
+// Oct 28 (review): the application-fee and Rent-to-Own deposit handlers moved to
+// src/lib/lotPaymentHandlers.ts so the daily lot-payment reconcile cron can finish a payment the
+// webhook couldn't (same code, same idempotency).
 
 const PROPANE_PRODUCT_LABELS: Record<string, string> = {
   "20lb": "20 LB Tank",
@@ -1825,57 +1262,6 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
     }
   } catch (err) {
     console.error("Error saving propane order:", err);
-  }
-}
-
-async function handleRentToOwnDepositPaid(session: Stripe.Checkout.Session) {
-  const applicationId = session.metadata?.application_id;
-  if (!applicationId) {
-    console.log("Rent-to-own deposit webhook missing application_id metadata");
-    return;
-  }
-
-  // Aug 25 (per Mely — reviewing the Rent-to-Own flow end to end): found
-  // live — this .select() asked for "rent_to_own_deposit_amount", a
-  // column that doesn't exist anywhere in the schema (the real column,
-  // used everywhere else in the codebase, is "rent_to_own_deposit").
-  // PostgREST rejects the entire update+select request when the select
-  // list references an unknown column, so this silently NEVER marked a
-  // card-paid Rent-to-Own deposit as paid — the resident's card was
-  // really charged and Stripe really confirmed it, but
-  // rent_to_own_deposit_paid stayed false forever and the admin was
-  // never notified. Fixed to select real columns only.
-  //
-  // Sep 26 (per Mely — "esta todo conectado?"): this payment was
-  // completely invisible in All Transactions/Payments & Taxes — there
-  // was no timestamp column at all recording WHEN it was paid, so
-  // nothing could ever include it in a report. Added
-  // rent_to_own_deposit_paid_at and set it here, same as every other
-  // real payment date in this system.
-  const { data: application, error } = await supabase
-    .from("resident_applications")
-    .update({
-      rent_to_own_deposit_paid: true,
-      rent_to_own_deposit_method: "Stripe",
-      rent_to_own_deposit_paid_at: new Date().toISOString(),
-    })
-    .eq("id", applicationId)
-    .select("full_name, company_id, rent_to_own_deposit")
-    .single();
-
-  if (error) {
-    console.log("Error marking rent-to-own deposit paid:", error.message);
-  } else {
-    console.log(`Rent-to-own deposit payment confirmed for application ${applicationId}.`);
-    if (application?.company_id) {
-      const amountPaid = (session.amount_total || 0) / 100;
-      await supabase.from("resident_update_notifications").insert({
-        company_id: application.company_id,
-        resident_name: application.full_name || null,
-        update_type: "rent_to_own_deposit_paid",
-        message: `${application.full_name || "An applicant"} paid their Rent-to-Own deposit — $${amountPaid.toFixed(2)}.`,
-      });
-    }
   }
 }
 
@@ -2012,7 +1398,7 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
   // Oct 20 (security review): only mark the order paid if what was
   // actually paid covers the saved reservation amount.
   {
-    const { data: order } = await supabase.from("lot_orders").select("amount_total, status").eq("id", lotOrderId).maybeSingle();
+    const { data: order } = await supabase.from("lot_orders").select("amount_total, status, lot_id, park_id, arrival_date, departure_date, customer_name, stripe_session_id").eq("id", lotOrderId).maybeSingle();
     const dueCents = Math.round(Number((order as any)?.amount_total || 0) * 100);
     if (!order) {
       console.log("Manual reservation webhook: lot_order not found", lotOrderId);
@@ -2022,6 +1408,68 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
     if (Number(session.amount_total || 0) + 1 < dueCents) {
       console.error("Manual reservation webhook: paid less than the reservation amount", { lotOrderId, paid: session.amount_total, dueCents });
       return;
+    }
+    // Oct 28 (per Mely — two people paying for the same lot): the reservation row holds the dates
+    // (no_overlapping_reservations). If it was cancelled/expired while the guest was paying and the
+    // dates were then taken by someone else, the lot is NOT given to this payer. This checkout
+    // captures immediately (it is not a lot-application checkout), so the money is NOT refunded
+    // automatically — the office is told to offer another lot / the waitlist, or refund by hand.
+    const companyId = session.metadata?.company_id || null;
+    const { data: resv } = companyId
+      ? await supabase.from("reservations").select("id, reservation_status, space_id").eq("lot_order_id", lotOrderId).eq("company_id", companyId).maybeSingle()
+      : { data: null as any };
+    const released = (order as any).status !== "pending" || resv?.reservation_status === "cancelled";
+    if (released && companyId && (order as any).arrival_date && (order as any).departure_date) {
+      const a = (order as any).arrival_date, d = (order as any).departure_date;
+      const [{ data: paidOrders }, { data: liveResv }] = await Promise.all([
+        supabase.from("lot_orders").select("id").eq("lot_id", (order as any).lot_id).eq("park_id", (order as any).park_id || "aloha").eq("status", "paid").neq("id", lotOrderId).lt("arrival_date", d).gt("departure_date", a).limit(1),
+        resv?.space_id
+          ? supabase.from("reservations").select("id").eq("company_id", companyId).eq("space_id", resv.space_id).neq("reservation_status", "cancelled").neq("lot_order_id", lotOrderId).lt("arrival_date", d).gt("departure_date", a).limit(1)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      let taken = (paidOrders || []).length > 0 || (liveResv || []).length > 0;
+      // Oct 28 (review): the dates are still free → bring the reservation back (the exclusion
+      // constraint no_overlapping_reservations still catches a same-instant overlap → conflict path),
+      // and tell the office — never leave it paid-but-cancelled silently.
+      if (!taken && resv?.id) {
+        let reactivated = resv.reservation_status !== "cancelled";
+        if (!reactivated) {
+          const { error: reErr } = await supabase.from("reservations").update({ reservation_status: "confirmed" }).eq("id", resv.id).eq("company_id", companyId);
+          if (reErr?.code === "23P01") taken = true;
+          else if (reErr) console.error("Manual reservation webhook: could not reactivate reservation", resv.id, reErr.message);
+          else reactivated = true;
+        }
+        if (!taken) {
+          // (Lot status is left alone: the arrival-day crons turn it orange/red on the right day — Aug 14 rule.)
+          await logSystemHealthIssue({
+            companyId,
+            issueType: "reservation_reactivated",
+            source: "stripe_webhook",
+            message: reactivated
+              ? `${(order as any).customer_name || "A guest"} paid $${((session.amount_total || 0) / 100).toFixed(2)} for a reservation on Lot ${(order as any).lot_id} (${a} to ${d}) after it had been ${(order as any).status !== "pending" ? (order as any).status : "cancelled"}. The dates were still free, so the reservation was REACTIVATED and marked paid. Check it in Reservations. Stripe session ${session.id}.`
+              : `${(order as any).customer_name || "A guest"} paid $${((session.amount_total || 0) / 100).toFixed(2)} for a cancelled reservation on Lot ${(order as any).lot_id} (${a} to ${d}). The payment was recorded, but the reservation could NOT be reactivated automatically — reactivate it by hand or contact the guest. Stripe session ${session.id}.`,
+          });
+        }
+      }
+      if (taken) {
+        if ((order as any).stripe_session_id !== session.id) {
+          // Record which payment arrived (status unchanged — it must not block the dates), once.
+          await supabase.from("lot_orders").update({ stripe_session_id: session.id, stripe_payment_intent: paymentIntentId }).eq("id", lotOrderId);
+          await logSystemHealthIssue({
+            companyId,
+            issueType: "lot_checkout_conflict",
+            source: "stripe_webhook",
+            message: `${(order as any).customer_name || "A guest"} PAID $${((session.amount_total || 0) / 100).toFixed(2)} for a reservation on Lot ${(order as any).lot_id} (${a} to ${d}) that had been ${(order as any).status !== "pending" ? (order as any).status : "cancelled"}, and those dates are now taken by another booking. The lot was NOT assigned and the payment was NOT refunded automatically — contact them to offer another lot or the waitlist, or refund it from Daily Close. Stripe session ${session.id}.`,
+          });
+          await supabase.from("resident_update_notifications").insert({
+            company_id: companyId,
+            resident_name: (order as any).customer_name || null,
+            update_type: "double_booking_alert",
+            message: `⚠️ ${(order as any).customer_name || "A guest"} paid for a cancelled reservation on Lot ${(order as any).lot_id} (${a} to ${d}), but those dates are already booked. Contact them to offer another lot (payment collected, not refunded).`,
+          });
+        }
+        return;
+      }
     }
   }
 
@@ -2033,7 +1481,7 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
       stripe_payment_intent: paymentIntentId,
     })
     .eq("id", lotOrderId)
-    .select("customer_name, lot_id, arrival_date, departure_date")
+    .select("customer_name, lot_id, arrival_date, departure_date, park_id")
     .single();
 
   if (error) {
@@ -2046,11 +1494,10 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
   // Notify the admin — they created this reservation as "pending" and have
   // no other way of knowing exactly when the guest actually completes payment.
   if (updatedOrder?.lot_id) {
-    const { data: lot } = await supabase
-      .from("rv_lots")
-      .select("company_id")
-      .eq("lot_name", updatedOrder.lot_id)
-      .single();
+    // Oct 28: lot names repeat across parks — use this payment's own company when it is known.
+    let lotQuery = supabase.from("rv_lots").select("company_id").eq("lot_name", updatedOrder.lot_id);
+    if (session.metadata?.company_id) lotQuery = lotQuery.eq("company_id", session.metadata.company_id);
+    const { data: lot } = await lotQuery.limit(1).maybeSingle();
 
     if (lot?.company_id) {
       await supabase.from("resident_update_notifications").insert({
@@ -2070,6 +1517,7 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
           .from("lot_orders")
           .select("id, arrival_date, departure_date")
           .eq("lot_id", updatedOrder.lot_id)
+          .eq("park_id", (updatedOrder as any).park_id || "aloha") // Oct 28: this park's lot only
           .eq("status", "paid")
           .neq("id", lotOrderId);
 

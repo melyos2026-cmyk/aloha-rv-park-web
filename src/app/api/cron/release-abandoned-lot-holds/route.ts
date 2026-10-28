@@ -30,6 +30,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Oct 28 (per Mely): tidy up expired 36-minute checkout holds (rv_lots.checkout_hold_*). An expired
+  // hold already counts as free everywhere — this only clears the leftover values. Skipped quietly
+  // until lot_checkout_hold.sql has been run.
+  let checkoutHoldsCleared = 0;
+  {
+    const { data: cleared, error: holdErr } = await supabaseAdmin
+      .from("rv_lots")
+      .update({ checkout_hold_ref: null, checkout_hold_until: null, checkout_hold_session_id: null })
+      .lt("checkout_hold_until", new Date().toISOString())
+      .select("id");
+    if (holdErr && !/checkout_hold_|42703|PGRST204/.test(`${holdErr.code} ${holdErr.message}`)) {
+      console.error("release-abandoned-lot-holds: could not clear expired checkout holds:", holdErr.message);
+    }
+    checkoutHoldsCleared = (cleared || []).length;
+  }
+
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - ABANDONED_HOLD_DAYS);
 
@@ -47,7 +63,7 @@ export async function GET(request: Request) {
   }
 
   if (!abandoned || abandoned.length === 0) {
-    return NextResponse.json({ released: 0 });
+    return NextResponse.json({ released: 0, checkoutHoldsCleared });
   }
 
   const released: string[] = [];
@@ -70,5 +86,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ released: released.length, details: released });
+  return NextResponse.json({ released: released.length, details: released, checkoutHoldsCleared });
 }

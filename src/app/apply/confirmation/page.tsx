@@ -22,7 +22,7 @@ export default async function ApplicationConfirmationPage({
 
   let session: Stripe.Checkout.Session;
   try {
-    session = await stripe.checkout.sessions.retrieve(sessionId);
+    session = await stripe.checkout.sessions.retrieve(sessionId, { expand: ["payment_intent"] });
   } catch (err) {
     return (
       <ConfirmationLayout>
@@ -33,7 +33,13 @@ export default async function ApplicationConfirmationPage({
 
   const applicationId = session.metadata?.application_id;
   const amountPaid = (session.amount_total ?? 0) / 100;
-  const paid = session.payment_status === "paid";
+  // Oct 28 (per Mely): lot checkouts now only AUTHORIZE the card; the webhook captures it once the lot
+  // is confirmed (seconds later). "requires_capture" = authorized and being confirmed; "canceled" with
+  // lot_cancel_reason = the lot went to someone else and nothing was charged.
+  const pi = session.payment_intent && typeof session.payment_intent !== "string" ? session.payment_intent : null;
+  const paid = session.payment_status === "paid" || pi?.status === "succeeded";
+  const confirming = !paid && session.status === "complete" && pi?.status === "requires_capture";
+  const lotTaken = !paid && pi?.status === "canceled" && pi.metadata?.lot_cancel_reason === "lot_conflict";
 
   let applicantName: string | null = null;
   if (applicationId) {
@@ -43,6 +49,22 @@ export default async function ApplicationConfirmationPage({
       .eq("id", applicationId)
       .single();
     applicantName = data?.full_name ?? null;
+  }
+
+  if (lotTaken) {
+    return (
+      <ConfirmationLayout>
+        <ErrorState message="Sorry — this lot was reserved by another applicant moments before your payment went through. Your card was NOT charged (the authorization was released). We've emailed you; please choose another lot or contact the park." />
+      </ConfirmationLayout>
+    );
+  }
+
+  if (confirming) {
+    return (
+      <ConfirmationLayout>
+        <ErrorState message="Your payment was authorized and we're confirming your lot now. You'll receive an email receipt in a minute — refresh this page shortly to see the confirmation." />
+      </ConfirmationLayout>
+    );
   }
 
   if (!paid) {

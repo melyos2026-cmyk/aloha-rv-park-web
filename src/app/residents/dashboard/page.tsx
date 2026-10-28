@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
 import BankPayBanner from "@/components/BankPayBanner";
+import { RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
@@ -2308,7 +2309,7 @@ export default function ResidentDashboard() {
                   ))}
                 </div>
                 <p style={{ color: "#b45309", fontSize: 12, marginTop: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
-                  If your bank returns the payment, a {money(feeRates.achReturnFee)} returned-payment fee is added.
+                  {RV_RETURNED_ACH_FEE_DISCLOSURE}
                 </p>
                 <button
                   onClick={() => startPayment(payMethodChoice)}

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, ACH_RETURN_FEE, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
+import { calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, rvReturnedAchFee, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
@@ -9,6 +9,7 @@ import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
+import { sendBankPaymentReturnedEmail } from "@/lib/sendBankPaymentReturnedEmail";
 
 // Oct 28 (per Mely): RV residents can pay autopay by BANK (ACH) instead of card — same Stripe
 // pattern as marina autopay (src/lib/marina/autopay.ts): the bank account is saved once with a
@@ -148,16 +149,27 @@ export type BankAutopayResult =
 // Autopay off, so tomorrow's run can't debit a failing account again. Only if the resident hasn't
 // saved another method since. If the write fails, the office is told (and the cron's own guard —
 // a bank failure logged since the last authorization — still blocks the next charge).
-async function turnOffAutopay(resident: { id: string; company_id?: string | null; full_name?: string | null }, pmId: string | null | undefined) {
+// Oct 28: returns true only when autopay was really switched off by this call (the resident email
+// says "autopay was turned off" only then).
+async function turnOffAutopay(resident: { id: string; company_id?: string | null; full_name?: string | null }, pmId: string | null | undefined): Promise<boolean> {
   let q = supabase.from("resident_accounts").update({ autopay_enabled: false }).eq("id", resident.id);
   if (pmId) q = q.eq("stripe_payment_method_id", pmId);
-  const { error } = await q;
+  const { data: offRows, error } = await q.select("id");
   if (error && resident.company_id) {
     await logSystemHealthIssue({
       companyId: resident.company_id, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
       message: `Could not turn off autopay for ${resident.full_name || "a resident"} after a failed bank payment (${error.message}). Turn it off by hand in their account. Autopay will not charge this bank account again until they set it up again.${pmTag(pmId)}`,
     });
   }
+  return !error && (offRows || []).length > 0;
+}
+
+// Oct 28 (per Mely): the invoices of a failed bank payment that are open (Pending) right now — what
+// the resident email lists as "owed again".
+async function owedAgainLabels(invoiceIds: string[], residentId: string): Promise<string[] | null> {
+  const { data } = await supabase.from("resident_invoices").select("id, invoice_month, status").in("id", invoiceIds).eq("resident_id", residentId);
+  const open = (data || []).filter((i) => i.status === "Pending");
+  return open.length ? open.map((i) => i.invoice_month || "an invoice") : null;
 }
 
 // Bank failures logged for this resident's CURRENTLY saved bank account since they last accepted the
@@ -301,6 +313,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
 
   // Refused at once: never submitted to the bank → no returned-payment fee. Autopay off, office
   // notice and ONE System Health issue (the failure webhook for this intent then does nothing).
+  let refusalCode: string | null = null; // Stripe's decline code, for the resident email
   const revertAndStop = async (why: string, piId?: string | null) => {
     if (piId) {
       await setMarker(cancelledMarker(piId));
@@ -309,11 +322,28 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     }
     await reopenProcessing(invoiceIds, resident.id);
     await setClaim({ status: "failed", payment_intent_id: piId || null, note: why.slice(0, 300) });
-    await turnOffAutopay(resident, resident.stripe_payment_method_id);
+    const autopayOff = await turnOffAutopay(resident, resident.stripe_payment_method_id);
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} (bank, ${money(chargeAmount)}): ${why}. Autopay has been turned off for them.`);
     await logSystemHealthIssue({
       companyId, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
       message: `Bank autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}) was refused by Stripe/the bank before it was sent: ${why}. Nothing was taken and no returned-payment fee was added; the invoice(s) are Pending again and autopay was turned off.${piId ? ` Stripe payment ${piId}.` : ""}${pmTag(resident.stripe_payment_method_id)}`,
+    });
+    // Oct 28 (per Mely): tell the resident too — once per payment (marker keyed on the payment, or on
+    // this run's idempotency key when Stripe never created one). Demo companies never get here.
+    const owed = await owedAgainLabels(invoiceIds, resident.id);
+    await sendBankPaymentReturnedEmail({
+      paymentRef: piId || idempotencyKey,
+      residentId: resident.id,
+      companyId,
+      amount: chargeAmount,
+      invoiceLabels: owed || [],
+      invoicesOwedAgain: !!owed,
+      returnedByBank: false,
+      reasonCode: refusalCode,
+      reasonMessage: why,
+      feeAdded: false,
+      autopayTurnedOff: autopayOff,
+      isAutopay: true,
     });
     return { status: "failed" as const, amount: totalAmount, detail: why };
   };
@@ -372,10 +402,12 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
       });
       return { status: "unknown", amount: totalAmount }; // claim stays "sending" → never auto-undone
     } else {
+      refusalCode = e?.raw?.decline_code || e?.raw?.code || e?.code || null;
       return revertAndStop(String(e?.raw?.message || e?.message || "the bank payment was refused").slice(0, 200), errPi?.id || null);
     }
   }
 
+  if (pi.status !== "processing" && pi.status !== "succeeded") refusalCode = pi.last_payment_error?.code || null;
   if (pi.status !== "processing" && pi.status !== "succeeded") return revertAndStop(`payment ${pi.status.replace(/_/g, " ")}`, pi.id);
   // Retried once; if it still fails the claim stays "sending" — reconcile then links it by claim_id
   // or (if Stripe search misses it) sends it to review, never back to Pending.
@@ -533,7 +565,7 @@ async function settleInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; det
 }
 
 // A bank-autopay payment failed (the bank returned it, or it was refused). Always: invoices
-// "Processing" → "Pending", autopay off, office notice, ONE System Health issue. The $4.00
+// "Processing" → "Pending", autopay off, office notice, ONE System Health issue. The tiered ($29–$35)
 // "Returned bank payment fee" is added once — except when the payment never reached the bank
 // (we canceled it — marker "rv_autopay_cancelled:<pi>" — or Stripe shows no charge on it).
 // Safe to call many times: claimed once per PaymentIntent; a System Health issue naming this
@@ -557,6 +589,10 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
   const residentId = pi.metadata.resident_id;
   const invoiceIds = idsOf(pi);
   const ref = returnedFeeRef(pi.id);
+  // Oct 28 (per Mely): tiered RV fee — $4 bank cost + Fla. Stat. 68.065 service charge, by amount returned.
+  // Oct 28 (review): tiered on the INVOICE amount (without the bank transfer fee and the sales tax).
+  const returnFee = rvReturnedAchFee(Math.max(
+    Number(pi.amount || 0) / 100 - Number(pi.metadata?.processing_fee_charged || 0) - Number(pi.metadata?.tax_charged || 0), 0));
   const { data: resident } = await supabase.from("resident_accounts").select("id, full_name, company_id, stripe_payment_method_id").eq("id", residentId).maybeSingle();
   if (!resident || (pi.metadata.company_id && resident.company_id !== pi.metadata.company_id)) return { ok: true, detail: "resident_mismatch" };
   const companyId = resident.company_id as string;
@@ -586,7 +622,7 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
       const target = invoiceIds.map((id) => (invoices || []).find((i) => i.id === id)).find((i) => i?.status === "Pending");
       if (target) {
         const { error } = await supabase.from("resident_invoice_items").insert({
-          invoice_id: target.id, charge_type: RETURNED_ACH_FEE_CHARGE_TYPE, description: `Returned bank payment fee (ref ${ref})`, amount: ACH_RETURN_FEE,
+          invoice_id: target.id, charge_type: RETURNED_ACH_FEE_CHARGE_TYPE, description: `${returnFee.description} (ref ${ref})`, amount: returnFee.total,
         });
         if (error) return { ok: false, detail: error.message };
         feeInvoice = { id: target.id, invoice_month: target.invoice_month };
@@ -607,7 +643,7 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
   const failedPm = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id || null;
   const currentPm = resident.stripe_payment_method_id || null;
   const samePm = !failedPm || !currentPm || failedPm === currentPm;
-  if (samePm) await turnOffAutopay(resident, failedPm || currentPm);
+  const autopayOff = samePm ? await turnOffAutopay(resident, failedPm || currentPm) : false;
   const autopayNote = samePm
     ? "Autopay was turned off."
     : "This was an OLDER bank account — the resident has saved a different payment method since, so their current autopay was NOT changed.";
@@ -622,7 +658,32 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
     source: "stripe_webhook",
     message: (neverSubmitted
       ? `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} failed before reaching the bank${reason ? ` (${reason})` : ""}. Nothing was taken and no returned-payment fee was added. ${(reopened || []).length ? `${n} back to Pending. ` : ""}${autopayNote} Stripe payment ${pi.id}.`
-      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(ACH_RETURN_FEE)} returned bank payment fee was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(ACH_RETURN_FEE)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
+      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(returnFee.total)} returned bank payment fee (${money(returnFee.bankFee)} bank fee + ${money(returnFee.serviceCharge)} service charge; all of it goes to MelyOS when paid) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(returnFee.total)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
+  });
+  // Oct 28 (per Mely): email the resident — after the issue above (which makes every later call of
+  // this function return "already_handled"), plus its own per-payment marker: sent once.
+  let reasonCode: string | null = pi.last_payment_error?.code || null;
+  if (!neverSubmitted && pi.latest_charge) {
+    const ch = typeof pi.latest_charge === "string" ? await stripe?.charges.retrieve(pi.latest_charge).catch(() => null) : pi.latest_charge;
+    reasonCode = ch?.failure_code || reasonCode;
+  }
+  const owed = await owedAgainLabels(invoiceIds, residentId);
+  await sendBankPaymentReturnedEmail({
+    paymentRef: pi.id,
+    residentId,
+    companyId,
+    amount: Number(pi.amount || 0) / 100,
+    invoiceLabels: owed || [],
+    invoicesOwedAgain: !!owed,
+    returnedByBank: !neverSubmitted,
+    reasonCode,
+    reasonMessage: reason || pi.last_payment_error?.message || null,
+    feeAdded: !!feeInvoice,
+    feeAmount: returnFee.total,
+    feeBankPart: returnFee.bankFee,
+    feeServicePart: returnFee.serviceCharge,
+    autopayTurnedOff: autopayOff,
+    isAutopay: true,
   });
   return { ok: true };
 }

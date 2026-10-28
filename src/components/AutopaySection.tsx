@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { bankAutopayAuthorizationText } from "@/lib/autopayTerms";
+import { bankAutopayAuthorizationText, RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
 
@@ -208,7 +208,7 @@ function MethodChoice({ value, onChange, bank }: { value: "ach" | "card"; onChan
       )}
       {opt("card", "Card", bank.passFee ? `Fee ${money(bank.cardFee)}${example} · charged instantly` : "No fee · charged instantly")}
       <p style={{ fontSize: 12, color: "#b45309", background: "#fffbeb", padding: 8, borderRadius: 6, margin: 0 }}>
-        If your bank returns a payment, a {money(bank.returnFee)} returned-payment fee is added and autopay is turned off.
+        {RV_RETURNED_ACH_FEE_DISCLOSURE} Autopay is then turned off.
       </p>
     </div>
   );
