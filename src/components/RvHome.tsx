@@ -134,7 +134,7 @@ export default function RvHome() {
       {/* Map Section */}
       <section id="map" style={{ padding: "80px 24px", background: "var(--white)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 48 }}>
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Available Now</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Lot Map</h2>
             <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green or orange lot to check availability and book your spot</p>
@@ -153,14 +153,14 @@ export default function RvHome() {
                 >
                   🔍 Open Map Full Screen
                 </a>
-                <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10 }}>For the clearest view of every lot, we recommend checking the map from a desktop or laptop computer.</p>
+                <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10, marginBottom: 0 }}>For the clearest view of every lot, we recommend checking the map from a desktop or laptop computer.</p>
               </>
             ) : (
               <p style={{ fontSize: 14, color: "var(--gray)", marginTop: 16 }}>Map coming soon — contact the office for lot availability.</p>
             )}
           </div>
           {company?.park_id && (
-            <div style={{ border: "2px solid var(--black)", borderRadius: 8, overflow: "hidden", height: mapHeight }}>
+            <div style={{ overflow: "hidden", height: mapHeight }}>
               <iframe
                 src={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
                 style={{ width: "100%", height: "100%", border: "none" }}
