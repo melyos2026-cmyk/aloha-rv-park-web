@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/CompanyContext";
 import RvWaitlist from "@/components/RvWaitlist";
+import type { ParkLimits } from "@/lib/rvWaitlistFit";
 
 export default function RvHome() {
   const { company, loading: companyLoading } = useCompany();
@@ -18,9 +19,12 @@ export default function RvHome() {
   const [mapHeight, setMapHeight] = useState(1300);
   // Oct 28 (per Mely): "Join the waitlist" appears only when the park is full (storage spaces don't count).
   const [parkFull, setParkFull] = useState(false);
+  const [parkLimits, setParkLimits] = useState<ParkLimits | null>(null);
   useEffect(() => {
     if (!company?.id) return;
-    fetch("/api/rv-waitlist", { cache: "no-store" }).then((r) => r.json()).then((j) => setParkFull(j.full === true)).catch(() => setParkFull(false));
+    fetch("/api/rv-waitlist", { cache: "no-store" }).then((r) => r.json())
+      .then((j) => { setParkFull(j.full === true); setParkLimits(j.limits && Array.isArray(j.limits.lots) ? j.limits : null); })
+      .catch(() => setParkFull(false));
   }, [company?.id]);
 
   useEffect(() => {
@@ -147,7 +151,7 @@ export default function RvHome() {
         </div>
       </section>
 
-      {parkFull && <RvWaitlist parkName={company?.company_name} />}
+      {parkFull && <RvWaitlist parkName={company?.company_name} limits={parkLimits} />}
 
       {/* Map Section */}
       <section id="map" style={{ padding: "80px 24px", background: "var(--white)" }}>

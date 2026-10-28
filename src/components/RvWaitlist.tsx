@@ -1,18 +1,30 @@
 "use client";
 import { useState } from "react";
+import { rvFitsPark, tooBigMessage, type ParkLimits } from "@/lib/rvWaitlistFit";
 
 // Oct 28 (per Mely): shown on the RV park homepage only when the park is full (every lot taken,
 // storage spaces not counted). Sends the visitor to the office's Waitlist screen.
 const field: React.CSSProperties = { width: "100%", padding: "12px 14px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 15, background: "#fff", color: "#111827" };
 const label: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: "#4b5563", marginBottom: 6 };
 
-export default function RvWaitlist({ parkName }: { parkName?: string }) {
+// Oct 28 (per Mely): the RV's size is required. It is checked right away against the park's lots
+// (limits come from GET /api/rv-waitlist); the API checks it again.
+const SLIDE_OPTIONS = [["0", "0 (none)"], ["1", "1"], ["2", "2"], ["3", "3"], ["4", "4 or more"]];
+
+export default function RvWaitlist({ parkName, limits }: { parkName?: string; limits?: ParkLimits | null }) {
   const [state, setState] = useState<"idle" | "sending" | "done">("idle");
   const [error, setError] = useState("");
+  const [size, setSize] = useState({ length: "", driver: "", passenger: "" });
+
+  const len = Number(size.length);
+  const sizeReady = size.length.trim() !== "" && Number.isFinite(len) && len > 0 && size.driver !== "" && size.passenger !== "";
+  const rv = { length: len, driver: Number(size.driver), passenger: Number(size.passenger) };
+  const tooBig = sizeReady && !!limits && !rvFitsPark(limits, rv) ? tooBigMessage(limits, rv) : "";
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    if (tooBig) return;
     setState("sending");
     const body = Object.fromEntries(new FormData(e.currentTarget).entries());
     try {
@@ -53,7 +65,24 @@ export default function RvWaitlist({ parkName }: { parkName?: string }) {
                 <option value="monthly">Monthly</option><option value="seasonal">Seasonal</option><option value="annual">Annual</option>
               </select>
             </label>
-            <label><span style={label}>RV length (ft)</span><input name="rv_length_ft" inputMode="decimal" maxLength={5} style={field} placeholder="e.g. 38" /></label>
+            <label><span style={label}>RV length (ft) *</span><input name="rv_length_ft" type="number" min={1} max={99} step="0.5" required inputMode="decimal" style={field} placeholder="e.g. 38" value={size.length} onChange={(e) => setSize({ ...size, length: e.target.value })} /></label>
+            <label><span style={label}>Driver-side slide-outs *</span>
+              <select name="rv_driver_slide_outs" required style={field} value={size.driver} onChange={(e) => setSize({ ...size, driver: e.target.value })}>
+                <option value="" disabled>Select…</option>
+                {SLIDE_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+              </select>
+            </label>
+            <label><span style={label}>Passenger-side slide-outs *</span>
+              <select name="rv_passenger_slide_outs" required style={field} value={size.passenger} onChange={(e) => setSize({ ...size, passenger: e.target.value })}>
+                <option value="" disabled>Select…</option>
+                {SLIDE_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+              </select>
+            </label>
+            {tooBig && (
+              <div role="alert" style={{ gridColumn: "1 / -1", background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 6, padding: "12px 14px", fontSize: 14, fontWeight: 600, lineHeight: 1.5 }}>
+                {tooBig}
+              </div>
+            )}
             <label><span style={label}>RV type</span><input name="rv_type" maxLength={60} style={field} placeholder="Fifth wheel, Class A…" /></label>
             <label><span style={label}>Power needed</span>
               <select name="amp_needed" defaultValue="" style={field}>
@@ -65,7 +94,7 @@ export default function RvWaitlist({ parkName }: { parkName?: string }) {
             <label style={{ gridColumn: "1 / -1" }}><span style={label}>Anything else?</span><textarea name="notes" maxLength={1000} rows={3} style={{ ...field, resize: "vertical" }} /></label>
             {error && <div role="alert" style={{ gridColumn: "1 / -1", color: "#b91c1c", fontSize: 14, fontWeight: 600 }}>{error}</div>}
             <div style={{ gridColumn: "1 / -1", textAlign: "center" }}>
-              <button type="submit" disabled={state === "sending"} style={{ background: "var(--red)", color: "#fff", padding: "14px 36px", border: 0, borderRadius: 4, fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", cursor: "pointer", opacity: state === "sending" ? 0.6 : 1 }}>
+              <button type="submit" disabled={state === "sending" || !!tooBig} style={{ background: "var(--red)", color: "#fff", padding: "14px 36px", border: 0, borderRadius: 4, fontWeight: 700, fontSize: 15, letterSpacing: "0.05em", textTransform: "uppercase", cursor: state === "sending" || tooBig ? "not-allowed" : "pointer", opacity: state === "sending" || tooBig ? 0.6 : 1 }}>
                 {state === "sending" ? "Sending…" : "Join the Waitlist"}
               </button>
               <p style={{ fontSize: 12, color: "var(--gray)", marginTop: 10 }}>Joining the waitlist doesn&apos;t reserve a lot or charge anything.</p>
