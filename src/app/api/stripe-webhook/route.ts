@@ -13,6 +13,7 @@ import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { ACH_RETURN_FEE, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
 import { autopayBankFailed } from "@/lib/marina/autopay";
+import { isRvBankAutopayIntent, settleRvBankAutopay, failRvBankAutopay, markInvoicesProcessing, RV_AUTOPAY_SETUP_TYPE } from "@/lib/rvBankAutopay";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
 
@@ -170,6 +171,13 @@ async function handleWebhook(req: Request) {
       });
     }
 
+    // Oct 28 (per Mely): an RV resident saved a bank account for autopay (Checkout "setup" mode). The
+    // portal saves it (/api/portal/bank-autopay "confirm"); nothing to charge or record here — and it
+    // must never reach the invoice-payment path below (it carries resident_id).
+    if (session.metadata?.type === RV_AUTOPAY_SETUP_TYPE) {
+      return NextResponse.json({ received: true });
+    }
+
     if (session.metadata?.type === "application_fee") {
       await handleApplicationFeePaid(session);
       return NextResponse.json({ received: true });
@@ -231,12 +239,8 @@ async function handleWebhook(req: Request) {
         if (piStatus !== "processing") return NextResponse.json({ received: true, skipped: `payment_intent_${piStatus}` });
       }
 
-      const { data: movedRows, error: processingErr } = await supabase
-        .from("resident_invoices")
-        .update({ status: "Processing" })
-        .in("id", achInvoiceIds)
-        .eq("status", "Pending")
-        .select("id");
+      // Oct 28: also stamps processing_since (stuck-bank-payment check), if that column exists.
+      const { rows: movedRows, error: processingErr } = await markInvoicesProcessing(achInvoiceIds);
       if (processingErr) {
         console.error("stripe-webhook: could not mark invoices Processing:", processingErr.message);
         return NextResponse.json({ error: "retry" }, { status: 500 }); // Stripe sends it again
@@ -291,6 +295,25 @@ async function handleWebhook(req: Request) {
       );
       allInvoicesAlreadyPaid =
         (paidInvoices || []).length > 0 && invoiceIds.every((id) => alreadyPaidIds.has(id));
+      // Oct 28 (review): invoices "Processing" = another bank payment (bank autopay, or a different
+      // bank checkout) is in flight for them. This payment still settles them, but it may be a
+      // duplicate — flagged below like alreadyPaidIds. Not when this event IS that bank payment
+      // settling (async_payment_succeeded of an ACH session: its own invoices are Processing).
+      const inFlightIds = rvAchSettled
+        ? new Set<string>()
+        : new Set((paidInvoices || []).filter((inv) => inv.status === "Processing").map((inv) => inv.id));
+      if (inFlightIds.size > 0) {
+        const companyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+        if (companyId) {
+          await logSystemHealthIssue({
+            companyId,
+            residentId: residentId || null,
+            issueType: "rv_possible_duplicate_payment",
+            source: "stripe_webhook",
+            message: `An online ${session.metadata?.payment_method === "ach" ? "bank (ACH)" : "card"} payment of $${((session.amount_total || 0) / 100).toFixed(2)} arrived for ${inFlightIds.size} of ${invoiceIds.length} invoice(s) that already had a bank payment in flight ("Processing" — e.g. bank autopay): ${(paidInvoices || []).filter((inv) => inFlightIds.has(inv.id)).map((inv) => `${inv.invoice_month || "invoice"} (${inv.id})`).join(", ")}. They were marked Paid by this payment; if the bank payment also clears, it is a duplicate — review it for a refund in Stripe. Stripe session ${session.id}.`,
+          });
+        }
+      }
       if (allInvoicesAlreadyPaid) {
         console.warn(
           `stripe-webhook: session ${session.id} — all invoices already Paid; treating as a duplicate delivery (no new line items, receipt or notification).`
@@ -829,6 +852,8 @@ async function handleWebhook(req: Request) {
     // Oct 28 (review): RV invoice checkouts now expire after 31 minutes and earlier ones are closed on
     // purpose when a new one starts — that is not a failed payment.
     if (isRvInvoiceSession(session)) return NextResponse.json({ received: true });
+    // Oct 28: an abandoned "save my bank account for autopay" page is not a failed payment either.
+    if (session.metadata?.type === RV_AUTOPAY_SETUP_TYPE) return NextResponse.json({ received: true });
     const email = session.customer_details?.email || session.customer_email || "unknown";
     const amount = ((session.amount_total || 0) / 100).toFixed(2);
     const companyId = await resolveCompanyIdFromMetadata(session.metadata);
@@ -850,6 +875,15 @@ async function handleWebhook(req: Request) {
       if (event.type === "payment_intent.succeeded") await settleMarinaAchPayment(intent.metadata.company_id, `autopay:${intent.id}`);
       else await autopayBankFailed(intent.metadata.company_id, intent.id, intent.last_payment_error?.message || "the payment failed");
       return NextResponse.json({ received: true });
+    }
+    // Oct 28 (per Mely): RV resident autopay by bank (src/lib/rvBankAutopay.ts). Only intents with
+    // metadata.type "rv_autopay" + source "autopay" + payment_method "ach" + resident_id + invoice_ids
+    // and a us_bank_account method — never a marina intent ("marina_autopay", handled just above and
+    // returned) and never a one-time portal checkout (its PaymentIntent has no metadata).
+    // A failed write answers 500 so Stripe retries; both handlers are idempotent.
+    if (isRvBankAutopayIntent(intent)) {
+      const r = event.type === "payment_intent.succeeded" ? await settleRvBankAutopay(intent) : await failRvBankAutopay(intent);
+      return r.ok ? NextResponse.json({ received: true, ...(r.detail ? { detail: r.detail } : {}) }) : NextResponse.json({ error: "retry" }, { status: 500 });
     }
   }
 

@@ -84,11 +84,12 @@ export async function POST(req: Request) {
 
     // Oct 28 (per Mely): bank (ACH) only when the park allows it and the balance is at or above
     // its minimum (default $100) — same rule as the marina checkout.
-    if (ach && !achAllowed(feeSettings, totalAmount)) {
+    // Oct 28 (per Mely): RV parks must have bank payments explicitly ON (ach_enabled === true).
+    if (ach && (feeSettings?.ach_enabled !== true || !achAllowed(feeSettings, totalAmount))) {
       const min = Number(feeSettings?.ach_min_amount ?? 100);
       return NextResponse.json(
         {
-          error: feeSettings?.ach_enabled === false
+          error: feeSettings?.ach_enabled !== true
             ? "Bank payment is not available at this park. Please pay by card."
             : `Bank payment is available on balances of $${(Number.isFinite(min) ? min : 100).toFixed(2)} or more. Please pay by card.`,
         },

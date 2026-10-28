@@ -5,6 +5,7 @@ import { calculateProcessingFee, resolveConnectSplit, returnedAchFeesOnInvoices 
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
 import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
+import { chargeRvBankAutopay, reconcileRvBankAutopay } from "@/lib/rvBankAutopay";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,10 +14,12 @@ const supabaseAdmin = createClient(
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 // GET /api/cron/process-autopay
 // Runs daily. Charges any Pending resident_invoices for residents who have
 // autopay_enabled + a saved card, once the invoice's due date has arrived.
+// Oct 28: residents whose saved method is a bank account go through src/lib/rvBankAutopay.ts.
 // Uses Stripe's off_session confirmation (the resident isn't present) with
 // their saved payment method.
 export async function GET(request: Request) {
@@ -28,9 +31,14 @@ export async function GET(request: Request) {
 
   const todayStr = new Date().toISOString().split("T")[0];
 
+  // Oct 28 (per Mely): bank autopay — first settle/fail bank payments that cleared or were returned
+  // (asks Stripe, so it works even if the payment_intent.* webhook events are not enabled).
+  const bankReconcile = await reconcileRvBankAutopay().catch((e: any) => ({ settled: 0, failed: 0, error: e?.message }));
+
+  // Oct 28: "*" so a database where autopay_method (rv_ach_autopay.sql) doesn't exist yet still works.
   const { data: autopayResidents, error } = await supabaseAdmin
     .from("resident_accounts")
-    .select("id, company_id, stripe_customer_id, stripe_payment_method_id, full_name, email")
+    .select("*")
     .eq("autopay_enabled", true)
     .not("stripe_customer_id", "is", null)
     .not("stripe_payment_method_id", "is", null);
@@ -41,8 +49,29 @@ export async function GET(request: Request) {
 
   let chargedCount = 0;
   let failedCount = 0;
+  const bank: Record<string, number> = {};
 
   for (const resident of autopayResidents || []) {
+    // Oct 28 (per Mely): autopay by bank (ACH). The saved method decides: autopay_method, or — when
+    // that column is empty/missing — the saved Stripe payment method's own type. If the type can't
+    // be read today, the resident is skipped (never charge a bank account through the card path).
+    let method: string | null = resident.autopay_method === "ach" || resident.autopay_method === "card" ? resident.autopay_method : null;
+    if (!method) {
+      const pm = await stripe.paymentMethods.retrieve(resident.stripe_payment_method_id!).catch((e: any) => {
+        console.error(`process-autopay: could not read the saved payment method of resident ${resident.id} — skipped today:`, e?.message);
+        return null;
+      });
+      if (!pm) { failedCount += 1; continue; }
+      method = pm.type === "us_bank_account" ? "ach" : "card";
+    }
+    if (method === "ach") {
+      const r = await chargeRvBankAutopay(resident, todayStr).catch((e: any) => ({ status: "failed" as const, detail: e?.message }));
+      bank[r.status] = (bank[r.status] || 0) + 1;
+      if (r.status === "processing" || r.status === "succeeded") chargedCount += 1;
+      if (r.status === "failed") failedCount += 1;
+      continue; // never falls back to card
+    }
+
     // Aug 6 (per Mely): same processing-fee/tax/Connect-split model as the
     // manual "Pay Now" route (create-checkout-session) — found via a real
     // live-mode audit that this cron was charging the raw invoice total
@@ -101,6 +130,9 @@ export async function GET(request: Request) {
           payment_method: resident.stripe_payment_method_id!,
           off_session: true,
           confirm: true,
+          // Oct 28 (review): the card path can only ever charge a card — a bank account saved for
+          // bank autopay is refused by Stripe here instead of being debited with card rules.
+          payment_method_types: ["card"],
           description: `Autopay — Aloha RV Park invoice ${invoice.id}`,
           ...(connectSplit
             ? {
@@ -204,5 +236,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ success: true, chargedCount, failedCount });
+  return NextResponse.json({ success: true, chargedCount, failedCount, bank, bankReconcile });
 }

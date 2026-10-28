@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
+import BankPayBanner from "@/components/BankPayBanner";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
@@ -160,6 +161,10 @@ export default function ResidentDashboard() {
   const [moveOutThresholdDays, setMoveOutThresholdDays] = useState(15);
   const [autopayEnabled, setAutopayEnabled] = useState(false);
   const [autopayCardLast4, setAutopayCardLast4] = useState<string | null>(null);
+  // Oct 28: "ach" (bank autopay) | "card" | null (older card autopay / column not added yet)
+  const [autopayMethod, setAutopayMethod] = useState<string | null>(null);
+  // Oct 28: which choice is selected in the "How would you like to pay?" dialog (bank preselected).
+  const [payMethodChoice, setPayMethodChoice] = useState<"ach" | "card">("ach");
   const [residentId, setResidentId] = useState<string | null>(null);
   const [activeLease, setActiveLease] = useState<any>(null);
   const [showMoveOutModal, setShowMoveOutModal] = useState(false);
@@ -297,6 +302,7 @@ export default function ResidentDashboard() {
     setResidentId(residentId);
     setAutopayEnabled(!!residentData?.autopay_enabled);
     setAutopayCardLast4(residentData?.autopay_card_last4 || null);
+    setAutopayMethod(residentData?.autopay_method || null);
     setRvType(residentData?.rv_type || "RV");
     setRvMake(residentData?.rv_make || "");
     setRvModel(residentData?.rv_model || "");
@@ -449,8 +455,21 @@ export default function ResidentDashboard() {
     : Math.round(Math.min(Math.max(outstandingBalance * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100;
   const processingTotal = processingInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
 
+  // Oct 28 (per Mely): fees for the monthly rent, to show bank autopay's real saving.
+  const autopayExample = Number(resident?.rent_amount || 0) > 0 ? Number(resident.rent_amount) : outstandingBalance;
+  const bankAutopayOption = achEnabled && feeRates ? {
+    enabled: true,
+    passFee: passProcessingFee,
+    exampleAmount: autopayExample,
+    cardFee: !passProcessingFee ? 0 : Math.round(Math.max(autopayExample * feeRates.cardPercent, feeRates.cardMinimum) * 100) / 100,
+    achFee: !passProcessingFee ? 0 : Math.round(Math.min(Math.max(autopayExample * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100,
+    achMin: achMinAmount,
+    returnFee: feeRates.achReturnFee,
+  } : null;
+
   async function handlePayNow() {
     if (achEligible) {
+      setPayMethodChoice("ach");
       setShowPayChoice(true);
       return;
     }
@@ -1016,7 +1035,7 @@ export default function ResidentDashboard() {
   } else if (pendingInvoices.length) {
     attention.push({ key: "due", text: `Balance due: ${money(outstandingBalance)}`, sub: nextPaymentDate ? `Next payment due ${nextPaymentDate}` : `${pendingInvoices.length} invoice${pendingInvoices.length === 1 ? "" : "s"} to pay`, tone: "warn", go: "pay", anchor: "charges" });
   }
-  if (autopayFailed) attention.push({ key: "ap", text: "Autopay could not charge your card", sub: "Update your card or pay by hand", tone: "bad", go: "pay", anchor: "autopay" });
+  if (autopayFailed) attention.push({ key: "ap", text: autopayMethod === "ach" ? "Autopay could not take the bank payment" : "Autopay could not charge your card", sub: autopayMethod === "ach" ? "Pay by hand or set up autopay again" : "Update your card or pay by hand", tone: "bad", go: "pay", anchor: "autopay" });
   for (const p of bgTodo) {
     attention.push(p.has_id_uploaded
       ? { key: "bg" + p.id, text: "Background check needed", sub: `${p.full_name} — ID received, start the check`, tone: "bad", go: "household", href: "/residents/background-checks" }
@@ -1216,6 +1235,21 @@ export default function ResidentDashboard() {
                 </div>
               </div>
 
+              {/* Oct 28 (per Mely): "pay by bank" announcement — only when the park has bank payments ON. */}
+              {message === "" && achEnabled && feeRates && (
+                <BankPayBanner
+                  companyId={resident?.company_id || ""}
+                  exampleAmount={outstandingBalance > 0 ? outstandingBalance : autopayExample}
+                  passFee={passProcessingFee}
+                  fees={feeRates}
+                  canPayNow={achEligible && acceptOnlinePayments}
+                  canSetUpAutopay={autopayAvailable && !(autopayEnabled && autopayMethod === "ach")}
+                  hide={autopayEnabled && autopayMethod === "ach"}
+                  onPay={() => { setPayMethodChoice("ach"); setShowPayChoice(true); }}
+                  onAutopay={() => { window.location.hash = "autopay"; }}
+                />
+              )}
+
               {message === "" && (attention.length > 0 ? (
                 <div className="rp-attn">
                   <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Needs your attention</h2>
@@ -1235,7 +1269,7 @@ export default function ResidentDashboard() {
                 <Tile go="pay" h="Payments" lines={[
                   pendingInvoices.length ? `${money(outstandingBalance)} due · ${pendingInvoices.length} invoice${pendingInvoices.length === 1 ? "" : "s"}` : "All paid up",
                   nextPaymentDate && `Next payment ${nextPaymentDate}`,
-                  autopayAvailable && (autopayEnabled ? `Autopay on${autopayCardLast4 ? ` · card •••• ${autopayCardLast4}` : ""}` : "Autopay off"),
+                  autopayAvailable && (autopayEnabled ? `Autopay on${autopayCardLast4 ? ` · ${autopayMethod === "ach" ? "bank" : "card"} •••• ${autopayCardLast4}` : ""}` : "Autopay off"),
                 ]} />
                 <Tile go="lot" h="My lot & home" lines={[
                   resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : (resident.companies?.company_name || "My lot"),
@@ -1294,6 +1328,8 @@ export default function ResidentDashboard() {
                   onChange={loadResidentDashboard}
                   parkName={resident?.companies?.company_name || ""}
                   authorizedAt={resident?.autopay_authorized_at || null}
+                  autopayMethod={autopayMethod}
+                  bank={bankAutopayOption}
                 />
               </div>
             ) : (
@@ -2240,27 +2276,47 @@ export default function ResidentDashboard() {
                 </button>
                 <h2 id="pay-choice-title" style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>How would you like to pay?</h2>
                 <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 14 }}>Balance: <strong>{money(outstandingBalance)}</strong></p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <button
-                    onClick={() => startPayment("ach")}
-                    disabled={startingPayment}
-                    style={{ textAlign: "left", background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: "12px 14px", cursor: "pointer", opacity: startingPayment ? 0.6 : 1 }}
-                  >
-                    <span style={{ display: "block", fontWeight: 800 }}>Pay by bank (ACH)</span>
-                    <span style={{ display: "block", fontSize: 13, color: "#14532d" }}>{achFee > 0 ? `fee ${money(achFee)}` : "no fee"} · clears in 3–5 business days</span>
-                  </button>
-                  <button
-                    onClick={() => startPayment("card")}
-                    disabled={startingPayment}
-                    style={{ textAlign: "left", background: "#fff", border: "2px solid var(--border)", borderRadius: 6, padding: "12px 14px", cursor: "pointer", opacity: startingPayment ? 0.6 : 1 }}
-                  >
-                    <span style={{ display: "block", fontWeight: 800 }}>Pay by card</span>
-                    <span style={{ display: "block", fontSize: 13, color: "var(--gray)" }}>{cardFee > 0 ? `fee ${money(cardFee)}` : "no fee"}</span>
-                  </button>
+                {/* Oct 28 (per Mely): bank is listed first, recommended and preselected; the resident
+                    picks one and continues. */}
+                <div role="radiogroup" aria-label="Payment method" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {([
+                    {
+                      v: "ach" as const,
+                      title: "Pay by bank (ACH)",
+                      sub: `${achFee > 0 ? `fee ${money(achFee)}` : "no fee"}${cardFee > achFee ? ` — ${money(cardFee - achFee)} less than card` : ""} · clears in 3–5 business days`,
+                      badge: cardFee > achFee ? "Recommended · lowest fee" : "Recommended",
+                    },
+                    { v: "card" as const, title: "Pay by card", sub: `${cardFee > 0 ? `fee ${money(cardFee)}` : "no fee"} · paid instantly`, badge: "" },
+                  ]).map((o) => (
+                    <label
+                      key={o.v}
+                      style={{
+                        display: "flex", gap: 10, alignItems: "flex-start", cursor: startingPayment ? "default" : "pointer", borderRadius: 6, padding: "12px 14px",
+                        border: payMethodChoice === o.v ? "2px solid #16a34a" : "2px solid var(--border)",
+                        background: payMethodChoice === o.v ? "#d3f8e2" : "#fff", opacity: startingPayment ? 0.6 : 1,
+                      }}
+                    >
+                      <input type="radio" name="pay-method" checked={payMethodChoice === o.v} disabled={startingPayment} onChange={() => setPayMethodChoice(o.v)} style={{ marginTop: 3 }} />
+                      <span style={{ display: "block" }}>
+                        <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontWeight: 800 }}>
+                          {o.title}
+                          {o.badge && <span style={{ background: "#16a34a", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{o.badge}</span>}
+                        </span>
+                        <span style={{ display: "block", fontSize: 13, color: o.v === "ach" ? "#14532d" : "var(--gray)" }}>{o.sub}</span>
+                      </span>
+                    </label>
+                  ))}
                 </div>
                 <p style={{ color: "#b45309", fontSize: 12, marginTop: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
                   If your bank returns the payment, a {money(feeRates.achReturnFee)} returned-payment fee is added.
                 </p>
+                <button
+                  onClick={() => startPayment(payMethodChoice)}
+                  disabled={startingPayment}
+                  style={{ marginTop: 12, width: "100%", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, padding: 14, fontWeight: 800, cursor: startingPayment ? "default" : "pointer", opacity: startingPayment ? 0.6 : 1 }}
+                >
+                  {payMethodChoice === "ach" ? "Continue to pay by bank" : "Continue to pay by card"}
+                </button>
                 {startingPayment && <p style={{ fontSize: 13, marginTop: 8, color: "var(--gray)" }}>Opening secure payment…</p>}
               </div>
             </div>

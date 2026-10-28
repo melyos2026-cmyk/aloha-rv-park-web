@@ -16,7 +16,7 @@ import { requireMatchingSession } from "@/lib/portalSession";
 const RESIDENT_PROFILE_FIELDS = [
   "id", "company_id", "full_name", "email", "phone",
   "emergency_contact_name", "emergency_contact_phone", "emergency_contact_relationship",
-  "autopay_enabled", "autopay_card_last4", "autopay_authorized_at",
+  "autopay_enabled", "autopay_card_last4", "autopay_authorized_at", "autopay_method",
   "rv_type", "rv_make", "rv_model", "rv_year", "rv_length_ft", "rv_width_ft", "rv_vin_or_tag",
   "rent_amount", "mailbox_number", "mailbox_keys_count", "gate_clickers_count",
   "parking_provided", "parking_spaces", "parking_free", "parking_cost",

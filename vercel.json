@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/marina-autopay",
       "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/cron/stuck-bank-payments",
+      "schedule": "0 16 * * *"
     }
   ]
 }

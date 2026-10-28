@@ -70,7 +70,9 @@ export async function GET(req: NextRequest) {
     golfCartInsuranceRequired: (parkSettings as any)?.lease_defaults?.golf_cart_insurance_required !== false,
     // Oct 28 (per Mely): bank (ACH) payments in the portal — same rule and fee constants the
     // checkout route uses (src/lib/platformFee.ts), so the portal shows the exact fee for each choice.
-    achEnabled: feeSettings?.ach_enabled !== false,
+    // Oct 28 (per Mely): bank options (pay by bank, bank autopay, the "pay by bank" banner) only when
+    // the admin has bank payments explicitly ON — not when the setting was never saved.
+    achEnabled: feeSettings?.ach_enabled === true,
     achMinAmount: (() => {
       const m = Number(feeSettings?.ach_min_amount ?? 100);
       return Number.isFinite(m) ? m : 100;

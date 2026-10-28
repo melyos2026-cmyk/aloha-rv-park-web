@@ -31,19 +31,29 @@ export async function POST(req: NextRequest) {
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
 
   const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+  // Oct 28 (review): this route saves CARD autopay only (bank autopay: /api/portal/bank-autopay).
+  if (paymentMethod.type !== "card") {
+    return NextResponse.json({ error: "This is not a card. Please use a card here, or set up autopay by bank." }, { status: 400 });
+  }
   const last4 = paymentMethod.card?.last4 || null;
 
-  const { error } = await supabase
+  const cardFields = {
+    stripe_payment_method_id: paymentMethodId,
+    autopay_enabled: true,
+    autopay_card_last4: last4,
+    autopay_authorized_at: new Date().toISOString(),
+    autopay_authorization_text: String(authorizationText).slice(0, 2000),
+    autopay_authorization_ip: ip,
+  };
+  // Oct 28 (per Mely): residents can also autopay by bank — record that this one is a card. Works
+  // before rv_ach_autopay.sql adds autopay_method.
+  let { error } = await supabase
     .from("resident_accounts")
-    .update({
-      stripe_payment_method_id: paymentMethodId,
-      autopay_enabled: true,
-      autopay_card_last4: last4,
-      autopay_authorized_at: new Date().toISOString(),
-      autopay_authorization_text: String(authorizationText).slice(0, 2000),
-      autopay_authorization_ip: ip,
-    })
+    .update({ ...cardFields, autopay_method: "card" })
     .eq("id", residentId);
+  if (error && (error.code === "42703" || error.code === "PGRST204" || String(error.message || "").includes("autopay_method"))) {
+    ({ error } = await supabase.from("resident_accounts").update(cardFields).eq("id", residentId));
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
