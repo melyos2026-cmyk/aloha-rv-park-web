@@ -2,7 +2,9 @@ import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, resolveConnectSplit, returnedAchFeesOnInvoices } from "@/lib/platformFee";
+import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
+import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -35,6 +37,21 @@ export async function POST(req: Request) {
 
     if (invoice.status === "Paid") {
       return NextResponse.json({ error: "This invoice has already been paid." }, { status: 400 });
+    }
+    // Oct 28: a bank (ACH) payment for this invoice is still clearing — it must not be paid twice.
+    if (invoice.status === "Processing") {
+      return NextResponse.json({ error: "A bank payment for this invoice is already processing (3–5 business days). Nothing to pay right now." }, { status: 400 });
+    }
+
+    // Oct 28 (review): a future month's invoice can't be paid before that month starts.
+    if (!isInvoicePayableNow(invoice.invoice_month)) {
+      return NextResponse.json({ error: `This invoice can be paid starting ${invoicePayableFrom(invoice.invoice_month)}.` }, { status: 400 });
+    }
+
+    // Oct 28 (review): this month's invoice isn't payable until the rent is on it.
+    const awaitingRent = await invoicesAwaitingRent(invoice.resident_id, [invoice]);
+    if (awaitingRent.has(invoice.id)) {
+      return NextResponse.json({ error: `This invoice is being prepared — it will be available to pay after rent is added on ${awaitingRent.get(invoice.id)}.` }, { status: 400 });
     }
 
     const totalAmount = Number(invoice.total_amount || 0);
@@ -81,7 +98,9 @@ export async function POST(req: Request) {
       .maybeSingle();
     const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
     const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
-    const taxAmount = taxEnabled ? totalAmount * (taxRatePercent / 100) : 0;
+    // Oct 28 (per Mely): a "Returned bank payment fee" line goes to MelyOS (below) and is not taxed.
+    const returnedAchFees = await returnedAchFeesOnInvoices([invoice.id], resident?.company_id);
+    const taxAmount = taxEnabled ? Math.max(totalAmount - returnedAchFees, 0) * (taxRatePercent / 100) : 0;
 
     const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
 
@@ -123,7 +142,8 @@ export async function POST(req: Request) {
       });
     }
 
-    const alohaShare = totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee);
+    // Oct 28 (per Mely): the returned bank payment fee goes to MelyOS, not the park (never below $0).
+    const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee) - returnedAchFees, 0);
     const connectSplit = resident?.company_id
       ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
       : null;
@@ -150,6 +170,8 @@ export async function POST(req: Request) {
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
       },
+      // Oct 28 (review): short-lived (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       success_url: `${siteUrl}/pay-invoice/${token}?paid=success`,
       cancel_url: `${siteUrl}/pay-invoice/${token}?paid=cancelled`,
     });

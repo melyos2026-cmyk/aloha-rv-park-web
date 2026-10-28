@@ -54,6 +54,10 @@ export async function POST(req: NextRequest) {
   if (invoice.status === "Paid") {
     return NextResponse.json({ error: "This invoice is already paid." }, { status: 409, headers: CORS_HEADERS });
   }
+  // Oct 28: a bank (ACH) payment is clearing — not owed, so no reminder.
+  if (invoice.status === "Processing") {
+    return NextResponse.json({ error: "A bank payment for this invoice is still clearing." }, { status: 409, headers: CORS_HEADERS });
+  }
 
   const { data: resident, error: residentError } = await supabaseAdmin
     .from("resident_accounts")

@@ -66,7 +66,12 @@ export async function GET(req: Request) {
       const charge = fullPaymentIntent.latest_charge as Stripe.Charge | null;
       const details = charge?.payment_method_details;
       const card = details?.card;
-      if (card) {
+      // Oct 28: bank (ACH) payments show the bank and the account's last 4 digits.
+      const bank = details?.us_bank_account;
+      if (bank) {
+        cardBrand = bank.bank_name || "Bank account";
+        cardLast4 = bank.last4 || "";
+      } else if (card) {
         cardBrand = card.brand || "card";
         cardLast4 = card.last4 || "----";
       } else if (details?.type) {

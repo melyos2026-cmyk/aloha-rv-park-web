@@ -2,7 +2,10 @@ import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices } from "@/lib/platformFee";
+import { achAllowed } from "@/lib/marina/checkout";
+import { isInvoicePayableNow } from "@/lib/invoicePayable";
+import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 import { requireMatchingSession } from "@/lib/portalSession";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -11,7 +14,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 // resident_invoices — this route now only ever charges pending invoices.
 export async function POST(req: Request) {
   try {
-    const { residentId } = await req.json();
+    const body = await req.json();
+    const { residentId } = body;
+    // Oct 28 (per Mely): residents may pay by bank (ACH) — far cheaper for them. Default is card.
+    const ach = body?.method === "ach";
 
     if (!residentId) {
       return NextResponse.json({ error: "Missing resident ID" }, { status: 400 });
@@ -31,7 +37,7 @@ export async function POST(req: Request) {
       .eq("id", residentId)
       .maybeSingle();
 
-    const { data: invoices, error: invoicesError } = await supabase
+    const { data: pendingRows, error: invoicesError } = await supabase
       .from("resident_invoices")
       .select("*")
       .eq("resident_id", residentId)
@@ -41,12 +47,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: invoicesError.message }, { status: 400 });
     }
 
+    // Oct 28 (review): a future month's invoice (e.g. next month's electric-only invoice) is not
+    // payable until that month starts — see src/lib/invoicePayable.ts.
+    const monthPayable = (pendingRows || []).filter((inv) => isInvoicePayableNow(inv.invoice_month));
+    // Oct 28 (review): this month's invoice isn't payable until the rent is on it (src/lib/invoiceRentReady.ts).
+    const awaitingRent = await invoicesAwaitingRent(residentId, monthPayable);
+    const invoices = monthPayable.filter((inv) => !awaitingRent.has(inv.id));
+
     const totalAmount = (invoices || []).reduce(
       (sum, invoice) => sum + Number(invoice.total_amount || 0),
       0
     );
 
     if (totalAmount <= 0) {
+      if (awaitingRent.size > 0) {
+        const when = Array.from(awaitingRent.values())[0];
+        return NextResponse.json({ error: `Your invoice is being prepared — it will be available to pay after rent is added on ${when}.` }, { status: 400 });
+      }
       return NextResponse.json({ error: "No pending balance found." }, { status: 400 });
     }
 
@@ -61,12 +78,28 @@ export async function POST(req: Request) {
     // MelyOS keeps only the processing fee itself.
     const { data: feeSettings } = await supabase
       .from("company_fee_settings")
-      .select("pass_processing_fee_to_resident")
+      .select("pass_processing_fee_to_resident, ach_enabled, ach_min_amount")
       .eq("company_id", resident?.company_id || "")
       .maybeSingle();
 
+    // Oct 28 (per Mely): bank (ACH) only when the park allows it and the balance is at or above
+    // its minimum (default $100) — same rule as the marina checkout.
+    if (ach && !achAllowed(feeSettings, totalAmount)) {
+      const min = Number(feeSettings?.ach_min_amount ?? 100);
+      return NextResponse.json(
+        {
+          error: feeSettings?.ach_enabled === false
+            ? "Bank payment is not available at this park. Please pay by card."
+            : `Bank payment is available on balances of $${(Number.isFinite(min) ? min : 100).toFixed(2)} or more. Please pay by card.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
-    const processingFee = calculateProcessingFee(totalAmount);
+    const processingFee = ach
+      ? Math.round(calculateAchFee(totalAmount) * 100) / 100
+      : calculateProcessingFee(totalAmount);
 
     // Aug 5 (per Mely): same company-wide sales tax settings used for
     // propane/reservations (rate + included/excluded/blank mode, varies
@@ -82,7 +115,10 @@ export async function POST(req: Request) {
       .maybeSingle();
     const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
     const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
-    const taxAmount = taxEnabled ? totalAmount * (taxRatePercent / 100) : 0;
+    // Oct 28 (per Mely): a "Returned bank payment fee" line is Stripe's charge to MelyOS — it goes to
+    // MelyOS's application fee (below) and is not taxed.
+    const returnedAchFees = await returnedAchFeesOnInvoices(invoiceIds, resident?.company_id);
+    const taxAmount = taxEnabled ? Math.max(totalAmount - returnedAchFees, 0) * (taxRatePercent / 100) : 0;
 
     const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
 
@@ -120,7 +156,7 @@ export async function POST(req: Request) {
         price_data: {
           currency: "usd",
           unit_amount: Math.round(processingFee * 100),
-          product_data: { name: "Card Processing Fee" },
+          product_data: { name: ach ? "Bank Transfer Fee" : "Card Processing Fee" },
         },
       });
     }
@@ -129,16 +165,36 @@ export async function POST(req: Request) {
     // (theirs to remit) — MelyOS's cut is only the processing fee, taken
     // from the resident's payment if they're covering it, or otherwise
     // out of the park's own invoice amount.
-    const alohaShare = totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee);
+    // Oct 28 (per Mely): the returned bank payment fee goes to MelyOS, not the park (never below $0).
+    const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee) - returnedAchFees, 0);
     const connectSplit = resident?.company_id
       ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
       : null;
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(resident?.company_id); if (demoBlocked) return demoBlocked; }
+
+    // Oct 28 (review — double charge): close this resident's earlier checkouts that are still open, so
+    // an old tab can't pay the same invoices a second time. Stripe can't search sessions by metadata,
+    // so this lists open sessions from the last 24 hours (new ones expire after 31 minutes anyway).
+    try {
+      const since = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+      let seen = 0;
+      for await (const old of stripe.checkout.sessions.list({ status: "open", created: { gte: since }, limit: 100 })) {
+        if (++seen > 1000) break;
+        // Only portal checkouts (metadata.source "portal") — never a guest-link checkout someone else opened.
+        if (old.metadata?.source === "portal" && old.metadata?.resident_id === residentId && !old.metadata?.type && old.metadata?.invoice_ids) {
+          await stripe.checkout.sessions.expire(old.id).catch(() => null);
+        }
+      }
+    } catch (e: any) {
+      console.error("create-checkout-session: could not expire earlier sessions:", e?.message);
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
+      payment_method_types: ach ? ["us_bank_account"] : ["card"],
+      ...(ach ? { payment_method_options: { us_bank_account: { financial_connections: { permissions: ["payment_method"] }, verification_method: "instant" } } } : {}),
       line_items: lineItems,
       ...(connectSplit
         ? {
@@ -159,7 +215,12 @@ export async function POST(req: Request) {
         processing_fee_charged: passFeeToResident ? String(processingFee) : "0",
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
+        // Oct 28: the webhook marks the invoices "Processing" until the bank confirms.
+        payment_method: ach ? "ach" : "card",
+        source: "portal",
       },
+      // Oct 28 (review): short-lived (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
       success_url: `${siteUrl}/residents/payment-review?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/residents/dashboard`,
     });

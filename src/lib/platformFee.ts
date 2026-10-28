@@ -1,4 +1,5 @@
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 
 // Aug 4 (per Mely): the processing-fee surcharge shown to whoever pays it
 // (resident or park, per company_fee_settings.pass_processing_fee_to_resident)
@@ -17,12 +18,44 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 export const PROCESSING_FEE_PERCENT = 0.035;
 export const PROCESSING_FEE_MINIMUM = 2.25;
 
-// Oct 24 (per Mely): bank (ACH) payments. Stripe charges 0.8% capped at $5, so a $3,000
-// annual slip costs ~$5 instead of ~$105 by card. The surcharge shown to the payer is 1%,
-// at least $1 and at most $7.50 — cheap enough that big invoices move to ACH.
-export const ACH_FEE_PERCENT = 0.01;
-export const ACH_FEE_MINIMUM = 1.0;
-export const ACH_FEE_MAXIMUM = 7.5;
+// Oct 24 (per Mely): bank (ACH) payments. Stripe charges MelyOS 0.8% capped at $5, so a $3,000
+// annual slip costs ~$5 instead of ~$105 by card.
+// Oct 28 (per Mely): the surcharge shown to the payer (every company — RV parks and marinas) is
+// 1.2%, at least $2.00 and at most $9.95 — still far cheaper than a card on big invoices, and a
+// steady margin for MelyOS on every bank payment.
+export const ACH_FEE_PERCENT = 0.012;
+export const ACH_FEE_MINIMUM = 2.0;
+export const ACH_FEE_MAXIMUM = 9.95;
+// Oct 28 (per Mely): Stripe charges MelyOS $4 when a bank returns (bounces) an ACH payment.
+// Disclosed at checkout; on an RV-park invoice it is added as a "Returned bank payment fee" line.
+export const ACH_RETURN_FEE = 4.0;
+// charge_type of that invoice line (written by the Stripe webhook).
+export const RETURNED_ACH_FEE_CHARGE_TYPE = "Returned bank payment fee";
+
+// Oct 28 (per Mely): the returned-payment fee is Stripe's charge to MelyOS, so when an invoice that
+// carries it is paid, that amount goes to MelyOS (application fee), not to the park. Callers subtract
+// this from the park's share (never below $0); invoice totals are not changed. Best-effort: if the
+// lookup fails the payment still goes through (as before) and System Health is told.
+export async function returnedAchFeesOnInvoices(invoiceIds: string[], companyId?: string | null): Promise<number> {
+  const ids = invoiceIds.filter(Boolean);
+  if (ids.length === 0) return 0;
+  const { data, error } = await supabase
+    .from("resident_invoice_items")
+    .select("amount")
+    .in("invoice_id", ids)
+    .eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE);
+  if (error) {
+    console.error("returnedAchFeesOnInvoices:", error.message);
+    if (companyId) {
+      await logSystemHealthIssue({
+        companyId, issueType: "melyos_fee_split", source: "stripe",
+        message: `Could not check invoices ${ids.join(", ")} for a returned bank payment fee before charging (${error.message}). If one is there, its $${ACH_RETURN_FEE.toFixed(2)} went to the park instead of MelyOS.`,
+      }).catch(() => null);
+    }
+    return 0;
+  }
+  return Math.round((data || []).reduce((sum, r) => sum + Math.max(Number(r.amount) || 0, 0), 0) * 100) / 100;
+}
 export function calculateAchFee(amount: number): number {
   return Math.min(Math.max(amount * ACH_FEE_PERCENT, ACH_FEE_MINIMUM), ACH_FEE_MAXIMUM);
 }

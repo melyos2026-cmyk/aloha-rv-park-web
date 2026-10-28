@@ -164,6 +164,10 @@ function PaymentReviewContent() {
       return null;
     }
 
+    // Oct 28 (per Mely): a bank (ACH) payment is received but not cleared yet ("unpaid" until the
+    // bank confirms, 3–5 business days). Don't call it successful yet.
+    const bankProcessing = confirmation.paymentStatus === "unpaid";
+
     return (
       <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
         <div style={{ maxWidth: 720, margin: "0 auto" }}>
@@ -183,15 +187,19 @@ function PaymentReviewContent() {
               >
                 <span style={{ fontSize: 24, color: "#16a34a" }}>✓</span>
               </div>
-              <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>Payment Successful</h1>
+              <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>
+                {bankProcessing ? "Bank Payment Received" : "Payment Successful"}
+              </h1>
               <p style={{ marginTop: 4, fontSize: 14, color: "#111827" }}>
-                Your payment has been processed successfully.
+                {bankProcessing
+                  ? "Your bank payment is processing and clears in 3–5 business days. Your invoices show \"Processing (bank)\" until then — there is nothing more to pay. You'll get a receipt by email once it clears."
+                  : "Your payment has been processed successfully."}
               </p>
             </div>
 
             <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: "1px solid #e5e7eb" }}>
-              <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 6 }}>Amount Paid</div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: "#16a34a" }}>
+              <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 6 }}>{bankProcessing ? "Amount (processing)" : "Amount Paid"}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: bankProcessing ? "#1e40af" : "#16a34a" }}>
                 {formatMoney(confirmation.amountPaid)}
               </div>
             </div>
@@ -219,7 +227,7 @@ function PaymentReviewContent() {
             />
             <InfoRow
               label="Payment Method"
-              value={`${confirmation.paymentMethodBrand.toUpperCase()} •••• ${confirmation.paymentMethodLast4}`}
+              value={confirmation.paymentMethodLast4 ? `${confirmation.paymentMethodBrand.toUpperCase()} •••• ${confirmation.paymentMethodLast4}` : confirmation.paymentMethodBrand.toUpperCase()}
             />
 
             <div style={{ paddingTop: 20 }}>

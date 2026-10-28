@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
+import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -142,6 +143,19 @@ export default function ResidentDashboard() {
   const [propaneOrders, setPropaneOrders] = useState<any[]>([]);
   const [maintenanceRequests, setMaintenanceRequests] = useState<any[] | null>(null);
   const [acceptOnlinePayments, setAcceptOnlinePayments] = useState(true);
+  // Oct 28 (per Mely): bank (ACH) payments — park setting + the fee constants from the server
+  // (src/lib/platformFee.ts via /api/portal/fee-settings), so the exact fee shows for each choice.
+  const [achEnabled, setAchEnabled] = useState(false);
+  const [achMinAmount, setAchMinAmount] = useState(100);
+  const [passProcessingFee, setPassProcessingFee] = useState(true);
+  const [feeRates, setFeeRates] = useState<{ cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number } | null>(null);
+  const [showPayChoice, setShowPayChoice] = useState(false);
+  const [startingPayment, setStartingPayment] = useState(false);
+  // Invoices paid by bank that are still clearing (status "Processing") — not owed again.
+  const [processingInvoices, setProcessingInvoices] = useState<any[]>([]);
+  // Oct 28 (review): Pending invoices for a future month (e.g. next month's electric) — shown as
+  // "Upcoming", not owed and not payable until that month starts.
+  const [upcomingInvoices, setUpcomingInvoices] = useState<any[]>([]);
   const [autopayAvailable, setAutopayAvailable] = useState(false);
   const [moveOutThresholdDays, setMoveOutThresholdDays] = useState(15);
   const [autopayEnabled, setAutopayEnabled] = useState(false);
@@ -245,6 +259,14 @@ export default function ResidentDashboard() {
     loadResidentDashboard();
   }, []);
 
+  // Coming back from Stripe with the browser's Back button restores this page as it was —
+  // re-enable the pay buttons instead of leaving them stuck on "Opening secure payment…".
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) setStartingPayment(false); };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
+
   // Aug 4 (per Mely): arriving via /residents/dashboard#household-occupants
   // (e.g. from the "+ Add Household Occupant" link on the Background
   // Checks page) opens the Add form and scrolls straight to it, instead
@@ -329,6 +351,10 @@ export default function ResidentDashboard() {
     setPetRestrictions(feeSettingsData?.petRestrictions || "");
     setGolfCartsMax(typeof feeSettingsData?.golfCartsMax === "number" ? feeSettingsData.golfCartsMax : 2);
     setGolfCartInsuranceRequired(feeSettingsData?.golfCartInsuranceRequired !== false);
+    setAchEnabled(!!feeSettingsData?.achEnabled);
+    setAchMinAmount(typeof feeSettingsData?.achMinAmount === "number" ? feeSettingsData.achMinAmount : 100);
+    setPassProcessingFee(feeSettingsData?.passProcessingFeeToResident !== false);
+    setFeeRates(feeSettingsData?.fees || null);
 
     const pendingBgData = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`)
       .then((r) => r.json())
@@ -377,10 +403,16 @@ export default function ResidentDashboard() {
     const { invoices: allInvoices } = await fetch(`/api/portal/invoices?residentId=${residentId}`)
       .then((res) => res.json())
       .catch(() => ({ invoices: [] }));
-    const invs = (allInvoices || [])
+    const pendingAll = (allInvoices || [])
       .filter((inv: any) => inv.status === "Pending")
       .sort((a: any, b: any) => (a.due_date || "").localeCompare(b.due_date || ""));
+    // Oct 28 (review): "being prepared" (preparing_until, from the server) = this month's invoice still
+    // waiting for rent — shown under Upcoming too, without Pay.
+    const payableNow = (inv: any) => isInvoicePayableNow(inv.invoice_month) && !inv.preparing_until;
+    const invs = pendingAll.filter(payableNow);
     setPendingInvoices(invs || []);
+    setUpcomingInvoices(pendingAll.filter((inv: any) => !payableNow(inv)));
+    setProcessingInvoices((allInvoices || []).filter((inv: any) => inv.status === "Processing"));
 
     // Fetch each pending invoice's itemized line items (Rent, Wifi,
     // Electric, Maintenance, etc.) via the same route the Invoices page
@@ -409,7 +441,23 @@ export default function ResidentDashboard() {
     setMessage("");
   }
 
+  // Oct 28 (per Mely): when the park offers bank (ACH) payments and the balance is at or above its
+  // minimum, "Pay Now" first asks bank or card, showing the exact fee of each.
+  const achEligible = achEnabled && !!feeRates && outstandingBalance > 0 && outstandingBalance >= achMinAmount;
+  const cardFee = !passProcessingFee || !feeRates ? 0 : Math.max(outstandingBalance * feeRates.cardPercent, feeRates.cardMinimum);
+  const achFee = !passProcessingFee || !feeRates ? 0
+    : Math.round(Math.min(Math.max(outstandingBalance * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100;
+  const processingTotal = processingInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
+
   async function handlePayNow() {
+    if (achEligible) {
+      setShowPayChoice(true);
+      return;
+    }
+    await startPayment("card");
+  }
+
+  async function startPayment(method: "card" | "ach") {
     const residentId = localStorage.getItem("resident_id");
 
     if (!residentId) {
@@ -417,17 +465,19 @@ export default function ResidentDashboard() {
       return;
     }
 
+    setStartingPayment(true);
     const response = await fetch("/api/create-checkout-session", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ residentId }),
+      body: JSON.stringify({ residentId, method }),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      setStartingPayment(false);
       void portalAlert(data.error || "Could not start payment.");
       return;
     }
@@ -1152,6 +1202,9 @@ export default function ResidentDashboard() {
                   ) : nextPaymentDate ? (
                     <div style={{ color: "var(--gray)", fontSize: 13 }}>Next Payment (Due Date): <strong>{nextPaymentDate}</strong></div>
                   ) : null}
+                  {processingTotal > 0 && (
+                    <div style={{ color: "#1e40af", fontWeight: 700, fontSize: 13 }}>{money(processingTotal)} bank payment processing · clears in 3–5 business days</div>
+                  )}
                 </div>
                 <div className="rp-balance-btns">
                   {acceptOnlinePayments && outstandingBalance > 0 && (
@@ -1264,6 +1317,31 @@ export default function ResidentDashboard() {
           </div>
               </div>
               <div id="charges" className="rp-anchor">
+          {processingInvoices.length > 0 && (
+            <div style={{ ...card, background: "#eff6ff", border: "1.5px solid #93c5fd" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>🏦 Bank payment processing</h2>
+              <p style={{ color: "#1e3a8a", fontSize: 13, marginBottom: 10 }}>
+                Your bank payment was received and takes 3–5 business days to clear. There is nothing to pay on these invoices meanwhile.
+              </p>
+              {processingInvoices.map((inv) => (
+                <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, padding: "6px 0", borderTop: "1px solid #bfdbfe" }}>
+                  <span>Invoice — {inv.invoice_month} <span style={{ background: "#dbeafe", color: "#1e40af", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700, marginLeft: 4 }}>Processing (bank)</span></span>
+                  <span style={{ fontWeight: 700 }}>{money(Number(inv.total_amount || 0))}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {upcomingInvoices.length > 0 && (
+            <div style={{ ...card, background: "#f9fafb" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Upcoming</h2>
+              {upcomingInvoices.map((inv) => (
+                <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+                  <span>Invoice — {inv.invoice_month} <span style={{ color: "var(--gray)", fontSize: 13 }}>· {inv.preparing_until ? `Being prepared — available ${inv.preparing_until}` : `available to pay on ${invoicePayableFrom(inv.invoice_month)}`}</span></span>
+                  <span style={{ fontWeight: 700 }}>{money(Number(inv.total_amount || 0))}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {pendingInvoices.length > 0 && (
             <div style={card}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Outstanding Charges</h2>
@@ -2138,6 +2216,55 @@ export default function ResidentDashboard() {
                 </button>
               </div>
             </>)}
+
+            {/* Oct 28 (per Mely): pay by bank (ACH) or card — shown only when bank payment is offered. */}
+          {showPayChoice && feeRates && (
+            <div
+              onClick={() => !startingPayment && setShowPayChoice(false)}
+              style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="pay-choice-title"
+                onClick={(e) => e.stopPropagation()}
+                style={{ ...card, maxWidth: 440, width: "100%", position: "relative" }}
+              >
+                <button
+                  onClick={() => setShowPayChoice(false)}
+                  disabled={startingPayment}
+                  style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--gray)" }}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+                <h2 id="pay-choice-title" style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>How would you like to pay?</h2>
+                <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 14 }}>Balance: <strong>{money(outstandingBalance)}</strong></p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <button
+                    onClick={() => startPayment("ach")}
+                    disabled={startingPayment}
+                    style={{ textAlign: "left", background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: "12px 14px", cursor: "pointer", opacity: startingPayment ? 0.6 : 1 }}
+                  >
+                    <span style={{ display: "block", fontWeight: 800 }}>Pay by bank (ACH)</span>
+                    <span style={{ display: "block", fontSize: 13, color: "#14532d" }}>{achFee > 0 ? `fee ${money(achFee)}` : "no fee"} · clears in 3–5 business days</span>
+                  </button>
+                  <button
+                    onClick={() => startPayment("card")}
+                    disabled={startingPayment}
+                    style={{ textAlign: "left", background: "#fff", border: "2px solid var(--border)", borderRadius: 6, padding: "12px 14px", cursor: "pointer", opacity: startingPayment ? 0.6 : 1 }}
+                  >
+                    <span style={{ display: "block", fontWeight: 800 }}>Pay by card</span>
+                    <span style={{ display: "block", fontSize: 13, color: "var(--gray)" }}>{cardFee > 0 ? `fee ${money(cardFee)}` : "no fee"}</span>
+                  </button>
+                </div>
+                <p style={{ color: "#b45309", fontSize: 12, marginTop: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
+                  If your bank returns the payment, a {money(feeRates.achReturnFee)} returned-payment fee is added.
+                </p>
+                {startingPayment && <p style={{ fontSize: 13, marginTop: 8, color: "var(--gray)" }}>Opening secure payment…</p>}
+              </div>
+            </div>
+          )}
 
             {/* Move-out request (modal — opened from My lot & home, or #move-out) */}
           {activeLease && showMoveOutModal && (

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import {
+  PROCESSING_FEE_PERCENT, PROCESSING_FEE_MINIMUM,
+  ACH_FEE_PERCENT, ACH_FEE_MINIMUM, ACH_FEE_MAXIMUM, ACH_RETURN_FEE,
+} from "@/lib/platformFee";
 
 // GET /api/portal/fee-settings?residentId=...
 // FOUND (Aug 3): company_fee_settings was being read directly with the
@@ -31,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   const { data: feeSettings, error } = await supabase
     .from("company_fee_settings")
-    .select("accept_online_payments, autopay_available")
+    .select("accept_online_payments, autopay_available, pass_processing_fee_to_resident, ach_enabled, ach_min_amount")
     .eq("company_id", resident.company_id)
     .maybeSingle();
 
@@ -64,5 +68,21 @@ export async function GET(req: NextRequest) {
       return v === undefined || v === "" || v === null ? 2 : Number(v) || 0;
     })(),
     golfCartInsuranceRequired: (parkSettings as any)?.lease_defaults?.golf_cart_insurance_required !== false,
+    // Oct 28 (per Mely): bank (ACH) payments in the portal — same rule and fee constants the
+    // checkout route uses (src/lib/platformFee.ts), so the portal shows the exact fee for each choice.
+    achEnabled: feeSettings?.ach_enabled !== false,
+    achMinAmount: (() => {
+      const m = Number(feeSettings?.ach_min_amount ?? 100);
+      return Number.isFinite(m) ? m : 100;
+    })(),
+    passProcessingFeeToResident: feeSettings?.pass_processing_fee_to_resident !== false,
+    fees: {
+      cardPercent: PROCESSING_FEE_PERCENT,
+      cardMinimum: PROCESSING_FEE_MINIMUM,
+      achPercent: ACH_FEE_PERCENT,
+      achMinimum: ACH_FEE_MINIMUM,
+      achMaximum: ACH_FEE_MAXIMUM,
+      achReturnFee: ACH_RETURN_FEE,
+    },
   });
 }

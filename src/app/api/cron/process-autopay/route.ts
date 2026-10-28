@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
-import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, resolveConnectSplit, returnedAchFeesOnInvoices } from "@/lib/platformFee";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
+import { isInvoicePayableNow } from "@/lib/invoicePayable";
+import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,21 +66,29 @@ export async function GET(request: Request) {
 
     const { data: invoices } = await supabaseAdmin
       .from("resident_invoices")
-      .select("id, total_amount, due_date")
+      .select("id, total_amount, due_date, invoice_month")
       .eq("resident_id", resident.id)
       .eq("status", "Pending")
       .lte("due_date", todayStr);
+    // Oct 28 (review): skip this month's invoice until the rent is on it (src/lib/invoiceRentReady.ts).
+    const awaitingRent = await invoicesAwaitingRent(resident.id, (invoices || []).map((i) => ({ ...i, status: "Pending" })));
 
     for (const invoice of invoices || []) {
+      if (awaitingRent.has(invoice.id)) continue;
       const amount = Number(invoice.total_amount || 0);
       if (amount <= 0) continue;
+      // Oct 28 (review): never charge a future month's invoice early (rent is added to it later).
+      if (!isInvoicePayableNow(invoice.invoice_month)) continue;
 
-      const taxAmount = taxEnabled ? amount * (taxRatePercent / 100) : 0;
+      // Oct 28 (per Mely): a "Returned bank payment fee" line goes to MelyOS (below) and is not taxed.
+      const returnedAchFees = await returnedAchFeesOnInvoices([invoice.id], resident.company_id);
+      const taxAmount = taxEnabled ? Math.max(amount - returnedAchFees, 0) * (taxRatePercent / 100) : 0;
       const processingFee = calculateProcessingFee(amount);
       const chargeAmount = amount + taxAmount + (passFeeToResident ? processingFee : 0);
       // Aloha's share is the full invoice amount plus all tax (theirs to
       // remit) — MelyOS's cut is only the processing fee.
-      const alohaShare = amount + taxAmount + (passFeeToResident ? 0 : -processingFee);
+      // Oct 28 (per Mely): the returned bank payment fee goes to MelyOS, not the park (never below $0).
+      const alohaShare = Math.max(amount + taxAmount + (passFeeToResident ? 0 : -processingFee) - returnedAchFees, 0);
       const connectSplit = resident.company_id
         ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
         : null;

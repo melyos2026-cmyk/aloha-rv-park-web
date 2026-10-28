@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 
 // GET /api/portal/invoices?residentId=...
 // SECURITY (Aug 3, found while building #17): this page previously read
@@ -25,5 +26,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ invoices: data || [] });
+  // Oct 28 (review): this month's invoice that is still waiting for rent ("being prepared") carries
+  // the day it becomes payable, so the portal shows it without a Pay button.
+  const awaitingRent = await invoicesAwaitingRent(residentId, data || []);
+  return NextResponse.json({
+    invoices: (data || []).map((inv) => (awaitingRent.has(inv.id) ? { ...inv, preparing_until: awaitingRent.get(inv.id) } : inv)),
+  });
 }

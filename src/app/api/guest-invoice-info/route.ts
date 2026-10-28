@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 
 // GET /api/guest-invoice-info?token=xxx
 // Aug 5 (per Mely): deliberately minimal — only what's needed for a
@@ -39,7 +40,11 @@ export async function GET(req: NextRequest) {
     lotName = lot?.lot_name || null;
   }
 
+  // Oct 28 (review): this month's invoice still waiting for rent isn't payable yet.
+  const awaitingRent = await invoicesAwaitingRent(invoice.resident_id, [invoice]);
+
   return NextResponse.json({
+    preparingUntil: awaitingRent.get(invoice.id) || null,
     lotName,
     invoiceMonth: invoice.invoice_month,
     amountDue: Number(invoice.total_amount || 0),

@@ -10,6 +10,7 @@ import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { generateApplicationFeeReceiptPdf } from "@/lib/generate-application-fee-receipt";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
+import { ACH_RETURN_FEE, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
 import { autopayBankFailed } from "@/lib/marina/autopay";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
@@ -80,7 +81,16 @@ async function handleWebhook(req: Request) {
     }
   }
 
-  if (event.type === "checkout.session.completed") {
+  // Oct 28 (per Mely): an RV resident's bank (ACH) payment settles days after checkout. When the bank
+  // confirms, the session is "paid" and it runs the SAME paid path below as a card payment (mark Paid,
+  // fee/tax lines, receipt, admin notice, Daily Close ledger). Only RV invoice sessions — marina
+  // sessions carry metadata.type and keep their own handler further down.
+  const rvAchSettled =
+    event.type === "checkout.session.async_payment_succeeded" &&
+    isRvAchInvoiceSession(event.data.object as Stripe.Checkout.Session) &&
+    (event.data.object as Stripe.Checkout.Session).payment_status === "paid";
+
+  if (event.type === "checkout.session.completed" || rvAchSettled) {
     const session = event.data.object as Stripe.Checkout.Session;
 
     // Oct 15: marina boaters paying an invoice. Handled on its own and
@@ -192,9 +202,67 @@ async function handleWebhook(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // Oct 28 (per Mely): an RV resident paid by bank (ACH). Checkout completes before the money
+    // clears (payment_status "unpaid"): the invoices become "Processing" — not owed again, not paid
+    // yet. No fee/tax lines, no receipt. async_payment_succeeded (above) or _failed (below) finishes it.
+    // Only invoices still "Pending" are touched, so a repeat delivery (or one arriving after the
+    // bank already confirmed) changes nothing.
+    if (isRvAchInvoiceSession(session) && session.payment_status !== "paid") {
+      const achInvoiceIds = String(session.metadata?.invoice_ids || "").split(",").filter(Boolean);
+      if (achInvoiceIds.length === 0) return NextResponse.json({ received: true });
+
+      // Oct 28 (review): a late redelivery of this event must not undo what already happened. If the
+      // bank already returned the payment (a returned-fee line for this session exists) or the
+      // PaymentIntent is no longer "processing" (it failed or already settled), nothing is changed.
+      const { data: returnedLine, error: returnedErr } = await supabase
+        .from("resident_invoice_items")
+        .select("id")
+        .in("invoice_id", achInvoiceIds)
+        .eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE)
+        .like("description", `%${returnedFeeRef(session.id)}%`)
+        .limit(1);
+      if (returnedErr) return NextResponse.json({ error: "retry" }, { status: 500 });
+      if (returnedLine && returnedLine.length > 0) return NextResponse.json({ received: true, skipped: "already_returned" });
+      const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+      if (piId) {
+        let piStatus: string;
+        try { piStatus = (await stripe.paymentIntents.retrieve(piId)).status; }
+        catch { return NextResponse.json({ error: "retry" }, { status: 500 }); } // Stripe sends it again
+        if (piStatus !== "processing") return NextResponse.json({ received: true, skipped: `payment_intent_${piStatus}` });
+      }
+
+      const { data: movedRows, error: processingErr } = await supabase
+        .from("resident_invoices")
+        .update({ status: "Processing" })
+        .in("id", achInvoiceIds)
+        .eq("status", "Pending")
+        .select("id");
+      if (processingErr) {
+        console.error("stripe-webhook: could not mark invoices Processing:", processingErr.message);
+        return NextResponse.json({ error: "retry" }, { status: 500 }); // Stripe sends it again
+      }
+      if ((movedRows || []).length < achInvoiceIds.length) {
+        // Some invoice was no longer Pending (paid another way, or changed by the office) while the
+        // bank payment is on its way — the same balance may end up paid twice.
+        const companyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+        if (companyId) {
+          await logSystemHealthIssue({
+            companyId,
+            residentId: session.metadata?.resident_id || null,
+            issueType: "rv_possible_duplicate_payment",
+            source: "stripe_webhook",
+            message: `A resident's bank (ACH) payment of $${((session.amount_total || 0) / 100).toFixed(2)} started, but ${achInvoiceIds.length - (movedRows || []).length} of its ${achInvoiceIds.length} invoice(s) were no longer Pending (already paid or changed). If it settles, it may be a duplicate payment — review it for a refund. Stripe session ${session.id}.`,
+          });
+        }
+      }
+      return NextResponse.json({ received: true });
+    }
+
     const residentId = session.metadata?.resident_id;
     const invoiceIdsRaw = session.metadata?.invoice_ids || "";
     const invoiceIds = invoiceIdsRaw.split(",").filter(Boolean);
+    // Oct 28: a bank (ACH) payment's surcharge is labeled "Bank Transfer Fee" instead.
+    const feeLabel = session.metadata?.payment_method === "ach" ? "Bank Transfer Fee" : "Card Processing Fee";
     const processingFeeCharged = Number(session.metadata?.processing_fee_charged || 0);
     const taxCharged = Number(session.metadata?.tax_charged || 0);
     const taxRatePercent = Number(session.metadata?.tax_rate_percent || 0);
@@ -241,8 +309,17 @@ async function handleWebhook(req: Request) {
       // somehow has no items (shouldn't normally happen).
       const { data: invoiceItemsRows } = await supabase
         .from("resident_invoice_items")
-        .select("invoice_id, description, amount")
+        .select("invoice_id, charge_type, description, amount")
         .in("invoice_id", invoiceIds);
+
+      // Oct 28 (review — retry after a failed "mark Paid"): this payment's tax/fee lines may already be
+      // on the primary invoice from the earlier attempt. Then they are not added (or counted) again.
+      const primaryLines = (invoiceItemsRows || []).filter((it) => it.invoice_id === invoiceIds[0]);
+      const hasLine = (type: string, amount: number) =>
+        primaryLines.some((it) => it.charge_type === type && Math.abs(Number(it.amount || 0) - amount) < 0.01);
+      const taxLineThere = taxCharged > 0 && hasLine("Sales Tax", taxCharged);
+      const feeLineThere = processingFeeCharged > 0 && hasLine(feeLabel, processingFeeCharged);
+      const linesAlreadyAdded = (taxCharged <= 0 || taxLineThere) && (processingFeeCharged <= 0 || feeLineThere) && (taxCharged > 0 || processingFeeCharged > 0);
 
       const itemsByInvoiceId = new Map<string, { description: string; amount: number }[]>();
       (invoiceItemsRows || []).forEach((item) => {
@@ -264,11 +341,11 @@ async function handleWebhook(req: Request) {
           });
         }
       });
-      if (taxCharged > 0) {
+      if (taxCharged > 0 && !taxLineThere) {
         chargesPaid.push({ label: `Sales Tax (${taxRatePercent}%)`, amount: taxCharged });
       }
-      if (processingFeeCharged > 0) {
-        chargesPaid.push({ label: "Card Processing Fee", amount: processingFeeCharged });
+      if (processingFeeCharged > 0 && !feeLineThere) {
+        chargesPaid.push({ label: feeLabel, amount: processingFeeCharged });
       }
 
       // Aug 5 (per Mely — real gap she caught: the invoice record never
@@ -278,6 +355,29 @@ async function handleWebhook(req: Request) {
       // match what was truly collected — same safe "always recompute
       // from all items" pattern used everywhere else in this codebase.
       const primaryInvoiceId = invoiceIds[0];
+
+      // Oct 28 (review): what Stripe collected must match the invoices it paid (their totals before
+      // the fee/tax lines are added) + tax + fee. A charge added to an invoice after checkout started
+      // would otherwise be marked Paid without having been collected. Checked once, on the first
+      // delivery that pays the primary invoice.
+      if (primaryInvoiceId && !alreadyPaidIds.has(primaryInvoiceId) && !linesAlreadyAdded) {
+        const invoicesTotal = (paidInvoices || []).reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
+        const expectedCents = Math.round((invoicesTotal + taxCharged + processingFeeCharged) * 100);
+        const collectedCents = Number(session.amount_total || 0);
+        if (Math.abs(expectedCents - collectedCents) > 2) {
+          const companyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+          if (companyId) {
+            await logSystemHealthIssue({
+              companyId,
+              residentId: residentId || null,
+              issueType: "rv_payment_amount_mismatch",
+              source: "stripe_webhook",
+              message: `An online invoice payment collected $${(collectedCents / 100).toFixed(2)} but the invoice(s) it paid now add up to $${(expectedCents / 100).toFixed(2)} (invoice totals + tax + fee). A charge was probably added or removed after checkout started. The invoice(s) were marked Paid — check them and bill or credit the difference. Stripe session ${session.id}.`,
+            });
+          }
+        }
+      }
+
       // Oct 20 (security review): skip if this invoice is already Paid —
       // a repeated delivery must not insert the tax/fee lines twice.
       if (
@@ -285,7 +385,7 @@ async function handleWebhook(req: Request) {
         !alreadyPaidIds.has(primaryInvoiceId) &&
         (processingFeeCharged > 0 || taxCharged > 0)
       ) {
-        if (taxCharged > 0) {
+        if (taxCharged > 0 && !taxLineThere) {
           await supabase.from("resident_invoice_items").insert({
             invoice_id: primaryInvoiceId,
             charge_type: "Sales Tax",
@@ -293,11 +393,11 @@ async function handleWebhook(req: Request) {
             amount: taxCharged,
           });
         }
-        if (processingFeeCharged > 0) {
+        if (processingFeeCharged > 0 && !feeLineThere) {
           await supabase.from("resident_invoice_items").insert({
             invoice_id: primaryInvoiceId,
-            charge_type: "Card Processing Fee",
-            description: "Card Processing Fee",
+            charge_type: feeLabel,
+            description: feeLabel,
             amount: processingFeeCharged,
           });
         }
@@ -316,13 +416,34 @@ async function handleWebhook(req: Request) {
           .eq("id", primaryInvoiceId);
       }
 
+      // Oct 28 (review): never silently overwrite an invoice that is already Paid. Pending and
+      // Processing (bank clearing) invoices are flipped — and, as before, other unpaid statuses
+      // (e.g. Written Off / Sent to Collections paid through the guest link), since the money arrived.
       const { error: invoiceUpdateError } = await supabase
         .from("resident_invoices")
         .update({ status: "Paid" })
-        .in("id", invoiceIds);
+        .in("id", invoiceIds)
+        .neq("status", "Paid");
+
+      // Any invoice that was already Paid before this payment arrived → possibly paid twice.
+      if (alreadyPaidIds.size > 0) {
+        const companyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+        if (companyId) {
+          await logSystemHealthIssue({
+            companyId,
+            residentId: residentId || null,
+            issueType: "rv_possible_duplicate_payment",
+            source: "stripe_webhook",
+            message: `An online ${session.metadata?.payment_method === "ach" ? "bank (ACH)" : "card"} payment of $${((session.amount_total || 0) / 100).toFixed(2)} arrived for ${allInvoicesAlreadyPaid ? "invoice(s) that were ALL" : `${alreadyPaidIds.size} of ${invoiceIds.length} invoice(s) that were`} already Paid. This may be a duplicate payment — review it for a refund in Stripe. Stripe session ${session.id}.`,
+          });
+        }
+      }
 
       if (invoiceUpdateError) {
+        // Oct 28 (review): don't acknowledge — Stripe retries. The retry sees this payment's tax/fee
+        // lines already on the invoice (linesAlreadyAdded above) and doesn't add them again.
         console.log("Error updating resident_invoices:", invoiceUpdateError.message);
+        return NextResponse.json({ error: "retry" }, { status: 500 });
       } else {
         console.log("resident_invoices updated successfully.");
         if (residentId && !allInvoicesAlreadyPaid) {
@@ -396,6 +517,8 @@ async function handleWebhook(req: Request) {
         console.error("Failed to send receipt email:", emailErr);
       }
     }
+    // Oct 28: a settled RV bank payment is fully handled above.
+    if (rvAchSettled) return NextResponse.json({ received: true });
   }
 
   // Sep 20 (per Mely — "un sistema que mida, corrija los errores...
@@ -438,6 +561,10 @@ async function handleWebhook(req: Request) {
   // Oct 24: bank (ACH) payments clear or fail days after checkout.
   if (event.type === "checkout.session.async_payment_succeeded" || event.type === "checkout.session.async_payment_failed") {
     const session = event.data.object as Stripe.Checkout.Session;
+    // Oct 28 (per Mely): an RV resident's bank payment was returned by the bank.
+    if (event.type === "checkout.session.async_payment_failed" && isRvAchInvoiceSession(session)) {
+      return handleRvAchPaymentFailed(session);
+    }
     if ((session.metadata?.type === "marina_invoice" || session.metadata?.type === "marina_invoices") && session.metadata.company_id) {
       if (event.type === "checkout.session.async_payment_succeeded") await settleMarinaAchPayment(session.metadata.company_id, `online:${session.id}`);
       else await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer");
@@ -530,6 +657,8 @@ async function handleWebhook(req: Request) {
       }
       const amount = (Number(dispute.amount || 0) / 100).toFixed(2);
       const who = charge?.billing_details?.name || charge?.billing_details?.email || "a customer";
+      // Oct 28 (review): a bank (ACH) payment can be disputed too — say so instead of "card".
+      const isBank = charge?.payment_method_details?.type === "us_bank_account";
       if (companyId) {
         const source = `Stripe dispute ${dispute.id}`;
         const { data: existing } = await supabase.from("melyos_billing_charges").select("id").eq("source", source).limit(1);
@@ -538,7 +667,7 @@ async function handleWebhook(req: Request) {
             companyId,
             chargeType: "Chargeback fee",
             source,
-            description: `Card dispute (chargeback) by ${who} on a $${amount} payment. Stripe charges a $${disputeFee.toFixed(2)} fee for every dispute.`,
+            description: `${isBank ? "Bank (ACH) payment dispute" : "Card dispute (chargeback)"} by ${who} on a $${amount} payment. Stripe charges a $${disputeFee.toFixed(2)} fee for every dispute.`,
             amount: disputeFee,
             markup: 0,
           });
@@ -546,8 +675,17 @@ async function handleWebhook(req: Request) {
             companyId,
             issueType: "chargeback",
             source: "stripe_webhook",
-            message: `${who} disputed a $${amount} card payment with their bank (reason: ${dispute.reason || "not given"}). A $${disputeFee} chargeback fee was added to MelyOS Fees Owed. Respond in Stripe before ${dispute.evidence_details?.due_by ? new Date(dispute.evidence_details.due_by * 1000).toLocaleDateString("en-US") : "the deadline"} to try to win it.`,
+            message: isBank
+              ? `${who} disputed a $${amount} bank (ACH) payment with their bank (reason: ${dispute.reason || "not given"}). A $${disputeFee} dispute fee was added to MelyOS Fees Owed. Bank disputes usually can't be won — the bank takes the money back.`
+              : `${who} disputed a $${amount} card payment with their bank (reason: ${dispute.reason || "not given"}). A $${disputeFee} chargeback fee was added to MelyOS Fees Owed. Respond in Stripe before ${dispute.evidence_details?.due_by ? new Date(dispute.evidence_details.due_by * 1000).toLocaleDateString("en-US") : "the deadline"} to try to win it.`,
           });
+        }
+        // A bank (ACH) dispute is often LOST the moment it opens: reopen the RV invoices it paid.
+        if (isBank && dispute.status === "lost" && charge?.payment_intent) {
+          const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
+          const ss = await stripe.checkout.sessions.list({ payment_intent: piId, limit: 1 }).catch(() => null);
+          const s0 = ss?.data[0];
+          if (s0 && isRvInvoiceSession(s0)) await reopenRvInvoicesForLostBankDispute(s0, dispute, companyId);
         }
       } else {
         console.error("charge.dispute.created: could not find the company for dispute", dispute.id);
@@ -590,6 +728,8 @@ async function handleWebhook(req: Request) {
         console.error("charge.dispute.closed: could not find the company for dispute", dispute.id);
         return NextResponse.json({ received: true });
       }
+      // Oct 28 (review): bank (ACH) disputes are labeled as such, not as card disputes.
+      const disputeWord = charge.payment_method_details?.type === "us_bank_account" ? "bank (ACH) payment dispute" : "card dispute";
       // Oct 24 (per Mely): a lost dispute on a marina payment reopens the invoice(s).
       if (charge?.payment_intent) {
         const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
@@ -597,6 +737,10 @@ async function handleWebhook(req: Request) {
         const s0 = ss?.data[0];
         if (s0 && (s0.metadata?.type === "marina_invoice" || s0.metadata?.type === "marina_invoices") && s0.metadata.company_id) {
           await returnMarinaOnlinePayment(s0.metadata.company_id, s0.id, `Lost card dispute ${dispute.id}`);
+        }
+        // Oct 28 (review): a lost bank (ACH) dispute on an RV resident's invoice payment reopens the invoices.
+        if (s0 && isRvInvoiceSession(s0) && charge.payment_method_details?.type === "us_bank_account") {
+          await reopenRvInvoicesForLostBankDispute(s0, dispute, companyId);
         }
         // Oct 26: autopay charges have no checkout session; the metadata is on the charge.
         if (!s0 && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id) {
@@ -618,7 +762,7 @@ async function handleWebhook(req: Request) {
           companyId,
           chargeType: "Lost chargeback (MelyOS fees)",
           source,
-          description: `Lost card dispute by ${who} on a $${(totalCents / 100).toFixed(2)} payment. The bank kept the whole payment, including the fees MelyOS had kept from it (card processing fee and, if any, application / background check fees): $${(melyosCents / 100).toFixed(2)}.`,
+          description: `Lost ${disputeWord} by ${who} on a $${(totalCents / 100).toFixed(2)} payment. The bank kept the whole payment, including the fees MelyOS had kept from it (card processing fee and, if any, application / background check fees): $${(melyosCents / 100).toFixed(2)}.`,
           amount: melyosCents / 100,
           markup: 0,
         });
@@ -632,7 +776,7 @@ async function handleWebhook(req: Request) {
         if (!had?.length) {
           await recordMelyOSBillingCharge({
             companyId, chargeType: "Chargeback response fee", source: src2,
-            description: `The card dispute by ${who} was answered with evidence and lost. Stripe charges $15.00 to respond to a dispute and returns it only when the dispute is won.`,
+            description: `The ${disputeWord} by ${who} was answered with evidence and lost. Stripe charges $15.00 to respond to a dispute and returns it only when the dispute is won.`,
             amount: 15, markup: 0,
           });
         }
@@ -661,7 +805,7 @@ async function handleWebhook(req: Request) {
             companyId,
             chargeType: "Lost chargeback (park share)",
             source: `${source} (park share)`,
-            description: `Lost card dispute by ${who}: the park's share of $${(parkCents / 100).toFixed(2)} could not be taken back from the payout automatically (${reversalNote}).`,
+            description: `Lost ${disputeWord} by ${who}: the park's share of $${(parkCents / 100).toFixed(2)} could not be taken back from the payout automatically (${reversalNote}).`,
             amount: parkCents / 100,
             markup: 0,
           });
@@ -672,7 +816,7 @@ async function handleWebhook(req: Request) {
         companyId,
         issueType: "chargeback",
         source: "stripe_webhook",
-        message: `The card dispute by ${who} on a $${(totalCents / 100).toFixed(2)} payment was LOST. ${parkCents > 0 ? (reversalNote ? `The park's share ($${(parkCents / 100).toFixed(2)}) was added to MelyOS Fees Owed.` : `The park's share ($${(parkCents / 100).toFixed(2)}) was taken back from the park's payout.`) : ""} ${melyosCents > 0 ? `MelyOS's fees on that payment ($${(melyosCents / 100).toFixed(2)}) were added to MelyOS Fees Owed.` : ""}`.trim(),
+        message: `The ${disputeWord} by ${who} on a $${(totalCents / 100).toFixed(2)} payment was LOST. ${parkCents > 0 ? (reversalNote ? `The park's share ($${(parkCents / 100).toFixed(2)}) was added to MelyOS Fees Owed.` : `The park's share ($${(parkCents / 100).toFixed(2)}) was taken back from the park's payout.`) : ""} ${melyosCents > 0 ? `MelyOS's fees on that payment ($${(melyosCents / 100).toFixed(2)}) were added to MelyOS Fees Owed.` : ""}`.trim(),
       });
     } catch (err: any) {
       console.error("charge.dispute.closed handling failed:", err?.message);
@@ -682,6 +826,9 @@ async function handleWebhook(req: Request) {
 
   if (event.type === "checkout.session.expired") {
     const session = event.data.object as Stripe.Checkout.Session;
+    // Oct 28 (review): RV invoice checkouts now expire after 31 minutes and earlier ones are closed on
+    // purpose when a new one starts — that is not a failed payment.
+    if (isRvInvoiceSession(session)) return NextResponse.json({ received: true });
     const email = session.customer_details?.email || session.customer_email || "unknown";
     const amount = ((session.amount_total || 0) / 100).toFixed(2);
     const companyId = await resolveCompanyIdFromMetadata(session.metadata);
@@ -721,6 +868,199 @@ async function handleWebhook(req: Request) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+// Oct 28 (per Mely): a resident-portal invoice payment (create-checkout-session) made by bank (ACH).
+// Those sessions have no metadata.type (marina, propane, applications… all set one or productId).
+function isRvAchInvoiceSession(session: Stripe.Checkout.Session): boolean {
+  return isRvInvoiceSession(session) && session.metadata?.payment_method === "ach";
+}
+// Any RV resident-invoice session (portal Pay Now or the guest invoice link), card or bank.
+function isRvInvoiceSession(session: Stripe.Checkout.Session): boolean {
+  const m = session.metadata || {};
+  return !m.type && !m.productId && !!m.resident_id && !!m.invoice_ids;
+}
+
+const RETURNED_ACH_FEE_TYPE = RETURNED_ACH_FEE_CHARGE_TYPE;
+// The reference written into the returned-fee line's description (last 10 chars of the session id).
+function returnedFeeRef(sessionId: string) {
+  return sessionId.slice(-10);
+}
+
+// Oct 28 (per Mely): the bank returned (bounced) an RV resident's ACH payment. The invoices go back
+// from "Processing" to "Pending" (owed again), Stripe's $4 return fee is added once as a line on the
+// first reopened invoice (total recomputed from its items), and System Health tells the office.
+// Idempotent: only "Processing" invoices are reopened, and the fee line carries a reference to this
+// session — if it is already there, nothing else is done (no second fee, no second alert).
+async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
+  const residentId = session.metadata?.resident_id || "";
+  const invoiceIds = String(session.metadata?.invoice_ids || "").split(",").filter(Boolean);
+  const ref = returnedFeeRef(session.id);
+
+  const { error: reopenErr } = await supabase
+    .from("resident_invoices")
+    .update({ status: "Pending" })
+    .in("id", invoiceIds)
+    .eq("status", "Processing");
+  if (reopenErr) {
+    console.error("stripe-webhook: could not reopen returned ACH invoices:", reopenErr.message);
+    return NextResponse.json({ error: "retry" }, { status: 500 });
+  }
+
+  const { data: existingFee, error: feeLookupErr } = await supabase
+    .from("resident_invoice_items")
+    .select("id, invoice_id")
+    .in("invoice_id", invoiceIds)
+    .eq("charge_type", RETURNED_ACH_FEE_TYPE)
+    .like("description", `%${ref}%`)
+    .limit(1);
+  if (feeLookupErr) return NextResponse.json({ error: "retry" }, { status: 500 });
+
+  const { data: invoices } = await supabase
+    .from("resident_invoices")
+    .select("id, status, invoice_month, company_id")
+    .in("id", invoiceIds);
+  const { data: resident } = await supabase
+    .from("resident_accounts")
+    .select("full_name, company_id")
+    .eq("id", residentId)
+    .maybeSingle();
+
+  // Oct 28 (review — retry-safe): the fee line is added once; the invoice total is recomputed from
+  // its items every time the line exists, so a failed total update is fixed by Stripe's retry.
+  let feeInvoice: { id: string; invoice_month?: string | null } | null = null;
+  if (existingFee && existingFee.length > 0) {
+    const inv = (invoices || []).find((i) => i.id === existingFee[0].invoice_id);
+    feeInvoice = { id: existingFee[0].invoice_id, invoice_month: inv?.invoice_month };
+  } else {
+    // The first invoice of this payment that is open again (an invoice the office already marked
+    // paid by hand is left alone — the fee would never be collected there).
+    const target = invoiceIds
+      .map((id) => (invoices || []).find((inv) => inv.id === id))
+      .find((inv) => inv?.status === "Pending");
+    if (target) {
+      const { error: insertErr } = await supabase.from("resident_invoice_items").insert({
+        invoice_id: target.id,
+        charge_type: RETURNED_ACH_FEE_TYPE,
+        description: `Returned bank payment fee (ref ${ref})`,
+        amount: ACH_RETURN_FEE,
+      });
+      if (insertErr) {
+        console.error("stripe-webhook: could not add returned ACH fee:", insertErr.message);
+        return NextResponse.json({ error: "retry" }, { status: 500 });
+      }
+      feeInvoice = { id: target.id, invoice_month: target.invoice_month };
+    }
+  }
+
+  if (feeInvoice) {
+    const { data: allItems, error: itemsErr } = await supabase
+      .from("resident_invoice_items")
+      .select("amount")
+      .eq("invoice_id", feeInvoice.id);
+    if (itemsErr) return NextResponse.json({ error: "retry" }, { status: 500 });
+    const recomputedTotal = (allItems || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const { error: totalErr } = await supabase.from("resident_invoices").update({ total_amount: recomputedTotal }).eq("id", feeInvoice.id);
+    if (totalErr) {
+      console.error("stripe-webhook: could not update total after returned ACH fee:", totalErr.message);
+      return NextResponse.json({ error: "retry" }, { status: 500 });
+    }
+  }
+
+  const companyId = resident?.company_id || (invoices || [])[0]?.company_id || null;
+  if (!companyId) {
+    console.error("stripe-webhook: returned ACH payment with no company for session", session.id);
+    return NextResponse.json({ received: true });
+  }
+
+  // One System Health issue per returned payment (a retry after a failure above doesn't add another).
+  const { data: alreadyLogged } = await supabase
+    .from("system_health_issues")
+    .select("id")
+    .eq("company_id", companyId)
+    .eq("issue_type", "rv_bank_payment_returned")
+    .like("message", `%${session.id}%`)
+    .limit(1);
+  if (alreadyLogged && alreadyLogged.length > 0) return NextResponse.json({ received: true, duplicate: true });
+
+  let reason = "";
+  const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+  if (pi) {
+    const intent = await stripe.paymentIntents.retrieve(pi).catch(() => null);
+    reason = intent?.last_payment_error?.message || "";
+  }
+
+  const amount = ((session.amount_total || 0) / 100).toFixed(2);
+  await logSystemHealthIssue({
+    companyId,
+    residentId: residentId || null,
+    issueType: "rv_bank_payment_returned",
+    source: "stripe_webhook",
+    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${ACH_RETURN_FEE.toFixed(2)} returned bank payment fee was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${ACH_RETURN_FEE.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
+  });
+  return NextResponse.json({ received: true });
+}
+
+// Oct 28 (review): a LOST dispute on an RV resident's bank (ACH) payment — the bank took the money
+// back, so the invoices it paid are owed again: Paid → Pending, and System Health tells the office.
+// Only invoices still Paid change, so a second event (created as lost, then closed) does nothing.
+async function reopenRvInvoicesForLostBankDispute(session: Stripe.Checkout.Session, dispute: Stripe.Dispute, companyId: string) {
+  const invoiceIds = String(session.metadata?.invoice_ids || "").split(",").filter(Boolean);
+  if (invoiceIds.length === 0) return;
+  const { data: reopened, error } = await supabase
+    .from("resident_invoices")
+    .update({ status: "Pending" })
+    .in("id", invoiceIds)
+    .eq("status", "Paid")
+    .select("id, invoice_month");
+  // (Only invoices this call reopened are touched below, so a repeated event changes nothing.)
+  if (error) {
+    console.error("stripe-webhook: could not reopen invoices after a lost bank dispute:", error.message);
+    return;
+  }
+  if (!reopened || reopened.length === 0) return;
+
+  // That payment added its own Sales Tax and fee lines to the first invoice; they belong to the
+  // payment, not to what is owed — remove them (one of each, matching what this session charged) so
+  // the next checkout doesn't tax them or add a second fee, then recompute the totals.
+  const primaryId = invoiceIds[0];
+  if (reopened.some((r) => r.id === primaryId)) {
+    const wanted: { type: string; amount: number }[] = [];
+    const tax = Number(session.metadata?.tax_charged || 0);
+    const fee = Number(session.metadata?.processing_fee_charged || 0);
+    if (tax > 0) wanted.push({ type: "Sales Tax", amount: tax });
+    if (fee > 0) wanted.push({ type: session.metadata?.payment_method === "ach" ? "Bank Transfer Fee" : "Card Processing Fee", amount: fee });
+    if (wanted.length > 0) {
+      const { data: lines } = await supabase
+        .from("resident_invoice_items")
+        .select("id, charge_type, amount")
+        .eq("invoice_id", primaryId)
+        .in("charge_type", wanted.map((w) => w.type));
+      const toDelete: string[] = [];
+      for (const w of wanted) {
+        const hit = (lines || []).find((l) => l.charge_type === w.type && !toDelete.includes(l.id) && Math.abs(Number(l.amount || 0) - w.amount) < 0.01);
+        if (hit) toDelete.push(hit.id);
+      }
+      if (toDelete.length > 0) {
+        await supabase.from("resident_invoice_items").delete().in("id", toDelete);
+      }
+    }
+  }
+  for (const r of reopened) {
+    const { data: items } = await supabase.from("resident_invoice_items").select("amount").eq("invoice_id", r.id);
+    if (items && items.length > 0) {
+      const total = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
+      await supabase.from("resident_invoices").update({ total_amount: total }).eq("id", r.id);
+    }
+  }
+
+  await logSystemHealthIssue({
+    companyId,
+    residentId: session.metadata?.resident_id || null,
+    issueType: "rv_bank_dispute_lost",
+    source: "stripe_webhook",
+    message: `A resident's bank (ACH) payment of $${(Number(dispute.amount || 0) / 100).toFixed(2)} was disputed with their bank and LOST (reason: ${dispute.reason || "not given"}). The money was taken back, so ${reopened.map((r) => r.invoice_month).filter(Boolean).join(", ") || "the invoice(s)"} ${reopened.length === 1 ? "is" : "are"} back to Pending (owed again). Contact the resident. Stripe dispute ${dispute.id}, session ${session.id}.`,
+  });
 }
 
 async function handleApplicationFeePaid(session: Stripe.Checkout.Session) {

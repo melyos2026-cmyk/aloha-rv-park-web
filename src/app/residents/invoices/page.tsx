@@ -2,6 +2,7 @@
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
+import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 
 type InvoiceItem = {
   id: string;
@@ -120,6 +121,8 @@ export default function InvoicesPage() {
     const s = (status || "").toLowerCase();
     if (s === "paid") return { bg: "#dcfce7", text: "#166534" };
     if (s === "pending") return { bg: "#fef9c3", text: "#854d0e" };
+    // Oct 28: a bank (ACH) payment still clearing — nothing to pay meanwhile.
+    if (s === "processing") return { bg: "#dbeafe", text: "#1e40af" };
     return { bg: "#f3f4f6", text: "#374151" };
   }
 
@@ -280,7 +283,13 @@ export default function InvoicesPage() {
                           color: colors.text,
                         }}
                       >
-                        {invoice.status || "Pending"}
+                        {invoice.status === "Processing"
+                          ? "Processing (bank)"
+                          : (invoice.status || "Pending") === "Pending" && (invoice as any).preparing_until
+                          ? `Being prepared — available ${(invoice as any).preparing_until}`
+                          : (invoice.status || "Pending") === "Pending" && !isInvoicePayableNow(invoice.invoice_month)
+                          ? `Upcoming — available to pay on ${invoicePayableFrom(invoice.invoice_month)}`
+                          : invoice.status || "Pending"}
                       </span>
                       <span style={{ fontSize: 22, fontWeight: 800, color: "#000" }}>
                         {formatMoney(invoice.total_amount)}

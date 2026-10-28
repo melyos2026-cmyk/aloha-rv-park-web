@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 
 type InvoiceInfo = {
   lotName: string | null;
@@ -9,6 +10,7 @@ type InvoiceInfo = {
   amountDue: number;
   dueDate: string;
   status: string;
+  preparingUntil?: string | null;
 };
 
 function PayInvoiceContent() {
@@ -92,7 +94,25 @@ function PayInvoiceContent() {
             <p style={{ color: "#dc2626", fontSize: 14 }}>{error}</p>
           )}
 
-          {!loading && info && info.status !== "Paid" && (
+          {!loading && info && info.status === "Processing" && (
+            <p style={{ background: "#dbeafe", color: "#1e40af", padding: 12, borderRadius: 8, fontSize: 14 }}>
+              A bank payment for this invoice is processing (3–5 business days) — nothing to pay right now.
+            </p>
+          )}
+
+          {!loading && info && info.status !== "Paid" && info.status !== "Processing" && !isInvoicePayableNow(info.invoiceMonth) && (
+            <p style={{ background: "#f3f4f6", color: "#374151", padding: 12, borderRadius: 8, fontSize: 14 }}>
+              Upcoming — the {info.invoiceMonth} invoice is available to pay on {invoicePayableFrom(info.invoiceMonth)}.
+            </p>
+          )}
+
+          {!loading && info && info.status !== "Paid" && info.status !== "Processing" && isInvoicePayableNow(info.invoiceMonth) && info.preparingUntil && (
+            <p style={{ background: "#f3f4f6", color: "#374151", padding: 12, borderRadius: 8, fontSize: 14 }}>
+              Being prepared — the {info.invoiceMonth} invoice is available to pay on {info.preparingUntil}, once rent is added.
+            </p>
+          )}
+
+          {!loading && info && info.status !== "Paid" && info.status !== "Processing" && isInvoicePayableNow(info.invoiceMonth) && !info.preparingUntil && (
             <>
               <p style={{ color: "#555", fontSize: 14, marginBottom: 20 }}>
                 You're paying an outstanding balance for a resident at Aloha RV Park.
