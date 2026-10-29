@@ -1664,7 +1664,7 @@ export default function ResidentDashboard() {
           </div>
               </div>
           {electricUsage.length > 0 && (
-            <button onClick={() => router.push("/electric-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button className="rp-linkcard" onClick={() => router.push("/electric-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📊 Electric Usage History")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View monthly electric readings, charges, and usage history.")}</p>
             </button>
@@ -2256,7 +2256,7 @@ export default function ResidentDashboard() {
             {section === "requests" && (<>
               <div id="maintenance" className="rp-anchor">
           {maintenanceEnabled && (
-          <div onClick={() => router.push("/residents/maintenance")} style={{ ...card, cursor: "pointer" }}>
+          <div className="rp-linkcard" onClick={() => router.push("/residents/maintenance")} style={{ ...card, cursor: "pointer" }}>
             <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("Maintenance Requests")}</h2>
             <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Report issues and track maintenance progress.")}</p>
           </div>

@@ -159,3 +159,16 @@ body.va-on .rp-nav { top: calc(110px + var(--va-h, 0px)); }
 .va-btn-1 { background: var(--red); color: var(--white); border: 1.5px solid var(--red); }
 .va-btn-1:hover { background: var(--red-dark); border-color: var(--red-dark); }
 @media (max-width: 480px) { .va-btns { flex-direction: column-reverse; } .va-bar-text small { font-size: 12px; } }
+
+/* Oct 29 (per Mely): portal cards that open another page (Invoices, Payment history, Electricity
+   usage, Documents, Moving out, Marketplace…) show an arrow and lift on hover so residents know they open. */
+.rp-links > button, .rp-linkcard { position: relative; padding-right: 56px !important; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.rp-links > button::after, .rp-linkcard::after {
+  content: "→"; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  background: var(--sea, #e6f4f1); color: var(--green, #0f5132); font: 700 16px/1 'DM Sans', sans-serif;
+  transition: transform .15s, background .15s;
+}
+.rp-links > button:hover, .rp-linkcard:hover { border-color: var(--green, #0f5132) !important; box-shadow: 0 6px 18px -8px rgba(15,81,50,.35); }
+.rp-links > button:hover::after, .rp-linkcard:hover::after { transform: translate(3px, -50%); background: var(--green, #0f5132); color: #fff; }
+.rp-links > button:focus-visible, .rp-linkcard:focus-visible { outline: 2px solid var(--green, #0f5132); outline-offset: 2px; }
