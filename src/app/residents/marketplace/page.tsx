@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/CompanyContext";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
 import { usePortalLang } from "@/lib/portalI18n";
+import { SERVICES_CATEGORY, SERVICE_SUBCATEGORIES, SERVICE_PRICE_UNITS, SERVICE_PRICE_UNIT_LABELS, SERVICES_NOTE, isServicesCategory, servicePriceParts, type ServicePriceUnit } from "@/lib/marketplaceServices";
 
-const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
+const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", SERVICES_CATEGORY, "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
 
 type Listing = {
   id: string;
@@ -16,6 +17,9 @@ type Listing = {
   description: string | null;
   price: number | null;
   category: string;
+  /** Services only (Oct 29): service type + price unit — null until marketplace_services.sql runs */
+  subcategory?: string | null;
+  price_unit?: string | null;
   status: string;
   created_at: string;
   expires_at?: string | null;
@@ -44,6 +48,9 @@ export default function MarketplacePage() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
+  const [subcategory, setSubcategory] = useState<string>(SERVICE_SUBCATEGORIES[0]);
+  const [priceUnit, setPriceUnit] = useState<ServicePriceUnit>("per_hour");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("All");
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -54,6 +61,16 @@ export default function MarketplacePage() {
   // Listing titles/descriptions are written by residents and stay as written; categories are stored
   // in English (the value) and shown translated.
   const { t, tp, st, money, err } = usePortalLang();
+
+  // Oct 29 (per Mely): a Services listing shows "$20 per hour" / "Ask for price" instead of an item price.
+  function priceText(l: Listing, itemFallback: string) {
+    if (!isServicesCategory(l.category)) return l.price != null ? money(l.price) : t(itemFallback);
+    const p = servicePriceParts(l.price, l.price_unit);
+    return p.amount == null ? t(p.unit) : `${money(p.amount)}${p.unit ? ` ${t(p.unit)}` : ""}`;
+  }
+  function categoryText(l: Listing) {
+    return isServicesCategory(l.category) && l.subcategory ? `${t(l.category)} › ${t(l.subcategory)}` : t(l.category);
+  }
 
   function shareListing(e: React.MouseEvent, listingId: string) {
     e.stopPropagation();
@@ -147,6 +164,8 @@ export default function MarketplacePage() {
     setDescription("");
     setPrice("");
     setCategory(CATEGORIES[0]);
+    setSubcategory(SERVICE_SUBCATEGORIES[0]);
+    setPriceUnit("per_hour");
     setPhotoFiles([]);
     setShowForm(false);
   }
@@ -157,6 +176,8 @@ export default function MarketplacePage() {
     setDescription(listing.description || "");
     setPrice(listing.price != null ? String(listing.price) : "");
     setCategory(listing.category || CATEGORIES[0]);
+    setSubcategory(listing.subcategory || SERVICE_SUBCATEGORIES[0]);
+    setPriceUnit(((SERVICE_PRICE_UNITS as readonly string[]).includes(String(listing.price_unit)) ? listing.price_unit : listing.price == null ? "ask" : "per_hour") as ServicePriceUnit);
     setPhotoFiles([]);
     setShowForm(true);
   }
@@ -178,6 +199,7 @@ export default function MarketplacePage() {
         description,
         price,
         category,
+        ...(isServicesCategory(category) ? { subcategory, priceUnit } : {}),
       }),
     });
     const result = await res.json();
@@ -239,6 +261,7 @@ export default function MarketplacePage() {
       return l.status === "active" && notExpired;
     })
     .filter((l) => categoryFilter === "All" || l.category === categoryFilter)
+    .filter((l) => categoryFilter !== SERVICES_CATEGORY || subcategoryFilter === "All" || l.subcategory === subcategoryFilter)
     .filter((l) => !search.trim() || l.title.toLowerCase().includes(search.trim().toLowerCase()));
 
   const newForYou = lastVisit
@@ -303,12 +326,15 @@ export default function MarketplacePage() {
           </button>
         </div>
         <p style={{ fontSize: 24, fontWeight: 900, color: "var(--red)", marginBottom: 12 }}>
-          {selectedListing.price != null ? money(selectedListing.price) : t("Free / Make an offer")}
+          {priceText(selectedListing, "Free / Make an offer")}
         </p>
         {selectedListing.status === "sold" && (
           <span style={{ display: "inline-block", background: "#f3f4f6", color: "#6b7280", fontWeight: 700, fontSize: 12, padding: "4px 12px", borderRadius: 999, marginBottom: 12 }}>{t("SOLD")}</span>
         )}
-        <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>{t("Category: {name}", { name: t(selectedListing.category) })}</p>
+        <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>{t("Category: {name}", { name: categoryText(selectedListing) })}</p>
+        {isServicesCategory(selectedListing.category) && (
+          <p style={{ fontSize: 13, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "8px 12px", margin: "8px 0" }}>{t(SERVICES_NOTE)}</p>
+        )}
         {isMine && selectedListing.expires_at && (
           <p style={{ fontSize: 13, color: (daysLeft(selectedListing.expires_at) ?? 0) <= 5 ? "#dc2626" : "var(--gray)", marginBottom: 4 }}>
             {(daysLeft(selectedListing.expires_at) ?? 0) > 0
@@ -401,7 +427,7 @@ export default function MarketplacePage() {
         <div style={{ padding: 10 }}>
           <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{l.title}</p>
           <p style={{ fontWeight: 900, fontSize: 15, color: "var(--red)" }}>
-            {l.price != null ? money(l.price) : t("Free / OBO")}
+            {priceText(l, "Free / OBO")}
           </p>
           {l.status === "sold" && (
             <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>{t("SOLD")}</span>
@@ -441,12 +467,32 @@ export default function MarketplacePage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input placeholder={t("Title (e.g. Patio Chairs, Bike Rack...)")} value={title} onChange={(e) => setTitle(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
             <textarea placeholder={t("Description")} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <input type="number" placeholder={t("Price ($, leave blank for free/OBO)")} value={price} onChange={(e) => setPrice(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-              <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
-              </select>
-            </div>
+            {isServicesCategory(category) ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
+                    {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
+                  </select>
+                  <select aria-label={t("Type of service")} value={subcategory} onChange={(e) => setSubcategory(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
+                    {SERVICE_SUBCATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <input type="number" placeholder={t("Price ($, optional)")} value={priceUnit === "ask" ? "" : price} disabled={priceUnit === "ask"} onChange={(e) => setPrice(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <select aria-label={t("Price unit")} value={priceUnit} onChange={(e) => setPriceUnit(e.target.value as ServicePriceUnit)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
+                    {SERVICE_PRICE_UNITS.map((u) => <option key={u} value={u}>{t(SERVICE_PRICE_UNIT_LABELS[u])}</option>)}
+                  </select>
+                </div>
+                <p style={{ fontSize: 13, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "8px 12px" }}>{t(SERVICES_NOTE)}</p>
+              </>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <input type="number" placeholder={t("Price ($, leave blank for free/OBO)")} value={price} onChange={(e) => setPrice(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
+                  {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label style={{ fontSize: 13, color: "var(--gray)", display: "block", marginBottom: 6 }}>
                 {t("Photos (up to 10)")}
@@ -503,10 +549,16 @@ export default function MarketplacePage() {
       {tab === "browse" && (
         <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
           <input placeholder={t("Search listings...")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, flex: 1, minWidth: 180 }} />
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
+          <select value={categoryFilter} onChange={(e) => { setCategoryFilter(e.target.value); setSubcategoryFilter("All"); }} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
             <option value="All">{t("All Categories")}</option>
             {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
           </select>
+          {categoryFilter === SERVICES_CATEGORY && (
+            <select aria-label={t("Type of service")} value={subcategoryFilter} onChange={(e) => setSubcategoryFilter(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
+              <option value="All">{t("All services")}</option>
+              {SERVICE_SUBCATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
+            </select>
+          )}
         </div>
       )}
 

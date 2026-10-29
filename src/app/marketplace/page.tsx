@@ -3,8 +3,9 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCompany } from "@/lib/CompanyContext";
+import { SERVICES_CATEGORY, SERVICES_NOTE, isServicesCategory, servicePriceParts } from "@/lib/marketplaceServices";
 
-const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
+const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", SERVICES_CATEGORY, "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
 
 type Listing = {
   id: string;
@@ -12,11 +13,21 @@ type Listing = {
   description: string | null;
   price: number | null;
   category: string;
+  subcategory?: string | null;
+  price_unit?: string | null;
   status: string;
   posted_by_admin?: boolean;
   resident_accounts?: { full_name: string; rv_lots?: { lot_name: string } | null };
   marketplace_listing_photos?: { photo_url: string; sort_order: number }[];
 };
+
+// Oct 29 (per Mely): Services listings show "$20 per hour" / "Ask for price".
+function priceText(l: Listing, itemFallback: string) {
+  const fmt = (n: number) => `$${Number(n).toLocaleString()}`;
+  if (!isServicesCategory(l.category)) return l.price != null ? fmt(l.price) : itemFallback;
+  const p = servicePriceParts(l.price, l.price_unit);
+  return p.amount == null ? p.unit : `${fmt(p.amount)}${p.unit ? ` ${p.unit}` : ""}`;
+}
 
 const card = { background: "#fff", border: "1.5px solid var(--border)", borderRadius: 8, overflow: "hidden", cursor: "pointer" as const };
 
@@ -153,9 +164,12 @@ function PublicMarketplaceContent() {
           </button>
         </div>
         <p style={{ fontSize: 24, fontWeight: 900, color: "var(--red)", marginBottom: 12 }}>
-          {selected.price != null ? `$${Number(selected.price).toLocaleString()}` : "Free / Make an offer"}
+          {priceText(selected, "Free / Make an offer")}
         </p>
-        <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>Category: {selected.category}</p>
+        <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>Category: {selected.category}{isServicesCategory(selected.category) && selected.subcategory ? ` › ${selected.subcategory}` : ""}</p>
+        {isServicesCategory(selected.category) && (
+          <p style={{ fontSize: 13, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "8px 12px", margin: "8px 0" }}>{SERVICES_NOTE}</p>
+        )}
         <p style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{selected.description}</p>
 
         <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
@@ -242,7 +256,7 @@ function PublicMarketplaceContent() {
                 <div style={{ padding: 10 }}>
                   <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{l.title}</p>
                   <p style={{ fontWeight: 900, fontSize: 15, color: "var(--red)" }}>
-                    {l.price != null ? `$${Number(l.price).toLocaleString()}` : "Free / OBO"}
+                    {priceText(l, "Free / OBO")}
                   </p>
                 </div>
               </div>

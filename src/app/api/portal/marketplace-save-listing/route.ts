@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
 import { moderateListing } from "@/lib/marketplaceModeration";
+import { isServicesCategory, normalizeServiceFields } from "@/lib/marketplaceServices";
 
 // POST /api/portal/marketplace-save-listing
 // Body: { residentId, listingId? (edit) , title, description, price, category }
@@ -13,7 +14,11 @@ import { moderateListing } from "@/lib/marketplaceModeration";
 // via session, and confirms an edit only ever touches a listing they
 // actually own.
 export async function POST(req: NextRequest) {
-  const { residentId, listingId, title, description, price, category } = await req.json();
+  const body = await req.json();
+  const { residentId, listingId, title, description, category } = body;
+  // Oct 29 (per Mely): "Services" listings — a service type + price unit; "Ask for price" saves no price.
+  const service = normalizeServiceFields(category, body.subcategory, body.priceUnit);
+  const price = service.price_unit === "ask" ? null : body.price;
 
   if (!residentId || !title) {
     return NextResponse.json({ error: "residentId and title are required." }, { status: 400 });
@@ -33,15 +38,26 @@ export async function POST(req: NextRequest) {
   }
 
   // Oct 22 (per Mely): Mely checks the listing before it is saved or changed.
-  const review = await moderateListing({ title, description, category, price: price ? Number(price) : null });
+  const review = await moderateListing({
+    title, description, category, price: price ? Number(price) : null,
+    subcategory: service.subcategory, residentService: isServicesCategory(category),
+  });
   if (!review.allowed) {
     return NextResponse.json({ error: review.reason, rejected: true }, { status: 422 });
   }
-  // moderation_note is saved when the column exists (scripts/marina_37_marketplace.sql).
+  // moderation_note is saved when the column exists (scripts/marina_37_marketplace.sql);
+  // subcategory/price_unit when marketplace_services.sql has run. A missing column is dropped and
+  // the write retried, so the Marketplace keeps working before either script runs.
   const withNote = async (write: (extra: Record<string, any>) => PromiseLike<{ data?: any; error: any }>) => {
-    const first = await write({ moderation_note: review.note });
-    if (first.error && /moderation_note/i.test(String(first.error.message || ""))) return write({});
-    return first;
+    const extra: Record<string, any> = { moderation_note: review.note, subcategory: service.subcategory, price_unit: service.price_unit };
+    for (let i = 0; i < 4; i++) {
+      const res = await write(extra);
+      const msg = String(res.error?.message || "");
+      const missing = Object.keys(extra).find((k) => new RegExp(`\\b${k}\\b`, "i").test(msg));
+      if (!res.error || !missing) return res;
+      delete extra[missing];
+    }
+    return write({});
   };
 
   if (listingId) {
