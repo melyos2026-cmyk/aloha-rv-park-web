@@ -171,7 +171,7 @@ export default function RecHallCard({ residentId, onAvailability }: { residentId
         </button>
         <span style={{ fontSize: 12, color: "var(--gray)" }}>
           {t("Up to {n} days ahead, {from} – {until}, {min} minutes to {max} hours.", { n: rules.maxDaysAhead, from: hmLabel(rules.openFrom), until: hmLabel(rules.openUntil), min: rules.minMinutes, max: rules.maxHours })}
-          {rules.minNoticeHours > 0 ? ` ${t("Request at least {n} hours before the start.", { n: rules.minNoticeHours })}` : ""}
+          {rules.minNoticeHours > 0 ? ` ${t("Request at least {n} day(s) before the event.", { n: Math.round(rules.minNoticeHours / 24) })}` : ""}
         </span>
       </div>
       {rules.note && (

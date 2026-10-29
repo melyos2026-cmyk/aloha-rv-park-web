@@ -146,7 +146,7 @@ export function checkRecHallRequest(p: { date: string; start: string; end: strin
   const today = parkToday(now);
   if (p.date < today || start.getTime() <= now.getTime()) return { error: "Please choose a date and time that haven't passed." };
   if (p.date > addDays(today, R.maxDaysAhead)) return { error: "You can request the Rec Hall up to {n} days ahead.", vars: { n: R.maxDaysAhead } };
-  if (R.minNoticeHours > 0 && start.getTime() < now.getTime() + R.minNoticeHours * 3600000) return { error: "Please request the Rec Hall at least {n} hours before it starts.", vars: { n: R.minNoticeHours } };
+  if (R.minNoticeHours > 0 && start.getTime() < now.getTime() + R.minNoticeHours * 3600000) return { error: "Please request the Rec Hall at least {n} day(s) before the event, so the hall can be prepared.", vars: { n: Math.round(R.minNoticeHours / 24) } };
   if (!String(p.title || "").trim()) return { error: "Please enter the event name." };
   const g = Number(p.guests);
   if (!Number.isInteger(g) || g < 1 || g > R.maxGuests) return { error: "Please enter how many guests (1 or more)." };

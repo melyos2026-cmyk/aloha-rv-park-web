@@ -612,6 +612,8 @@ const DICT: Record<string, [string, string]> = {
   "Let us know your planned move-out date.": ["Indíquenos la fecha en que planea mudarse.", "Informe a data em que planeja se mudar."],
   "Requested move-out date:": ["Fecha de mudanza solicitada:", "Data de mudança solicitada:"],
   "Submitted ✓": ["Enviado ✓", "Enviado ✓"],
+  "Request at least {n} day(s) before the event.": ["Pídalo con al menos {n} día(s) de anticipación.", "Peça com pelo menos {n} dia(s) de antecedência."],
+  "Please request the Rec Hall at least {n} day(s) before the event, so the hall can be prepared.": ["Pida el Rec Hall con al menos {n} día(s) de anticipación, para que se pueda preparar el salón.", "Peça o Rec Hall com pelo menos {n} dia(s) de antecedência, para que o salão possa ser preparado."],
   "Please give us at least {n} days notice.": ["Avísenos con al menos {n} días de anticipación.", "Avise-nos com pelo menos {n} dias de antecedência."],
   "Before moving out, your outstanding balance must be $0.": ["Antes de mudarse, su saldo pendiente debe estar en $0.", "Antes de se mudar, seu saldo em aberto precisa estar zerado."],
   "Please check your email — the office will confirm your move-out date there once approved.": ["Revise su correo — la oficina le confirmará allí la fecha de mudanza cuando la apruebe.", "Verifique seu e-mail — o escritório confirmará a data da mudança por lá quando aprovar."],
