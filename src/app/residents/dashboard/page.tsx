@@ -1342,7 +1342,7 @@ export default function ResidentDashboard() {
             }
           `}</style>
           {/* Oct 28 (per Mely — "quedó muy grande, reorganízalo"): the balance is a compact bar on top
-              (paid-up shows green), and Autopay sits below at full width. */}
+              (nothing owed shows neutral — no "paid up" message before any payment exists), and Autopay sits below at full width. */}
           <div className="rent-balance-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
             {autopayAvailable && residentId ? (
               <div className="autopay-card" style={card}>
@@ -1376,8 +1376,8 @@ export default function ResidentDashboard() {
             <div className="balance-card" style={{ ...cardAccent, order: -1, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "16px 20px" }}>
               <div>
                 <p style={{ ...label, marginBottom: 2 }}>Outstanding Balance</p>
-                <p style={{ fontSize: 28, fontWeight: 900, margin: 0, lineHeight: 1.1, color: outstandingBalance > 0 ? "#b91c1c" : "#15803d" }}>${outstandingBalance.toFixed(2)}</p>
-                <p style={{ fontSize: 12.5, color: "var(--gray)", margin: "4px 0 0" }}>{outstandingBalance > 0 ? "Due on your account now" : "You're all paid up — thank you!"}</p>
+                <p style={{ fontSize: 28, fontWeight: 900, margin: 0, lineHeight: 1.1, color: outstandingBalance > 0 ? "#b91c1c" : "#111827" }}>${outstandingBalance.toFixed(2)}</p>
+                <p style={{ fontSize: 12.5, color: "var(--gray)", margin: "4px 0 0" }}>{outstandingBalance > 0 ? "Due on your account now" : "Nothing due right now"}</p>
               </div>
               {acceptOnlinePayments && outstandingBalance > 0 && (
               <button
