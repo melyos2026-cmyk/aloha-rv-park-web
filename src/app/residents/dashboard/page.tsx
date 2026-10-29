@@ -1341,7 +1341,9 @@ export default function ResidentDashboard() {
               }
             }
           `}</style>
-          <div className="rent-balance-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {/* Oct 28 (per Mely — "quedó muy grande, reorganízalo"): the balance is a compact bar on top
+              (paid-up shows green), and Autopay sits below at full width. */}
+          <div className="rent-balance-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
             {autopayAvailable && residentId ? (
               <div className="autopay-card" style={card}>
                 {/* Oct 28 (per Mely): cleaner header, no emoji */}
@@ -1371,13 +1373,16 @@ export default function ResidentDashboard() {
                 <p style={bigNumber}>${resident.rent_amount}</p>
               </div>
             )}
-            <div className="balance-card" style={cardAccent}>
-              <p style={label}>Outstanding Balance</p>
-              <p style={{ fontSize: 30, fontWeight: 900, color: "#b91c1c" }}>${outstandingBalance.toFixed(2)}</p>
-              {acceptOnlinePayments && (
+            <div className="balance-card" style={{ ...cardAccent, order: -1, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "16px 20px" }}>
+              <div>
+                <p style={{ ...label, marginBottom: 2 }}>Outstanding Balance</p>
+                <p style={{ fontSize: 28, fontWeight: 900, margin: 0, lineHeight: 1.1, color: outstandingBalance > 0 ? "#b91c1c" : "#15803d" }}>${outstandingBalance.toFixed(2)}</p>
+                <p style={{ fontSize: 12.5, color: "var(--gray)", margin: "4px 0 0" }}>{outstandingBalance > 0 ? "Due on your account now" : "You're all paid up — thank you!"}</p>
+              </div>
+              {acceptOnlinePayments && outstandingBalance > 0 && (
               <button
                 onClick={handlePayNow}
-                style={{ marginTop: 12, background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
+                style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "12px 26px", fontWeight: 800, fontSize: 15, cursor: "pointer" }}
               >
                 Pay Now
               </button>
