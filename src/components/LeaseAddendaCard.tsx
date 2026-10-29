@@ -36,6 +36,14 @@ export default function LeaseAddendaCard({ residentId, fullName, parkName, landl
   residentId: string; fullName: string; parkName: string; landlord: string; addenda: PortalAddendum[]; onChanged: () => void;
 }) {
   const [open, setOpen] = useState<PortalAddendum | null>(null);
+  // Oct 28 (per Mely — phone): while the addendum is open, the page behind doesn't scroll, so the whole
+  // document, the signature and the Sign button scroll inside the dialog, above the bottom menu.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
   const [name, setName] = useState("");
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -105,13 +113,13 @@ export default function LeaseAddendaCard({ residentId, fullName, parkName, landl
       ))}
 
       {open && (
-        <div role="dialog" aria-modal="true" aria-label={open.title} style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }} onClick={close}>
-          <div style={{ background: "#fff", color: "#111827", borderRadius: 12, maxWidth: 760, width: "100%", maxHeight: "94vh", display: "flex", flexDirection: "column", padding: 18, gap: 12 }} onClick={(e) => e.stopPropagation()}>
+        <div role="dialog" aria-modal="true" aria-label={open.title} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,.5)", overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 12px calc(24px + env(safe-area-inset-bottom))" }} onClick={close}>
+          <div style={{ background: "#fff", color: "#111827", borderRadius: 12, maxWidth: 760, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", padding: 18, gap: 12 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800 }}>{open.title}</h3>
               <button type="button" aria-label="Close" onClick={close} style={{ background: "none", border: 0, fontSize: 26, lineHeight: 1, cursor: "pointer", color: "#6b7280" }}>×</button>
             </div>
-            <div style={{ overflowY: "auto", flex: 1, minHeight: 160, border: "1px solid #e5e7eb", borderRadius: 8, padding: "20px 22px", background: "#fff" }}>
+            <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "20px 22px", background: "#fff" }}>
               <ContractText body={open.body} owner={fullName} marina={landlord || parkName} sentBy={open.sent_by_name} sentAt={open.sent_at}
                 sentBySignature={open.sent_by_signature} sentByTitle={open.sent_by_title} labels={{ owner: "TENANT", company: "LANDLORD" }} />
             </div>
