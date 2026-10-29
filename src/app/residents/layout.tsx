@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ViewAsBanner from "@/components/ViewAsBanner";
 
 // Sep 25 (per Mely — resident portal installable as its own app, same
 // as admin dashboard and Propane Scanner today): only /residents links
@@ -12,6 +13,8 @@ export const metadata: Metadata = {
 export default function ResidentsLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      {/* Oct 29: read-only "View as resident" banner (shows only in that mode) */}
+      <ViewAsBanner />
       {children}
       <script
         dangerouslySetInnerHTML={{

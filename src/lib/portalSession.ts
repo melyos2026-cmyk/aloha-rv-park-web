@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getViewAsSession } from "@/lib/residentViewAs";
+import { hasViewAsCookie, isSafeMethod, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/viewAsCookie";
 
 // Signed, httpOnly session cookie for the resident portal.
 //
@@ -58,10 +60,20 @@ export function clearPortalSessionCookie(res: NextResponse) {
 // (one small query) so a resident who was deleted, had the portal turned off, whose portal access
 // ended (home sold), or who moved to another company loses access right away, not when the
 // 14-day cookie runs out.
+// Oct 29 (per Mely — "View as resident"): a request carrying the read-only view-as cookie
+// (lib/residentViewAs.ts) is answered as THAT resident for reads (GET/HEAD) and is never a
+// session for anything else — a write returns null here (and 403 in requireMatchingSession),
+// even if the same browser also holds a real resident cookie. `viewAs: true` marks it.
 export async function getPortalSession(
   req: Request
-): Promise<{ residentId: string; companyId: string | null } | null> {
+): Promise<{ residentId: string; companyId: string | null; viewAs?: boolean } | null> {
   const cookieHeader = req.headers.get("cookie") || "";
+  if (hasViewAsCookie(cookieHeader)) {
+    if (!isSafeMethod(req.method)) return null; // read only: no write is ever authenticated
+    const v = await getViewAsSession(req);
+    if (v) return { residentId: v.residentId, companyId: v.companyId, viewAs: true };
+    // an expired/ended view-as cookie is ignored for reads (falls back to the normal cookie)
+  }
   const match = cookieHeader
     .split(";")
     .map((c) => c.trim())
@@ -119,10 +131,19 @@ export async function getPortalSession(
 // exists AND matches the residentId the request is asking about. Returns
 // null if OK to proceed, or a 401 NextResponse to return immediately.
 export async function requireMatchingSession(req: Request, requestedResidentId: string | null) {
+  // Oct 29 ("View as resident"): every write from a view-as browser is refused, before anything else.
+  const viewAsBlock = viewAsWriteBlock(req);
+  if (viewAsBlock) return viewAsBlock;
   // Oct 26 (security review): async now (see getPortalSession) — callers must await it.
   const session = await getPortalSession(req);
   if (!session || !requestedResidentId || session.residentId !== requestedResidentId) {
     return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   }
   return null;
+}
+
+/** 403 for any non-GET request made in read-only "View as resident" mode; null otherwise. */
+export function viewAsWriteBlock(req: Request) {
+  if (isSafeMethod(req.method) || !hasViewAsCookie(req.headers.get("cookie"))) return null;
+  return NextResponse.json({ error: VIEW_AS_READ_ONLY_MESSAGE, viewAs: true }, { status: 403, headers: { "Cache-Control": "no-store" } });
 }

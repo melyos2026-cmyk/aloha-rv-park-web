@@ -2,10 +2,15 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { getPortalSession } from "@/lib/portalSession";
+import { hasViewAsCookie, VIEW_AS_READ_ONLY_MESSAGE } from "@/lib/viewAsCookie";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 export async function GET(req: Request) {
+  // Oct 29 ("View as resident"): read-only view mode never reaches Stripe.
+  if (hasViewAsCookie(req.headers.get("cookie"))) {
+    return NextResponse.json({ error: VIEW_AS_READ_ONLY_MESSAGE, viewAs: true }, { status: 403 });
+  }
   try {
     const { searchParams } = new URL(req.url);
     const sessionId = searchParams.get("session_id");
