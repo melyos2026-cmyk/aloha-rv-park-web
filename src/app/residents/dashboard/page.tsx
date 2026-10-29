@@ -1260,7 +1260,7 @@ export default function ResidentDashboard() {
                   {overdueInvoices.length > 0 ? (
                     <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13 }}>{money(overdueTotal)} overdue</div>
                   ) : nextPaymentDate ? (
-                    <div style={{ color: "var(--gray)", fontSize: 13 }}>Next Payment (Due Date): <strong>{nextPaymentDate}</strong>{(() => { if (!lateGrace.on || !nextPaymentDate) return null; const d = new Date(nextPaymentDate); if (isNaN(d.getTime())) return null; d.setDate(d.getDate() + lateGrace.days); return <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>{lateGrace.days > 0 ? `Grace period: no late fee if paid by ${d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : "A late fee applies after the due date"}</span>; })()}</div>
+                    <div style={{ color: "var(--gray)", fontSize: 13 }}>Next Payment (Due Date): <strong>{nextPaymentDate}</strong>{(() => { if (!lateGrace.on || !nextPaymentDate) return null; const d = new Date(nextPaymentDate); if (isNaN(d.getTime())) return null; d.setDate(d.getDate() + lateGrace.days); return <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>{lateGrace.days > 0 ? `Grace period: ${lateGrace.days} day${lateGrace.days === 1 ? "" : "s"}, until the end of ${d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. A late fee applies after that date.` : "No grace period: a late fee applies after the due date."}</span>; })()}</div>
                   ) : null}
                   {processingTotal > 0 && (
                     <div style={{ color: "#1e40af", fontWeight: 700, fontSize: 13 }}>{money(processingTotal)} bank payment processing · clears in 3–5 business days</div>
@@ -1441,7 +1441,7 @@ export default function ResidentDashboard() {
               {nextPaymentDate && (
                 <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
                   Next Payment (Due Date): <strong>{nextPaymentDate}</strong>
-                  {(() => { if (!lateGrace.on || !nextPaymentDate) return null; const d = new Date(nextPaymentDate); if (isNaN(d.getTime())) return null; d.setDate(d.getDate() + lateGrace.days); return <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>{lateGrace.days > 0 ? `Grace period: no late fee if paid by ${d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` : "A late fee applies after the due date"}</span>; })()}
+                  {(() => { if (!lateGrace.on || !nextPaymentDate) return null; const d = new Date(nextPaymentDate); if (isNaN(d.getTime())) return null; d.setDate(d.getDate() + lateGrace.days); return <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>{lateGrace.days > 0 ? `Grace period: ${lateGrace.days} day${lateGrace.days === 1 ? "" : "s"}, until the end of ${d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. A late fee applies after that date.` : "No grace period: a late fee applies after the due date."}</span>; })()}
                 </p>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
