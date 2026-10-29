@@ -1065,7 +1065,11 @@ export default function ResidentDashboard() {
     }
     window.location.hash = it.anchor;
   }
+  // Oct 29 (per Mely): clicking the section you're already in folds/unfolds its sub-menu.
+  const [subFolded, setSubFolded] = useState<SectionId | null>(null);
   function openSection(id: SectionId) {
+    if (section === id && subItems(id).length > 0) { setSubFolded((f) => (f === id ? null : id)); return; }
+    setSubFolded(null);
     if (window.location.hash.replace("#", "") === id) { setSection(id); window.scrollTo({ top: 0 }); return; }
     window.location.hash = id;
   }
@@ -1302,10 +1306,10 @@ export default function ResidentDashboard() {
           <nav className="rp-nav" aria-label={t("Resident Portal")}>
             {navSections.map((x) => (
               <Fragment key={x.id}>
-              <button type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined}>
+              <button type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined} aria-expanded={subItems(x.id).length > 0 ? section === x.id && subFolded !== x.id : undefined}>
                 <NavIcon d={x.id === "more" ? "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" : x.icon} /><span>{t(x.label)}</span><Badge n={badge[x.id]} />
               </button>
-              {section === x.id && subItems(x.id).length > 0 && (
+              {section === x.id && subFolded !== x.id && subItems(x.id).length > 0 && (
                 <div className="rp-subnav">
                   {subItems(x.id).map((it) => (
                     <button key={it.label} type="button" onClick={() => openSub(it)}>{t(it.label)}</button>

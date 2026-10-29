@@ -39,7 +39,7 @@ export type NotifyEvent = {
 
 export const NOTIFY_CATEGORIES: { key: NotifyCategory; title: string; description: string }[] = [
   { key: "payments", title: "Payments", description: "Money coming in from residents and guests." },
-  { key: "park_money", title: "Park money", description: "Disputes and payouts on the park's payment account." },
+  { key: "park_money", title: "Chargebacks & payouts", description: "Card disputes (chargebacks) and instant payouts to your bank." },
   { key: "applications", title: "Applications", description: "Lease applications and background checks." },
   { key: "residents", title: "Residents", description: "Requests and documents from residents." },
   { key: "bookings", title: "Bookings & sales", description: "Reservations, waitlist, propane and listings." },
