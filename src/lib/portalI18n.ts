@@ -1374,4 +1374,13 @@ const DICT: Record<string, [string, string]> = {
   "You already have {n} requests waiting for the office. Please wait for an answer or cancel one.": ["Ya tiene {n} solicitudes esperando respuesta de la oficina. Espere la respuesta o cancele una.", "Você já tem {n} solicitações aguardando o escritório. Aguarde a resposta ou cancele uma."],
   "You already requested the Rec Hall for part of that time.": ["Usted ya solicitó el Rec Hall para parte de ese horario.", "Você já solicitou o Rec Hall para parte desse horário."],
   "This request can't be cancelled any more.": ["Esta solicitud ya no se puede cancelar.", "Esta solicitação não pode mais ser cancelada."],
+  // Oct 29: Rec Hall rules edited by the admin (src/lib/recHall.ts normalizeRecHallRules)
+  "Up to {n} days ahead, {from} – {until}, {min} minutes to {max} hours.": ["Hasta {n} días por adelantado, de {from} a {until}, de {min} minutos a {max} horas.", "Até {n} dias de antecedência, das {from} às {until}, de {min} minutos a {max} horas."],
+  "Request at least {n} hours before the start.": ["Solicítelo al menos {n} horas antes del inicio.", "Solicite com pelo menos {n} horas de antecedência."],
+  "Rec Hall rules": ["Reglas del Rec Hall", "Regras do Rec Hall"],
+  "The Rec Hall can be requested between {from} and {until}.": ["El Rec Hall se puede solicitar entre las {from} y las {until}.", "O Rec Hall pode ser solicitado entre {from} e {until}."],
+  "A request must be at least {n} minutes long.": ["La solicitud debe ser de al menos {n} minutos.", "A solicitação deve ter pelo menos {n} minutos."],
+  "A request can be at most {n} hours long.": ["La solicitud puede ser de máximo {n} horas.", "A solicitação pode ter no máximo {n} horas."],
+  "You can request the Rec Hall up to {n} days ahead.": ["Puede solicitar el Rec Hall con hasta {n} días de anticipación.", "Você pode solicitar o Rec Hall com até {n} dias de antecedência."],
+  "Please request the Rec Hall at least {n} hours before it starts.": ["Solicite el Rec Hall al menos {n} horas antes de que empiece.", "Solicite o Rec Hall pelo menos {n} horas antes do início."],
 };

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { usePortalLang } from "@/lib/portalI18n";
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
-import { REC_HALL_TZ, endOptions, parkToday, recHallStatusLabel, startOptions, toMin } from "@/lib/recHall";
+import { REC_HALL_TZ, endOptions, hmLabel, normalizeRecHallRules, parkToday, recHallStatusLabel, startOptions, toMin, type RecHallRules } from "@/lib/recHall";
 import { fmtTime } from "@/lib/portalInfo";
 
 // Oct 29 (per Mely): "Request the Rec Hall" in the resident portal (Requests section). Shown only
@@ -14,7 +14,7 @@ import { fmtTime } from "@/lib/portalInfo";
 
 type Req = { id: string; title: string | null; starts_at: string; ends_at: string; status: string; guest_count: number | null; notes: string | null; decline_reason: string | null; canceled_by: string | null };
 type Slot = { start: string; end: string; status: string; mine: boolean };
-type Data = { enabled: boolean; ready?: boolean; room?: { name: string; capacity: number | null }; rules?: { today: string; lastDay: string; maxPending: number }; requests?: Req[]; day?: Slot[] };
+type Data = { enabled: boolean; ready?: boolean; room?: { name: string; capacity: number | null }; rules?: Partial<RecHallRules> & { today: string; lastDay: string }; requests?: Req[]; day?: Slot[] };
 
 const card: CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const input: CSSProperties = { width: "100%", border: "1.5px solid var(--border)", borderRadius: 6, padding: "9px 10px", fontSize: 14, background: "#fff", boxSizing: "border-box" };
@@ -57,10 +57,15 @@ export default function RecHallCard({ residentId, onAvailability }: { residentId
   }, [residentId, onAvailability]);
   useEffect(() => { if (residentId) load(day); }, [residentId, day, load]);
 
-  const ends = endOptions(start);
+  // Oct 29: the company's rules (admin → Rec Hall → Resident request rules); the server checks them again.
+  const rules = normalizeRecHallRules(data?.rules);
+  const starts = startOptions(rules);
+  const startVal = starts.includes(start) ? start : starts.includes("14:00") ? "14:00" : starts[0] || "";
+  const ends = endOptions(startVal, rules);
+  const endVal = ends.includes(end) ? end : ends[Math.min(3, ends.length - 1)] || "";
   function pickStart(v: string) {
     setStart(v);
-    const next = endOptions(v);
+    const next = endOptions(v, rules);
     if (!next.includes(end)) setEnd(next[Math.min(3, next.length - 1)] || "");
   }
   const [now] = useState(() => Date.now());
@@ -79,7 +84,7 @@ export default function RecHallCard({ residentId, onAvailability }: { residentId
   }
 
   const slots = data.day || [];
-  const sMin = toMin(start), eMin = toMin(end);
+  const sMin = toMin(startVal), eMin = toMin(endVal);
   const overlapBooked = slots.some((s) => s.status === "booked" && toMin(s.start) < eMin && (s.end === "24:00" ? 1440 : toMin(s.end)) > sMin);
   const requests = data.requests || [];
 
@@ -93,7 +98,7 @@ export default function RecHallCard({ residentId, onAvailability }: { residentId
     try {
       const res = await fetch("/api/portal/rec-hall", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ residentId, action: "request", date: day, start, end, title: title.trim(), guests: g, notes: notes.trim() }),
+        body: JSON.stringify({ residentId, action: "request", date: day, start: startVal, end: endVal, title: title.trim(), guests: g, notes: notes.trim() }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg({ text: j.vars ? t(j.error, j.vars) : err(j.error) || t("Something went wrong. Please try again."), bad: true }); }
@@ -125,11 +130,11 @@ export default function RecHallCard({ residentId, onAvailability }: { residentId
         <label><span style={lbl}>{t("Date")}</span>
           <input type="date" style={input} value={day} min={data.rules?.today} max={data.rules?.lastDay} onChange={(e) => setDay(e.target.value)} /></label>
         <label><span style={lbl}>{t("Start time")}</span>
-          <select style={input} value={start} onChange={(e) => pickStart(e.target.value)}>
-            {startOptions().map((s) => <option key={s} value={s}>{fmtTime(s)}</option>)}
+          <select style={input} value={startVal} onChange={(e) => pickStart(e.target.value)}>
+            {starts.map((s) => <option key={s} value={s}>{fmtTime(s)}</option>)}
           </select></label>
         <label><span style={lbl}>{t("End time")}</span>
-          <select style={input} value={end} onChange={(e) => setEnd(e.target.value)}>
+          <select style={input} value={endVal} onChange={(e) => setEnd(e.target.value)}>
             {ends.map((s) => <option key={s} value={s}>{fmtTime(s)}</option>)}
           </select></label>
       </div>
@@ -160,12 +165,21 @@ export default function RecHallCard({ residentId, onAvailability }: { residentId
         <textarea rows={2} maxLength={1000} style={{ ...input, resize: "vertical" }} value={notes} onChange={(e) => setNotes(e.target.value)} /></label>
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginTop: 12 }}>
-        <button type="button" onClick={send} disabled={sending || overlapBooked || !end}
+        <button type="button" onClick={send} disabled={sending || overlapBooked || !endVal}
           style={{ background: "var(--green)", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 800, fontSize: 14, cursor: sending || overlapBooked ? "not-allowed" : "pointer", opacity: sending || overlapBooked ? 0.6 : 1 }}>
           {sending ? t("Sending...") : t("Send request")}
         </button>
-        <span style={{ fontSize: 12, color: "var(--gray)" }}>{t("Up to {n} days ahead, 7:00 AM – 11:00 PM, up to 8 hours.", { n: 90 })}</span>
+        <span style={{ fontSize: 12, color: "var(--gray)" }}>
+          {t("Up to {n} days ahead, {from} – {until}, {min} minutes to {max} hours.", { n: rules.maxDaysAhead, from: hmLabel(rules.openFrom), until: hmLabel(rules.openUntil), min: rules.minMinutes, max: rules.maxHours })}
+          {rules.minNoticeHours > 0 ? ` ${t("Request at least {n} hours before the start.", { n: rules.minNoticeHours })}` : ""}
+        </span>
       </div>
+      {rules.note && (
+        <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 13, color: "#78350f", whiteSpace: "pre-wrap" }}>
+          <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 2 }}>{t("Rec Hall rules")}</div>
+          {rules.note}
+        </div>
+      )}
       {msg && <p style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: msg.bad ? "#b91c1c" : "#166534" }}>{msg.text}</p>}
 
       {requests.length > 0 && (

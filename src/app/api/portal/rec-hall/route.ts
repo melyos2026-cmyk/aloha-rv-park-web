@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
-import { REC_HALL_RULES, addDays, checkRecHallRequest, parkHM, parkToDate, parkToday, recHallWhen } from "@/lib/recHall";
+import { addDays, checkRecHallRequest, normalizeRecHallRules, type RecHallRules, parkHM, parkToDate, parkToday, recHallWhen } from "@/lib/recHall";
 
 // Oct 29 (per Mely): residents request the Rec Hall from the portal (free — no charge is ever added).
 // GET  /api/portal/rec-hall?residentId=...&date=YYYY-MM-DD → switch state, the room, the resident's own
@@ -25,10 +25,12 @@ async function residentRow(id: string) {
   return data && data.company_id && !(data as any).deleted_at ? (data as any) : null;
 }
 
-async function recHallOn(companyId: string): Promise<boolean> {
+// Switch + the company's request rules (lease_defaults.rec_hall_rules, edited in the admin Rec Hall
+// module; missing/invalid → the defaults in src/lib/recHall.ts). A failed read = off.
+async function recHallSettings(companyId: string): Promise<{ on: boolean; rules: RecHallRules }> {
   const { data, error } = await supabase.from("park_settings").select("lease_defaults").eq("company_id", companyId).maybeSingle();
-  if (error) return false;
-  return (data?.lease_defaults as Record<string, unknown> | null)?.clubhouse_enabled !== false;
+  const ld = (data?.lease_defaults as Record<string, unknown> | null) || null;
+  return { on: !error && ld?.clubhouse_enabled !== false, rules: normalizeRecHallRules(ld?.rec_hall_rules) };
 }
 
 /** The Rec Hall room: an active room named like "Rec Hall", else the first active room. */
@@ -54,7 +56,8 @@ export async function GET(req: NextRequest) {
   const cid = resident.company_id as string;
 
   const noStore = { headers: { "Cache-Control": "no-store" } };
-  if (!(await recHallOn(cid))) return NextResponse.json({ enabled: false }, noStore);
+  const { on, rules } = await recHallSettings(cid);
+  if (!on) return NextResponse.json({ enabled: false }, noStore);
   const { room } = await recHallRoom(cid);
   if (!room) return NextResponse.json({ enabled: false }, noStore);
   if (!(await schemaReady())) return NextResponse.json({ enabled: true, ready: false }, noStore);
@@ -82,7 +85,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     enabled: true, ready: true,
     room: { name: room.name, capacity: room.capacity },
-    rules: { ...REC_HALL_RULES, today: parkToday(), lastDay: addDays(parkToday(), REC_HALL_RULES.maxDaysAhead) },
+    rules: { ...rules, today: parkToday(), lastDay: addDays(parkToday(), rules.maxDaysAhead) },
     requests: mine || [], day,
   }, noStore);
 }
@@ -118,14 +121,15 @@ export async function POST(req: NextRequest) {
   if (body.action !== "request") return NextResponse.json({ error: "Unknown action." }, { status: 400 });
 
   // Admin switch off → no new requests (existing ones stay with the office).
-  if (!(await recHallOn(cid))) return NextResponse.json({ error: OFF, recHallOff: true }, { status: 403 });
+  const { on, rules } = await recHallSettings(cid);
+  if (!on) return NextResponse.json({ error: OFF, recHallOff: true }, { status: 403 });
   const { room } = await recHallRoom(cid);
   if (!room) return NextResponse.json({ error: OFF, recHallOff: true }, { status: 403 });
   if (!(await schemaReady())) return NextResponse.json({ error: NOT_READY, notReady: true }, { status: 503 });
 
   const title = String(body.title ?? "").trim().slice(0, 120);
   const notes = String(body.notes ?? "").trim().slice(0, 1000) || null;
-  const check = checkRecHallRequest({ date: String(body.date || ""), start: String(body.start || ""), end: String(body.end || ""), title, guests: Number(body.guests), capacity: room.capacity });
+  const check = checkRecHallRequest({ date: String(body.date || ""), start: String(body.start || ""), end: String(body.end || ""), title, guests: Number(body.guests), capacity: room.capacity }, new Date(), rules);
   if ("error" in check) return NextResponse.json({ error: check.error, vars: check.vars }, { status: 400 });
   const startIso = check.start.toISOString(), endIso = check.end.toISOString();
 
@@ -133,8 +137,8 @@ export async function POST(req: NextRequest) {
   const { count, error: cErr } = await supabase.from("rv_events").select("id", { count: "exact", head: true })
     .eq("company_id", cid).eq("resident_id", residentId!).eq("status", "requested").gt("ends_at", new Date().toISOString());
   if (cErr) return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
-  if ((count || 0) >= REC_HALL_RULES.maxPending) {
-    return NextResponse.json({ error: "You already have {n} requests waiting for the office. Please wait for an answer or cancel one.", vars: { n: REC_HALL_RULES.maxPending } }, { status: 429 });
+  if ((count || 0) >= rules.maxPending) {
+    return NextResponse.json({ error: "You already have {n} requests waiting for the office. Please wait for an answer or cancel one.", vars: { n: rules.maxPending } }, { status: 429 });
   }
 
   // No overlap with an approved booking, or with the resident's own open request.
