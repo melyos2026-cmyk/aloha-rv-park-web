@@ -875,6 +875,8 @@ const DICT: Record<string, [string, string]> = {
 
   // ---- ViewAsBanner / view-as ready ----
   "Viewing as {name} — read only. Nothing can be paid, signed or changed.": ["Viendo como {name} — solo lectura. No se puede pagar, firmar ni cambiar nada.", "Visualizando como {name} — somente leitura. Nada pode ser pago, assinado ou alterado."],
+  "Viewing as {name} — read only": ["Viendo como {name} — solo lectura", "Visualizando como {name} — somente leitura"],
+  "Nothing can be paid, signed or changed.": ["No se puede pagar, firmar ni cambiar nada.", "Nada pode ser pago, assinado ou alterado."],
   "Exiting…": ["Saliendo…", "Saindo…"],
   "Exit": ["Salir", "Sair"],
   "This link is invalid, expired or was already used. Open it again from the admin.": ["Este enlace no es válido, venció o ya se usó. Ábralo de nuevo desde la administración.", "Este link é inválido, expirou ou já foi usado. Abra de novo pela administração."],

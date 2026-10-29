@@ -53,27 +53,38 @@ export default function ViewAsReadyPage() {
       .catch(() => setError(ERRORS_FAILED));
   }, []);
 
+  const icon = (
+    <div className="va-icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 2l8 3v6c0 5-3.4 9.4-8 11-4.6-1.6-8-6-8-11V5l8-3z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    </div>
+  );
+
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 max-w-md w-full text-center">
+    <main className="va-page">
+      <div className="va-card">
         {error ? (
           <>
-            <h1 className="text-lg font-semibold text-gray-900">{t("View as resident")}</h1>
-            <p className="text-sm text-gray-600 mt-2">{t(error)}</p>
+            {icon}
+            <h1>{t("View as resident")}</h1>
+            <p>{t(error)}</p>
           </>
         ) : pending ? (
           <>
-            <h1 className="text-lg font-semibold text-gray-900">{t("Park staff only")}</h1>
-            <p className="text-sm text-gray-600 mt-2">
+            {icon}
+            <h1>{t("Park staff only")}</h1>
+            <p>
               {t("You are opening {name}'s portal as park staff, read only. Nothing can be paid, signed or changed.", { name: pending.name || t("this resident") })}
             </p>
-            <div className="mt-5 flex justify-center gap-3">
-              <button type="button" onClick={cancel} disabled={busy} className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700">{t("I'm not park staff")}</button>
-              <button type="button" onClick={open} disabled={busy} className="px-4 py-2 rounded-lg bg-black text-white text-sm font-semibold">{t("Open read-only view")}</button>
+            <div className="va-btns">
+              <button type="button" onClick={cancel} disabled={busy} className="va-btn-2">{t("I'm not park staff")}</button>
+              <button type="button" onClick={open} disabled={busy} className="va-btn-1">{t("Open read-only view")}</button>
             </div>
           </>
         ) : (
-          <p className="text-sm text-gray-600">{t("Opening the resident portal (read only)…")}</p>
+          <p style={{ marginTop: 0 }}>{t("Opening the resident portal (read only)…")}</p>
         )}
       </div>
     </main>

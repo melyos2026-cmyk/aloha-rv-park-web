@@ -150,9 +150,9 @@ export default function InvoicesPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
-        <div className="mx-auto max-w-xl rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
-          <p className="text-black">{t("Loading invoices...")}</p>
+      <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#f5f6f8" }}>
+        <div style={{ maxWidth: 576, margin: "0 auto", borderRadius: 12, background: "#fff", padding: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
+          <p style={{ color: "#000" }}>{t("Loading invoices...")}</p>
         </div>
       </main>
     );
@@ -197,7 +197,7 @@ export default function InvoicesPage() {
         </div>
 
         {message && (
-          <div className="rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">
+          <div style={{ borderRadius: 8, background: "#fefce8", padding: 16, fontSize: 14, color: "#854d0e", border: "1px solid #fde68a" }}>
             {message}
           </div>
         )}

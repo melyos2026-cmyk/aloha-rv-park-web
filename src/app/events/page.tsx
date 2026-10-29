@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useCompany } from "@/lib/CompanyContext";
 import PdfCalendarViewer from "@/components/PdfCalendarViewer";
 
@@ -7,12 +8,24 @@ export default function EventsPage() {
   const contactEmail = company?.contact_email || "info@aloharvparkfl.com";
   const contactPhone = company?.contact_phone || "(689) 252-0567";
   const phoneHref = `tel:${contactPhone.replace(/[^\d]/g, "")}`;
+  // Oct 29 (per Mely): follow the admin's Rec Hall switch (park_settings.lease_defaults.clubhouse_enabled,
+  // read through /api/get-enabled-modules). null = still loading → keep it hidden so it never flashes.
+  const [recHallOn, setRecHallOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!company?.id) return;
+    let alive = true;
+    fetch(`/api/get-enabled-modules?company_id=${company.id}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => { if (alive) setRecHallOn(d?.recHall !== false); })
+      .catch(() => { if (alive) setRecHallOn(true); });
+    return () => { alive = false; };
+  }, [company?.id]);
 
   return (
     <>
       {/* Hero */}
       <section style={{ background: "var(--sea)", color: "var(--black)", padding: "60px 24px", textAlign: "center" }}>
-        <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--black)", fontWeight: 600, marginBottom: 12 }}>Rec Hall</div>
+        <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--black)", fontWeight: 600, marginBottom: 12 }}>{recHallOn !== false ? "Rec Hall" : "Community"}</div>
         <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16 }}>Events & Activities</h1>
         <p style={{ fontSize: 16, color: "#4b5563", maxWidth: 500, margin: "0 auto" }}>
           Stay connected with everything happening at Aloha RV Park.
@@ -26,7 +39,7 @@ export default function EventsPage() {
             <div style={{ fontSize: 48, marginBottom: 16 }}>📅</div>
             <h2 style={{ fontSize: 28, fontWeight: 900, marginBottom: 12 }}>Monthly Events Calendar</h2>
             <p style={{ fontSize: 15, color: "var(--gray)", marginBottom: 32, maxWidth: 480, margin: "0 auto 32px" }}>
-              Download our monthly events calendar to see everything planned for this month at the Rec Hall.
+              Download our monthly events calendar to see everything planned for this month{recHallOn !== false ? " at the Rec Hall" : ""}.
             </p>
 
             {company?.events_calendar_pdf_url ? (
@@ -63,8 +76,8 @@ export default function EventsPage() {
         </div>
       </section>
 
-      {/* Rec Hall Info */}
-      <section style={{ padding: "60px 24px", background: "#f6f5f5", color: "var(--black)" }}>
+      {/* Rec Hall Info — only while the admin's Rec Hall switch is on */}
+      {recHallOn && <section style={{ padding: "60px 24px", background: "#f6f5f5", color: "var(--black)" }}>
         <div style={{ maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
           <h2 style={{ fontSize: "clamp(28px, 4vw, 42px)", fontWeight: 900, marginBottom: 16 }}>Rec Hall</h2>
           <p style={{ fontSize: 16, color: "#4b5563", lineHeight: 1.8, marginBottom: 16 }}>
@@ -83,7 +96,7 @@ export default function EventsPage() {
             </a>
           </div>
         </div>
-      </section>
+      </section>}
     </>
   );
 }

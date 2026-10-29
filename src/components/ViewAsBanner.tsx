@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePortalLang } from "@/lib/portalI18n";
 
 // Oct 29 (per Mely — "View as resident"): fixed banner on every /residents page while a park
@@ -9,6 +9,7 @@ import { usePortalLang } from "@/lib/portalI18n";
 export default function ViewAsBanner() {
   const [name, setName] = useState<string | null>(null);
   const [exiting, setExiting] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
   const { t } = usePortalLang();
 
   useEffect(() => {
@@ -24,11 +25,26 @@ export default function ViewAsBanner() {
     };
   }, []);
 
+  // Fixed bar: push the page down by its real height (it wraps to 2–3 lines on a phone) and
+  // move the site's sticky header below it (globals.css: body.va-on).
   useEffect(() => {
     if (!name) return;
-    document.body.style.paddingTop = "48px";
+    const el = barRef.current;
+    const body = document.body;
+    const apply = () => {
+      const h = el ? el.offsetHeight : 56;
+      body.style.paddingTop = h + "px";
+      body.style.setProperty("--va-h", h + "px");
+    };
+    body.classList.add("va-on");
+    apply();
+    const ro = typeof ResizeObserver !== "undefined" && el ? new ResizeObserver(apply) : null;
+    if (ro && el) ro.observe(el);
     return () => {
-      document.body.style.paddingTop = "";
+      ro?.disconnect();
+      body.classList.remove("va-on");
+      body.style.paddingTop = "";
+      body.style.removeProperty("--va-h");
     };
   }, [name]);
 
@@ -46,21 +62,22 @@ export default function ViewAsBanner() {
   }
 
   return (
-    <div
-      role="status"
-      className="fixed top-0 inset-x-0 z-[9999] min-h-[48px] bg-amber-400 text-amber-950 shadow-md px-3 py-2 flex items-center justify-center gap-3 text-sm font-semibold"
-    >
-      <span className="text-center">
-        {t("Viewing as {name} — read only. Nothing can be paid, signed or changed.", { name })}
-      </span>
-      <button
-        type="button"
-        onClick={exit}
-        disabled={exiting}
-        className="shrink-0 rounded-md bg-amber-950 text-white px-3 py-1 text-xs font-bold hover:bg-black disabled:opacity-60"
-      >
-        {exiting ? t("Exiting…") : t("Exit")}
-      </button>
+    <div ref={barRef} role="status" className="va-bar">
+      <div className="va-bar-in">
+        <div className="va-bar-text">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span>
+            <b>{t("Viewing as {name} — read only", { name })}</b>
+            <small>{t("Nothing can be paid, signed or changed.")}</small>
+          </span>
+        </div>
+        <button type="button" onClick={exit} disabled={exiting} className="va-exit">
+          {exiting ? t("Exiting…") : t("Exit")}
+        </button>
+      </div>
     </div>
   );
 }

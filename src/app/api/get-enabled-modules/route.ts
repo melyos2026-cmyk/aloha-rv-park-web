@@ -25,5 +25,15 @@ export async function GET(req: NextRequest) {
     enabled[row.module_name] = !!row.enabled;
   });
 
-  return NextResponse.json({ enabled });
+  // Oct 29 (per Mely): the admin's Rec Hall on/off (melyos-builder /api/admin/rv-events writes
+  // park_settings.lease_defaults.clubhouse_enabled; missing = on) — the public /events page hides
+  // its "Rec Hall" rental section when it's off. Same yes/no only, nothing else from the row.
+  const { data: ps } = await supabaseAdmin
+    .from("park_settings")
+    .select("lease_defaults")
+    .eq("company_id", companyId)
+    .maybeSingle();
+  const recHall = (ps?.lease_defaults as Record<string, unknown> | null)?.clubhouse_enabled !== false;
+
+  return NextResponse.json({ enabled, recHall });
 }

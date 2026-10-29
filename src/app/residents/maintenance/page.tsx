@@ -465,7 +465,7 @@ export default function MaintenancePage() {
                 )}
 
                 {request.maintenance_request_photos?.length > 0 && (
-                  <div className="mt-6 flex gap-3 flex-wrap">
+                  <div style={{ marginTop: 24, display: "flex", gap: 12, flexWrap: "wrap" }}>
                     {request.maintenance_request_photos.map((photo: any) => (
                       <a
                         key={photo.id}
@@ -476,7 +476,7 @@ export default function MaintenancePage() {
                         <img
                           src={photo.file_url}
                           alt={t("Maintenance Photo")}
-                          className="w-32 h-32 object-cover rounded-lg border"
+                          style={{ width: 128, height: 128, objectFit: "cover", borderRadius: 8, border: "1px solid #e5e7eb", display: "block" }}
                         />
                       </a>
                     ))}
