@@ -13,6 +13,7 @@ import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 import LeaseAddendaCard, { fetchLeaseAddenda, type PortalAddendum } from "@/components/LeaseAddendaCard";
+import { ParkInfoSection, ParkInfoHomeCard, fetchParkInfo, type ParkInfoData } from "@/components/ParkInfo";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -51,7 +52,7 @@ function calculateAge(dateOfBirth: string | null | undefined): number | null {
 }
 
 // Oct 26 (per Mely): portal sections — same idea as the marina boater account.
-type SectionId = "home" | "pay" | "lot" | "household" | "requests" | "messages" | "more";
+type SectionId = "home" | "pay" | "lot" | "household" | "requests" | "messages" | "info" | "more";
 const SECTIONS: { id: SectionId; label: string; short: string; icon: string }[] = [
   { id: "home", label: "Home", short: "Home", icon: "M3 11 12 4l9 7M5 10v10h5v-6h4v6h5V10" },
   { id: "pay", label: "Payments", short: "Pay", icon: "M3 6h18v12H3zM3 10h18M7 15h4" },
@@ -59,10 +60,12 @@ const SECTIONS: { id: SectionId; label: string; short: string; icon: string }[] 
   { id: "household", label: "Household", short: "Household", icon: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 7.5M22 21a7 7 0 0 0-4-6.3" },
   { id: "requests", label: "Requests", short: "Requests", icon: "M14 6a4 4 0 0 0-5 5l-6 6 3 3 6-6a4 4 0 0 0 5-5l-3 3-3-3z" },
   { id: "messages", label: "Messages", short: "Messages", icon: "M4 5h16v11H8l-4 4z" },
+  // Oct 28 (per Mely): office hours, emergency phone + what to do, after-hours note, park rules.
+  { id: "info", label: "Park info", short: "Park info", icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01" },
   { id: "more", label: "Profile & more", short: "More", icon: "M5 12h.01M12 12h.01M19 12h.01" },
 ];
 const MOBILE_TABS: SectionId[] = ["home", "pay", "lot", "messages", "more"];
-const UNDER_MORE: SectionId[] = ["household", "requests", "more"];
+const UNDER_MORE: SectionId[] = ["household", "requests", "info", "more"];
 // Old anchors (from other pages and emails) → the section that now holds them.
 const ANCHOR_SECTION: Record<string, SectionId> = {
   "household-occupants": "household", "visitors-section": "household", vehicles: "household", "golf-carts": "household",
@@ -71,6 +74,7 @@ const ANCHOR_SECTION: Record<string, SectionId> = {
   maintenance: "requests", propane: "requests",
   announcements: "messages", notifications: "messages",
   profile: "more",
+  "park-info": "info", emergency: "info", "office-hours": "info", "park-rules": "info",
   "lease-addendum": "home", // Oct 28: Lease Addenda card (link in the "please sign" email)
 };
 const ANCHORS = Object.keys(ANCHOR_SECTION);
@@ -109,6 +113,8 @@ export default function ResidentDashboard() {
   // Oct 28 (per Mely): lease addenda the park sent to sign online (e.g. Returned Payments).
   const [leaseAddenda, setLeaseAddenda] = useState<PortalAddendum[]>([]);
   const [addendaLandlord, setAddendaLandlord] = useState("");
+  // Oct 28 (per Mely): Park info (office hours, emergencies, after-hours note, rules).
+  const [parkInfo, setParkInfo] = useState<ParkInfoData | null>(null);
   function loadLeaseAddenda(id: string) {
     fetchLeaseAddenda(id).then((r) => { setLeaseAddenda(r.addenda); setAddendaLandlord(r.landlord); }).catch(() => setLeaseAddenda([]));
   }
@@ -362,6 +368,7 @@ export default function ResidentDashboard() {
     // would silently make autopayAvailable always false, hiding the
     // Autopay section regardless of the real setting. Moved to a
     // session-guarded server route (Service Role Key).
+    fetchParkInfo(residentId).then(setParkInfo);
     const feeSettingsData = await fetch(`/api/portal/fee-settings?residentId=${residentId}`)
       .then((r) => r.json())
       .catch(() => null);
@@ -1334,6 +1341,8 @@ export default function ResidentDashboard() {
                   unreadNotifs.length ? unreadNotifs[0].message : announcements[0] ? announcements[0].message : notifications[0]?.message,
                 ]} />
               </div>
+              {/* Oct 28 (per Mely): emergency phone, 911, today's office hours — full details in Park info */}
+              <ParkInfoHomeCard data={parkInfo} onOpen={() => openSection("info")} />
             </>)}
 
             {section === "pay" && (<>
@@ -2215,10 +2224,12 @@ export default function ResidentDashboard() {
               )}
             </>)}
 
+            {section === "info" && <ParkInfoSection data={parkInfo} />}
+
             {section === "more" && (<>
               <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" />
               <div className="rp-more-list">
-                {(["household", "requests"] as SectionId[]).filter((id) => id !== "requests" || requestsVisible).map((id) => {
+                {(["household", "requests", "info"] as SectionId[]).filter((id) => id !== "requests" || requestsVisible).map((id) => {
                   const x = SECTIONS.find((s) => s.id === id)!;
                   return <button key={id} type="button" onClick={() => openSection(id)}><NavIcon d={x.icon} /><span>{x.label}</span><Badge n={badge[id]} /><span className="rp-attn-go">→</span></button>;
                 })}

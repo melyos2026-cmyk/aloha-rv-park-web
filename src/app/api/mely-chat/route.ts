@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { PORTAL_INFO_KEY, afterHoursSentence, normalizePortalInfo, portalInfoForChat } from "@/lib/portalInfo";
 import { createClient } from "@supabase/supabase-js";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
@@ -367,6 +368,9 @@ export async function POST(req: NextRequest) {
     // Oct 28 (per Mely): only point residents to portal maintenance requests when the park has
     // "Residents can send maintenance requests from their portal" ON (default off).
     let portalMaintenanceOn = false;
+    // Oct 28 (per Mely): the park's Resident Portal Info (office hours, emergency steps, after-hours fee),
+    // the same data the resident portal's "Park info" shows. Empty until the park saves it.
+    let portalInfoContext = "";
     if (company?.id) {
       const { data: parkSettings } = await supabaseAdmin
         .from("park_settings")
@@ -376,6 +380,16 @@ export async function POST(req: NextRequest) {
 
       const defaults = parkSettings?.lease_defaults as Record<string, any> | undefined;
       portalMaintenanceOn = defaults?.portal_maintenance_requests === true;
+      if (defaults?.[PORTAL_INFO_KEY]) {
+        const { data: fees } = await supabaseAdmin.from("company_fee_settings").select("after_hours_fee, charge_after_hours").eq("company_id", company.id).maybeSingle();
+        portalInfoContext = `\n\nOffice hours, phones and emergencies (set by the park, always current — these replace any other office hours above):\n` + portalInfoForChat({
+          info: normalizePortalInfo(defaults[PORTAL_INFO_KEY], company.park_id),
+          configured: true,
+          officePhone: phone,
+          emergencyPhone: emergencyPhone || phone,
+          afterHours: afterHoursSentence(fees ? fees.charge_after_hours !== false : true, Number(fees?.after_hours_fee ?? 25)),
+        }) + `\nFor anything life-threatening always say to call 911 first. Give the park emergency line only for real emergencies, never for general questions.`;
+      }
       if (defaults) {
         // Oct 19 (per Mely): check-in / check-out times, live from Lease Defaults.
         const fmt12 = (t: string) => {
@@ -524,7 +538,7 @@ If someone asks how to get this for their own park, about the platform, or about
     // This route serves every company, so these Aloha-specific facts are only
     // included for Aloha (other parks use their own Notes for Mely).
     const isAloha = company?.park_id === "aloha";
-    const officeHoursContext = !isAloha ? "" : `\n\nOffice hours (Eastern Time): Monday to Friday 10:00 AM to 5:00 PM, Saturday 10:00 AM to 3:00 PM, Sunday closed. Anything that needs the office (propane refills, storage, questions) happens during these hours. If someone asks when they can come, call, or get something done, give these hours and use the current date and time above to say whether the office is open right now.`;
+    const officeHoursContext = portalInfoContext || (!isAloha ? "" : `\n\nOffice hours (Eastern Time): Monday to Friday 10:00 AM to 5:00 PM, Saturday 10:00 AM to 3:00 PM, Sunday closed. Anything that needs the office (propane refills, storage, questions) happens during these hours. If someone asks when they can come, call, or get something done, give these hours and use the current date and time above to say whether the office is open right now.`);
 
     const propaneRulesContext = !isAloha ? "" : `\n\nPropane: the park only REFILLS propane tanks that people bring themselves. It does not sell tanks and it does not have a self-serve propane station. Refills are done during office hours. When someone asks about propane, give the refill price for their tank size from the data above, say they bring their own tank to be refilled, and give the office hours. Never say the park sells tanks or that they can pick one up. If a propane price written in a map icon differs from the "Propane prices" list, always use the "Propane prices" list (it is the official, current price the checkout charges).`;
 
