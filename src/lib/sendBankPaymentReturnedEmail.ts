@@ -81,7 +81,7 @@ export async function sendBankPaymentReturnedEmail(p: {
     if (p.invoicesOwedAgain) items.push(`<li>The ${invoiceText} ${invoices.length === 1 ? "is" : "are"} <strong>owed again</strong>.</li>`);
     if (p.feeAdded) {
       const parts = p.feeBankPart != null && p.feeServicePart != null
-        ? ` (${money(p.feeBankPart)} bank fee plus a ${money(p.feeServicePart)} service charge allowed by Florida law)`
+        ? ` (the returned-payment processing cost plus a ${money(p.feeServicePart)} service charge allowed by Florida law)`
         : p.feeExplanation ? ` (${escapeHtml(p.feeExplanation.replace(/^Returned payment fee /, ""))})` : "";
       items.push(`<li>A <strong>${money(p.feeAmount ?? 0)}</strong> returned-payment fee${parts} was added to your balance.</li>`);
     }

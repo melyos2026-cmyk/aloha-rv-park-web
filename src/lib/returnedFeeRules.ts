@@ -113,20 +113,20 @@ export function returnedPaymentFee(s: ReturnedFeeSettings, invoiceAmount: number
     total = Math.max(RETURNED_BANK_COST, r2(t));
     // A plain flat $4.00 (the bank's own charge — older payments / marinas before their rule is set).
     const bankCostOnly = r2(s.flat) <= RETURNED_BANK_COST && !(s.percent > 0) && total === RETURNED_BANK_COST;
-    description = bankCostOnly ? `Returned bank payment fee (${usd2(RETURNED_BANK_COST)} bank fee)` : `Returned payment fee per ${companyName || "the"} fee schedule`;
+    description = bankCostOnly ? `Returned bank payment fee (processing cost)` : `Returned payment fee per ${companyName || "the"} fee schedule`;
   } else {
     serviceCharge = floridaServiceCharge(amount);
     total = r2(RETURNED_BANK_COST + serviceCharge);
-    description = `Bank returned payment ${usd2(amount)} (${usd2(RETURNED_BANK_COST)} bank fee + ${usd2(serviceCharge)} service charge, Fla. Stat. 68.065)`;
+    description = `Bank returned payment ${usd2(amount)} (returned-payment processing cost + ${usd2(serviceCharge)} service charge, Fla. Stat. 68.065)`;
   }
   const melyosShare = melyosShareOfReturnedFee(s, total);
   return { total, melyosShare, companyShare: r2(total - melyosShare), bankFee: RETURNED_BANK_COST, serviceCharge, description };
 }
 
 // The rule in words, without "If your bank returns a payment," — e.g. "a returned-payment fee of
-// $29–$35 applies ($4 bank fee plus a service charge allowed by Florida law)".
+// $29–$35 applies (the returned-payment processing cost plus a service charge allowed by Florida law)".
 export function returnedFeePhrase(s: ReturnedFeeSettings): string {
-  if (s.mode !== "custom") return "a returned-payment fee of $29–$35 applies ($4 bank fee plus a service charge allowed by Florida law)";
+  if (s.mode !== "custom") return "a returned-payment fee of $29–$35 applies (the returned-payment processing cost plus a service charge allowed by Florida law)";
   const capText = s.cap !== null && s.cap !== undefined ? `, up to ${usd(s.cap)}` : "";
   if (s.percent > 0) return `a returned-payment fee of ${usd(Math.max(s.flat, RETURNED_BANK_COST))} or ${r2(s.percent)}% of the invoice amount, whichever is greater${capText}, applies`;
   return `a returned-payment fee of ${usd(Math.max(s.flat, RETURNED_BANK_COST))} applies`;

@@ -7,7 +7,7 @@
 // greater, applies". The Florida standard below is only the fallback until it loads.
 // Client-safe (no server imports) — the portal components import it from here.
 export const RV_RETURNED_ACH_FEE_PHRASE =
-  "a returned-payment fee of $29–$35 applies ($4 bank fee plus a service charge allowed by Florida law)";
+  "a returned-payment fee of $29–$35 applies (the returned-payment processing cost plus a service charge allowed by Florida law)";
 export const RV_RETURNED_ACH_FEE_DISCLOSURE = `If your bank returns a payment, ${RV_RETURNED_ACH_FEE_PHRASE}.`;
 export function returnedFeeSentence(phrase?: string | null) {
   return `If your bank returns a payment, ${phrase || RV_RETURNED_ACH_FEE_PHRASE}.`;
