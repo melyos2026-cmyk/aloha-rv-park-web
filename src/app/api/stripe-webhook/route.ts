@@ -7,6 +7,7 @@ import { createCheckrInvitation } from "@/lib/checkr";
 import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+import { notifyAdminBellOnce } from "@/lib/adminBell";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { RETURNED_ACH_FEE_CHARGE_TYPE, returnedPaymentFee, returnedFeeForReturn, insertReturnedFeeLine, FLAT_FOUR_RETURNED_FEE, billCompanyForReturnedPayment } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
@@ -761,6 +762,13 @@ async function handleWebhook(req: Request) {
               : `${who} disputed a $${amount} card payment with their bank (reason: ${dispute.reason || "not given"}). A $${disputeFee} chargeback fee was added to MelyOS Fees Owed. Respond in Stripe before ${dispute.evidence_details?.due_by ? new Date(dispute.evidence_details.due_by * 1000).toLocaleDateString("en-US") : "the deadline"} to try to win it.`,
           });
         }
+        // Oct 29 (per Mely — Notification Preferences): the admin BELL too (critical — always shown),
+        // once per dispute, scoped to this company. Best-effort; never blocks the steps here.
+        await notifyAdminBellOnce({
+          companyId, onceKey: `bell:dispute:${dispute.id}`, updateType: "payment_dispute", ref: dispute.id,
+          residentName: who,
+          message: `${who} disputed a $${amount} ${isBank ? "bank (ACH)" : "card"} payment (reason: ${dispute.reason || "not given"}). See System Health for what to do. Ref ${dispute.id}.`,
+        });
         // A bank (ACH) dispute is often LOST the moment it opens: reopen the RV invoices it paid.
         if (isBank && dispute.status === "lost" && charge?.payment_intent) {
           const piId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
@@ -1160,6 +1168,17 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
     companyId, kind: "rv", payerName: resident?.full_name || null, amount: (session.amount_total || 0) / 100,
     paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
   });
+
+  // Oct 29 (per Mely — Notification Preferences): also the admin BELL (critical — always shown),
+  // once per payment (PaymentIntent, else session), scoped to this company. Best-effort.
+  {
+    const piRef = (typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id) || session.id;
+    await notifyAdminBellOnce({
+      companyId, onceKey: `bell:ach_returned:${piRef}`, updateType: "ach_payment_returned", ref: piRef,
+      residentId: residentId || null, residentName: resident?.full_name || null,
+      message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${((session.amount_total || 0) / 100).toFixed(2)} was returned by the bank. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} owed again — see System Health. Ref ${piRef}.`,
+    });
+  }
 
   // One System Health issue per returned payment (a retry after a failure above doesn't add another).
   const { data: alreadyLogged } = await supabase

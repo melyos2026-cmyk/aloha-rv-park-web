@@ -127,5 +127,11 @@ export async function POST(req: Request) {
     ({ error } = await supabaseAdmin.from("rv_waitlist").insert(rest));
   }
   if (error) return NextResponse.json({ error: "Could not save your request. Please try again or call the office." }, { status: 500 });
+  // Oct 29 (per Mely — Notification Preferences): tell the office in the admin bell. Best-effort;
+  // a repeat sign-up with the same email returned above, so this is once per person.
+  await supabaseAdmin.from("resident_update_notifications").insert({
+    company_id: park.id, resident_name: fullName, update_type: "waitlist_signup",
+    message: `${fullName} joined the waitlist (#${position}) — ${length} ft RV, ${stay}${start ? `, from ${start}` : ""}.`,
+  }).then(() => null, () => null);
   return NextResponse.json({ ok: true });
 }

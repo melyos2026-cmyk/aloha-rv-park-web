@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminEmailsFor } from "@/lib/adminBell";
 import { invoiceGenerateDay } from "@/lib/invoicePayable";
 import { PORTAL_INFO_KEY, afterHoursSentence, defaultPortalInfo, normalizePortalInfo, portalInfoForChat } from "@/lib/portalInfo";
 import { createClient } from "@supabase/supabase-js";
@@ -684,13 +685,11 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
       // Oct 29 (security review): anyone can make the chat flag an "emergency" — staff emails for
       // one park are capped at 5 per hour (the System Health entry above is still recorded).
       if (process.env.RESEND_API_KEY && !(await tooManyForKey("mely-emergency-email", company.id, 5))) {
-        const { data: admins } = await supabaseAdmin
-          .from("admin_users")
-          .select("email")
-          .eq("company_id", company.id)
-          .eq("notify_maintenance", true);
+        // Oct 29 (Notification Preferences): each admin's own Email choice for "Emergency reported in
+        // the website chat" (falls back to the old notify_maintenance column). Demo companies: none.
+        const admins = (await adminEmailsFor(company.id, "emergency_report")).map((email) => ({ email }));
         const lastUserMessage = [...(messages || [])].reverse().find((m: any) => m.role === "user")?.text || "";
-        for (const admin of admins || []) {
+        for (const admin of admins) {
           fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: {
