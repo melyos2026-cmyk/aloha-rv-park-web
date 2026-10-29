@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { isDemoCompanyRow } from "@/lib/adminBell";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -16,10 +17,12 @@ export async function sendResidentNotificationEmail(
   try {
     const [{ data: resident }, { data: company }] = await Promise.all([
       supabaseAdmin.from("resident_accounts").select("full_name, email").eq("id", residentId).maybeSingle(),
-      supabaseAdmin.from("companies").select("company_name, logo_url, primary_color").eq("id", companyId).maybeSingle(),
+      supabaseAdmin.from("companies").select("company_name, logo_url, primary_color, is_demo, domain").eq("id", companyId).maybeSingle(),
     ]);
 
     if (!resident?.email) return;
+    // Oct 29: demo companies never send real email (same rule as melyos-builder's copy). Unreadable company → not sent.
+    if (!company || isDemoCompanyRow(company)) return;
 
     const brandColor = company?.primary_color || "#16a34a";
     const companyName = company?.company_name || "Your Park";

@@ -37,6 +37,16 @@ async function notifyOffice(resident: { id: string; company_id: string | null; f
   }).then(() => null, () => null);
 }
 
+// Oct 29: the RESIDENT's own bell too (resident_facing) — the dashboard's "Autopay could not charge
+// your card" notice reads this row. Card declines send no email, so this is how they find out.
+async function notifyResidentAutopayFailed(resident: { id: string; company_id: string | null }) {
+  if (!resident.company_id) return;
+  await supabase.from("resident_update_notifications").insert({
+    company_id: resident.company_id, resident_id: resident.id, resident_name: null, update_type: "autopay_failed", resident_facing: true,
+    message: "Autopay could not charge your card, so autopay was turned off. Please pay your invoice by hand, or update your card and turn autopay on again.",
+  }).then(() => null, () => null);
+}
+
 async function reopenClaim(invoiceId: string, residentId: string, stamp: string) {
   // Only THIS claim's row (same processing_since stamp) — never a newer bank payment's.
   let r = await supabase.from("resident_invoices").update({ status: "Pending" }).eq("id", invoiceId).eq("resident_id", residentId).eq("status", "Processing").eq("processing_since", stamp).select("id");
@@ -88,6 +98,7 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   if (pm.type !== "card" || pmCustomer !== resident.stripe_customer_id) {
     await supabase.from("resident_accounts").update({ autopay_enabled: false }).eq("id", resident.id).eq("stripe_payment_method_id", resident.stripe_payment_method_id);
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} — the saved card is not on their account any more. Autopay has been turned off for them.`);
+    await notifyResidentAutopayFailed(resident);
     await logSystemHealthIssue({ companyId, residentId: resident.id, issueType: "rv_card_autopay_failed", source: "process_autopay",
       message: `Card autopay for ${resident.full_name || "a resident"} was not charged: the saved payment method is not a card attached to their own Stripe customer. Autopay was turned off; they need to set it up again.` });
     return { status: "failed", amount, detail: "payment_method_not_theirs" };
@@ -164,6 +175,7 @@ async function declined(resident: Resident, invoice: { id: string; due_date?: st
   // A declined card is not retried every day without the resident knowing — autopay off (as before).
   await supabase.from("resident_accounts").update({ autopay_enabled: false }).eq("id", resident.id);
   await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} (invoice due ${invoice.due_date || ""}, ${money(chargeAmount)}) — autopay has been turned off for them.`);
+  await notifyResidentAutopayFailed(resident);
   if (resident.company_id) {
     await logSystemHealthIssue({ companyId: resident.company_id, residentId: resident.id, issueType: "rv_card_autopay_failed", source: "process_autopay",
       message: `Card autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}, invoice ${invoice.invoice_month || invoice.id}) failed: ${why}. Nothing was charged; ${back.error ? `the invoice could NOT be set back to Pending (${back.error.message}) — set it back by hand` : "the invoice is Pending again"} and autopay was turned off.${piId ? ` Stripe payment ${piId}.` : ""}` });

@@ -1101,8 +1101,12 @@ export default function ResidentDashboard() {
   const overdueTotal = overdueInvoices.reduce((s: number, inv: any) => s + Number(inv.total_amount || 0), 0);
   const unreadNotifs = notifications.filter((n: any) => !n.resident_read_at);
   // Autopay failed = the latest autopay charge notice is a failure and there's still a balance.
+  // Oct 29: the failure notice is a resident_facing row (lib/rvCardAutopay.ts / rvBankAutopay.ts) and a
+  // failure TURNS AUTOPAY OFF — so it shows while autopay is still off, there's a balance, and it's recent
+  // (turning autopay back on, or paying, clears it).
   const lastAutopayNotice = notifications.find((n: any) => n.update_type === "autopay_failed" || n.update_type === "autopay_charged");
-  const autopayFailed = autopayEnabled && outstandingBalance > 0 && lastAutopayNotice?.update_type === "autopay_failed";
+  const autopayFailed = !autopayEnabled && outstandingBalance > 0 && lastAutopayNotice?.update_type === "autopay_failed"
+    && Date.now() - Date.parse(lastAutopayNotice.created_at || "") < 45 * 86400000;
   const householdPeople = occupants.filter((p: any) => p.occupant_type !== "visitor");
   const visitorPeople = occupants.filter((p: any) => p.occupant_type === "visitor");
   const bgTodo = householdPeople.filter((p: any) => {
@@ -1213,7 +1217,7 @@ export default function ResidentDashboard() {
                         }}
                         style={{ flex: 1, cursor: "pointer" }}
                       >
-                        <div>{n.message}</div>
+                        <div>{err(n.message)}</div>
                         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
                           {dateTime(n.created_at, { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })}
                         </div>

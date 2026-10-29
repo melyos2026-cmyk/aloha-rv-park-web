@@ -299,6 +299,9 @@ export function ptr(key: string, vars?: Vars) {
 // Dictionary: English → [Spanish, Brazilian Portuguese]
 // ---------------------------------------------------------------------------------------------
 const DICT: Record<string, [string, string]> = {
+  // Oct 29: resident bell notices written by lib/rvCardAutopay.ts / lib/rvBankAutopay.ts (exact text).
+  "Autopay could not charge your card, so autopay was turned off. Please pay your invoice by hand, or update your card and turn autopay on again.": ["El pago automático no pudo cobrar su tarjeta, así que se desactivó. Pague su factura manualmente, o actualice su tarjeta y vuelva a activar el pago automático.", "O pagamento automático não conseguiu cobrar seu cartão, então foi desativado. Pague sua fatura manualmente, ou atualize seu cartão e ative o pagamento automático novamente."],
+  "Autopay could not take your bank payment, so autopay was turned off. Please pay your invoice by hand, or set up autopay again.": ["El pago automático no pudo cobrar de su cuenta bancaria, así que se desactivó. Pague su factura manualmente, o configure el pago automático de nuevo.", "O pagamento automático não conseguiu debitar sua conta bancária, então foi desativado. Pague sua fatura manualmente, ou configure o pagamento automático novamente."],
   // ---- Shared / general ----
   "Resident Portal": ["Portal de residentes", "Portal do morador"],
   "Language": ["Idioma", "Idioma"],

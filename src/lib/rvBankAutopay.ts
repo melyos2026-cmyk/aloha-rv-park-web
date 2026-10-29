@@ -133,6 +133,16 @@ async function notifyOffice(resident: { id: string; company_id: string | null; f
   }).then(() => null, () => null);
 }
 
+// Oct 29: the RESIDENT's own bell too (resident_facing) — the dashboard's "Autopay could not take
+// your card" notice reads this row. (The returned-payment email still goes out as before.)
+async function notifyResidentAutopayFailed(resident: { id: string; company_id: string | null }) {
+  if (!resident.company_id) return;
+  await supabase.from("resident_update_notifications").insert({
+    company_id: resident.company_id, resident_id: resident.id, resident_name: null, update_type: "autopay_failed", resident_facing: true,
+    message: "Autopay could not take your bank payment, so autopay was turned off. Please pay your invoice by hand, or set up autopay again.",
+  }).then(() => null, () => null);
+}
+
 // One System Health issue per resident per kind: not again while one is open, or one was logged
 // since `since`.
 async function logOncePerResident(p: { companyId: string; residentId: string; issueType: string; since: string; message: string }) {
@@ -272,6 +282,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   if (pm.type !== "us_bank_account" || pmCustomer !== resident.stripe_customer_id) {
     await turnOffAutopay(resident, resident.stripe_payment_method_id);
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} — the saved bank account is no longer usable. Autopay has been turned off for them.`);
+    await notifyResidentAutopayFailed(resident);
     await logSystemHealthIssue({
       companyId, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
       message: `Bank autopay for ${resident.full_name || "a resident"} was not charged: the saved payment method is not their bank account any more. Autopay was turned off; they need to set it up again.${pmTag(resident.stripe_payment_method_id)}`,
@@ -354,6 +365,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     await setClaim({ status: "failed", payment_intent_id: piId || null, note: why.slice(0, 300) });
     const autopayOff = await turnOffAutopay(resident, resident.stripe_payment_method_id);
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} (bank, ${money(chargeAmount)}): ${why}. Autopay has been turned off for them.`);
+    await notifyResidentAutopayFailed(resident);
     await logSystemHealthIssue({
       companyId, residentId: resident.id, issueType: "rv_bank_autopay_failed", source: "process_autopay",
       message: `Bank autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}) was refused by Stripe/the bank before it was sent: ${why}. Nothing was taken and no returned-payment fee was added; the invoice(s) are Pending again and autopay was turned off.${piId ? ` Stripe payment ${piId}.` : ""}${pmTag(resident.stripe_payment_method_id)}`,
@@ -700,6 +712,7 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
   await notifyOffice(resident, "autopay_failed", samePm
     ? `Autopay bank payment for ${resident.full_name || "a resident"} ${neverSubmitted ? "failed" : "was RETURNED by the bank"} — autopay has been turned off for them.`
     : `An older autopay bank payment for ${resident.full_name || "a resident"} (from a previously saved bank account) ${neverSubmitted ? "failed" : "was RETURNED by the bank"}. Their current autopay was not changed.`);
+  if (samePm) await notifyResidentAutopayFailed(resident);
   const reason = pi.last_payment_error?.message || "";
   const n = invoiceIds.length === 1 ? "The invoice is" : "The invoices are";
   await logSystemHealthIssue({

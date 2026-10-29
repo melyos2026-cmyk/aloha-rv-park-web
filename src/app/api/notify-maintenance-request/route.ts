@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { portalMaintenanceEnabled, MAINTENANCE_OFF_MESSAGE } from "@/lib/portalMaintenanceFlag";
 
 // POST /api/notify-maintenance-request
 // Body: { companyId, residentId, subject, priority }
@@ -51,6 +52,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Resident does not belong to this company." }, { status: 403 });
     }
     residentName = resident.full_name || null;
+  }
+
+  // Oct 29: the park's "maintenance requests from the portal" switch — when it's OFF no request can be
+  // created (create-maintenance-request refuses), so no bell either (no fake alerts by calling this directly).
+  if (!(await portalMaintenanceEnabled(companyId))) {
+    return NextResponse.json({ error: MAINTENANCE_OFF_MESSAGE, maintenanceRequestsDisabled: true }, { status: 403 });
   }
 
   const { error } = await supabase.from("resident_update_notifications").insert({
