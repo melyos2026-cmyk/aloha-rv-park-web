@@ -984,6 +984,8 @@ const DICT: Record<string, [string, string]> = {
   "Could not open the resident portal. Please try again.": ["No se pudo abrir el portal de residentes. Inténtelo de nuevo.", "Não foi possível abrir o portal do morador. Tente novamente."],
   "View as resident": ["Ver como residente", "Ver como morador"],
   "Park staff only": ["Solo para el personal del parque", "Somente para a equipe do parque"],
+  "Read-only view": ["Vista de solo lectura", "Visualização somente leitura"],
+  "You are about to see {name}'s portal exactly as they see it. Nothing can be paid, signed or changed.": ["Va a ver el portal de {name} tal como lo ve el residente. No se puede pagar, firmar ni cambiar nada.", "Você vai ver o portal de {name} exatamente como o residente vê. Nada pode ser pago, assinado ou alterado."],
   "You are opening {name}'s portal as park staff, read only. Nothing can be paid, signed or changed.": ["Está abriendo el portal de {name} como personal del parque, en modo de solo lectura. No se puede pagar, firmar ni cambiar nada.", "Você está abrindo o portal de {name} como equipe do parque, somente leitura. Nada pode ser pago, assinado ou alterado."],
   "this resident": ["este residente", "este morador"],
   "I'm not park staff": ["No soy personal del parque", "Não sou da equipe do parque"],

@@ -74,12 +74,12 @@ export default function ViewAsReadyPage() {
         ) : pending ? (
           <>
             {icon}
-            <h1>{t("Park staff only")}</h1>
+            <h1>{t("Read-only view")}</h1>
             <p>
-              {t("You are opening {name}'s portal as park staff, read only. Nothing can be paid, signed or changed.", { name: pending.name || t("this resident") })}
+              {t("You are about to see {name}'s portal exactly as they see it. Nothing can be paid, signed or changed.", { name: pending.name || t("this resident") })}
             </p>
             <div className="va-btns">
-              <button type="button" onClick={cancel} disabled={busy} className="va-btn-2">{t("I'm not park staff")}</button>
+              <button type="button" onClick={cancel} disabled={busy} className="va-btn-2">{t("Cancel")}</button>
               <button type="button" onClick={open} disabled={busy} className="va-btn-1">{t("Open read-only view")}</button>
             </div>
           </>
