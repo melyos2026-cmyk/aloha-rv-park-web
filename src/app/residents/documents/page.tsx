@@ -32,7 +32,7 @@ function formatDate(dateStr: string | null, date: PortalI18n["date"]) {
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   general: "General",
-  lease: "Lease Agreement",
+  lease: "Site Rental Agreement",
   id: "ID",
   insurance: "Insurance",
   registration: "Registration",
@@ -347,7 +347,7 @@ function DocumentsContent() {
         <div style={cardStyle}>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>{t("My Documents")}</h1>
           <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
-            {t("View and download your signed lease agreement(s) and other documents on file.")}
+            {t("View and download your signed site rental agreement(s) and other documents on file.")}
           </p>
           {/* Signed leases / agreements are kept exactly as signed (English). */}
           {lang !== "en" && <p style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>{t("These documents are in English; they are the versions you signed.")}</p>}
@@ -360,7 +360,7 @@ function DocumentsContent() {
         )}
 
         <div style={cardStyle}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>{t("LEASE AGREEMENT(S)")}</p>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>{t("SITE RENTAL AGREEMENT(S)")}</p>
           {leases.length === 0 ? (
             <p style={{ color: "#000" }}>{t("No lease documents on file yet.")}</p>
           ) : (
@@ -374,7 +374,7 @@ function DocumentsContent() {
                 >
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 17, color: "#000", marginBottom: 6 }}>
-                      {t("Lease Agreement")}
+                      {t("Site Rental Agreement")}
                     </div>
                     <div style={{ fontSize: 14, color: "#6b7280" }}>
                       {formatDate(lease.lease_start, date)} — {formatDate(lease.lease_end, date)}

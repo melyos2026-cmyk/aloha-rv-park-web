@@ -719,7 +719,7 @@ const DICT: Record<string, [string, string]> = {
   "Could not save pets: {detail}": ["No se pudieron guardar las mascotas: {detail}", "Não foi possível salvar os animais: {detail}"],
   "Could not save pets (unexpected error): {detail}": ["No se pudieron guardar las mascotas (error inesperado): {detail}", "Não foi possível salvar os animais (erro inesperado): {detail}"],
   "📄 Documents": ["📄 Documentos", "📄 Documentos"],
-  "View and print your signed lease agreement and any signed resident agreements.": ["Vea e imprima su contrato de arrendamiento firmado y los acuerdos de residente firmados.", "Veja e imprima seu contrato de locação assinado e os acordos de morador assinados."],
+  "View and print your signed site rental agreement and any signed resident agreements.": ["Vea e imprima su contrato de alquiler del espacio firmado y los acuerdos de residente firmados.", "Veja e imprima seu contrato de locação do espaço assinado e os acordos de morador assinados."],
   "🚪 Moving Out?": ["🚪 ¿Se muda?", "🚪 Vai se mudar?"],
   "Let us know your planned move-out date.": ["Indíquenos la fecha en que planea mudarse.", "Informe a data em que planeja se mudar."],
   "Requested move-out date:": ["Fecha de mudanza solicitada:", "Data de mudança solicitada:"],
@@ -1153,7 +1153,7 @@ const DICT: Record<string, [string, string]> = {
 
   // ---- Documents ----
   "General": ["General", "Geral"],
-  "Lease Agreement": ["Contrato de arrendamiento", "Contrato de locação"],
+  "Site Rental Agreement": ["Contrato de alquiler del espacio", "Contrato de locação do espaço"],
   "ID": ["Identificación", "Documento de identidade"],
   "Insurance": ["Seguro", "Seguro"],
   "Registration": ["Registro del vehículo", "Registro do veículo"],
@@ -1174,8 +1174,8 @@ const DICT: Record<string, [string, string]> = {
   "Could not remove document (unexpected error): {detail}": ["No se pudo quitar el documento (error inesperado): {detail}", "Não foi possível remover o documento (erro inesperado): {detail}"],
   "Loading your documents...": ["Cargando sus documentos...", "Carregando seus documentos..."],
   "My Documents": ["Mis documentos", "Meus documentos"],
-  "View and download your signed lease agreement(s) and other documents on file.": ["Vea y descargue su(s) contrato(s) de arrendamiento firmado(s) y otros documentos registrados.", "Veja e baixe seu(s) contrato(s) de locação assinado(s) e outros documentos cadastrados."],
-  "LEASE AGREEMENT(S)": ["CONTRATO(S) DE ARRENDAMIENTO", "CONTRATO(S) DE LOCAÇÃO"],
+  "View and download your signed site rental agreement(s) and other documents on file.": ["Vea y descargue su(s) contrato(s) de alquiler del espacio firmado(s) y otros documentos registrados.", "Veja e baixe seu(s) contrato(s) de locação do espaço assinado(s) e outros documentos cadastrados."],
+  "SITE RENTAL AGREEMENT(S)": ["CONTRATO(S) DE ALQUILER DEL ESPACIO", "CONTRATO(S) DE LOCAÇÃO DO ESPAÇO"],
   "No lease documents on file yet.": ["Todavía no hay contratos registrados.", "Ainda não há contratos cadastrados."],
   "{rent}/mo · Deposit: {deposit}": ["{rent}/mes · Depósito: {deposit}", "{rent}/mês · Depósito: {deposit}"],
   "📄 View / Print PDF": ["📄 Ver / imprimir PDF", "📄 Ver / imprimir PDF"],
