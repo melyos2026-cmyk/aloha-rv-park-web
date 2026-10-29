@@ -15,6 +15,7 @@ type Payment = {
 };
 
 type ConfirmationData = {
+  limited?: boolean; // Oct 29: not signed in as this payment's resident — status only
   paymentStatus: string;
   amountPaid: number;
   receiptNumber: string;
@@ -167,6 +168,27 @@ function PaymentReviewContent() {
     // Oct 28 (per Mely): a bank (ACH) payment is received but not cleared yet ("unpaid" until the
     // bank confirms, 3–5 business days). Don't call it successful yet.
     const bankProcessing = confirmation.paymentStatus === "unpaid";
+
+    // Oct 29 (security review): details are only shown to the signed-in resident who paid.
+    if (confirmation.limited) {
+      return (
+        <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
+          <div style={{ maxWidth: 720, margin: "0 auto" }}>
+            <div style={{ ...cardStyle, textAlign: "center" }}>
+              <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>
+                {confirmation.paymentStatus === "paid" ? "Payment Received" : bankProcessing ? "Bank Payment Received" : "Payment Status"}
+              </h1>
+              <p style={{ marginTop: 8, fontSize: 14, color: "#111827" }}>
+                {confirmation.paymentStatus === "paid" || bankProcessing
+                  ? "Thank you. Sign in to your resident portal to see the receipt and your balance."
+                  : "This payment hasn't been completed. Sign in to your resident portal to check your balance."}
+              </p>
+              <a href="/login" style={{ display: "inline-block", marginTop: 16, color: "#0f766e", fontWeight: 600 }}>Sign in</a>
+            </div>
+          </div>
+        </main>
+      );
+    }
 
     return (
       <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { signStoredFile } from "@/lib/storedFile";
 
 // GET /api/portal/lease-document-url?residentId=...&leaseId=...
 // Sep 25 (per Mely — full security audit, "no quiero huecos"): lease PDFs
@@ -32,13 +33,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "This lease has no PDF on file." }, { status: 404 });
   }
 
-  const { data: signed, error } = await supabase.storage
-    .from("resident-documents")
-    .createSignedUrl(lease.lease_document_url, 60 * 5);
-
-  if (error || !signed) {
-    return NextResponse.json({ error: error?.message || "Could not generate a link for this file." }, { status: 500 });
+  // Oct 29: also opens older leases that still hold a (now private) lease-documents URL.
+  const url = await signStoredFile(lease.lease_document_url, 60 * 5);
+  if (!url) {
+    return NextResponse.json({ error: "Could not generate a link for this file." }, { status: 500 });
   }
 
-  return NextResponse.json({ url: signed.signedUrl });
+  return NextResponse.json({ url });
 }

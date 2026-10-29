@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const MAX_QTY: Record<string, number> = { "20lb": 20, "30lb": 20, "40lb": 20, forklift: 20, motorhome: 200 };
@@ -145,21 +146,25 @@ export async function POST(req: NextRequest) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(company.id); if (demoBlocked) return demoBlocked; }
+    if (!connectSplit) { const refused = await unsplitRefusal(company.id, "propane"); if (refused) return refused; } // Oct 29 (H1)
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: customerEmail || undefined,
       line_items: lineItems,
-      ...(connectSplit
-        ? {
-            payment_intent_data: {
+      payment_intent_data: {
+        metadata: parkShareMetadata(alohaShare), // Oct 29 (H1)
+        ...(connectSplit
+          ? {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
               transfer_data: { destination: connectSplit.connectedAccountId },
               ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       metadata: {
+        ...parkShareMetadata(alohaShare),
+        companyId: company.id,
         productId,
         quantity: String(rawQty),
         lotId: "",

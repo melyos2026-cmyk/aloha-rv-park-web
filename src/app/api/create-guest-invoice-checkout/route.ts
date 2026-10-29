@@ -5,6 +5,8 @@ import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError } from "@/lib/platformFee";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
+import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
+import { closeOtherInvoiceCheckouts } from "@/lib/invoiceCheckoutSessions";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -101,11 +103,14 @@ export async function POST(req: Request) {
     // Oct 28 (per Mely): a "Returned bank payment fee" line goes to MelyOS (below) and is not taxed.
     // Oct 28 (new model): the whole fee is never taxed; only MelyOS's part (if any) leaves the park's share.
     const { total: returnedFeesTotal, melyos: returnedAchFees } = await returnedAchFeeTotalsOnInvoices([invoice.id], resident?.company_id);
-    const taxAmount = taxEnabled ? Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) : 0;
+    // Oct 29 (live-money audit): whole cents (the webhook matches the tax line it adds against this).
+    const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
 
-    const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
+    const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? processingFee : 0)) * 100) / 100;
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://aloharvparkfl.com";
+    // Oct 29 (live-money audit — Low): the park's own name and website (was always Aloha's).
+    const { data: companyRow } = await supabase.from("companies").select("company_name, domain").eq("id", resident?.company_id || "").maybeSingle();
+    const siteUrl = companyRow?.domain ? `https://${String(companyRow.domain).replace(/^https?:\/\//, "").replace(/\/+$/, "")}` : (process.env.NEXT_PUBLIC_SITE_URL || "https://aloharvparkfl.com");
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
@@ -114,7 +119,7 @@ export async function POST(req: Request) {
           currency: "usd",
           unit_amount: Math.round(totalAmount * 100),
           product_data: {
-            name: "Aloha RV Park Balance",
+            name: `${companyRow?.company_name || "RV Park"} Balance`,
             description: invoiceLineDescription,
           },
         },
@@ -151,20 +156,27 @@ export async function POST(req: Request) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(resident?.company_id); if (demoBlocked) return demoBlocked; }
+    // Oct 29 (live-money audit H1): refused without a payout account only when the owner turned it on.
+    if (!connectSplit) { const refused = await unsplitRefusal(resident?.company_id, "invoice"); if (refused) return refused; }
+    // Oct 29 (live-money audit M14): close other open checkouts (portal or guest) for this invoice.
+    await closeOtherInvoiceCheckouts(stripe, { invoiceIds: [invoice.id], residentId: null });
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems,
-      ...(connectSplit
-        ? {
-            payment_intent_data: {
+      payment_intent_data: {
+        metadata: parkShareMetadata(alohaShare), // Oct 29 (H1)
+        ...(connectSplit
+          ? {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
               transfer_data: { destination: connectSplit.connectedAccountId },
               ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       metadata: {
+        ...parkShareMetadata(alohaShare),
+        source: "guest_link",
         resident_id: invoice.resident_id,
         invoice_ids: invoice.id,
         processing_fee_charged: passFeeToResident ? String(processingFee) : "0",

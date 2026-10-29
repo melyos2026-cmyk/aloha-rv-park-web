@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { removeStoredFiles } from "@/lib/storedFile";
 import { requireMatchingSession } from "@/lib/portalSession";
 
 // POST /api/portal/delete-document
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
     .eq("id", documentId)
     .maybeSingle();
   if (fullDoc?.file_url) {
-    await supabase.storage.from("resident-documents").remove([fullDoc.file_url]);
+    await removeStoredFiles([fullDoc.file_url]);
   }
 
   const { error } = await supabase.from("resident_documents").delete().eq("id", documentId);

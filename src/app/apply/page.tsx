@@ -7,7 +7,6 @@ import LeaseApplicationForm, {
   defaultParkRules,
   calculateProration,
 } from "@/components/LeaseApplicationForm";
-import { supabase } from "@/lib/supabase";
 import { useCompany } from "@/lib/CompanyContext";
 
 function naturalSort(a: { lot_name: string }, b: { lot_name: string }): number {
@@ -170,15 +169,14 @@ function ApplyPageInner() {
       .then((result) => setReturnedPaymentClause(result?.clause || null))
       .catch(() => {});
 
-    supabase
-      .from("park_settings")
-      .select(
-        "rent_due_day_policy, rent_due_day_fixed, high_season_start_month_day, high_season_end_month_day, lease_defaults"
-      )
-      .eq("company_id", company.id)
-      .single()
+    // Oct 29 (security review): read through a server route that returns only the public
+    // fields (the public key can no longer read park_settings.lease_defaults).
+    fetch(`/api/apply/park-settings?company_id=${company.id}`)
+      .then((res) => res.json().then((j) => ({ ok: res.ok, j })))
       .then(
-        ({ data: settingsData, error: settingsError }) => {
+        ({ ok, j }) => {
+          const settingsData: any = ok ? j?.settings : null;
+          const settingsError = !ok;
           if (!settingsError && settingsData) {
             setRentDuePolicy(
               (settingsData.rent_due_day_policy as

@@ -47,10 +47,18 @@ export async function POST(req: Request) {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const { error: updateError } = await supabaseAdmin
+  // Oct 29 (security): password_changed_at ends every portal session opened before this reset
+  // (lib/portalSession.ts). Until sec_auth.sql adds the column, the password still saves.
+  let { error: updateError } = await supabaseAdmin
     .from("resident_accounts")
-    .update({ portal_password: hashedPassword })
+    .update({ portal_password: hashedPassword, password_changed_at: new Date().toISOString() })
     .eq("id", resetRow.resident_id);
+  if (updateError && /password_changed_at/.test(updateError.message || "")) {
+    ({ error: updateError } = await supabaseAdmin
+      .from("resident_accounts")
+      .update({ portal_password: hashedPassword })
+      .eq("id", resetRow.resident_id));
+  }
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 400 });

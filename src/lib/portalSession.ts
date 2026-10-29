@@ -17,13 +17,15 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 // an extra env var to be added in Vercel first. Recommend Mely add a
 // dedicated PORTAL_SESSION_SECRET in Vercel when convenient, and this will
 // pick it up automatically.
-const SECRET =
-  process.env.PORTAL_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+// Oct 29 (security): never an empty key — with no secret configured nothing is
+// signed (login fails) and no cookie verifies (same rule as lib/marina/session.ts).
+const SECRET = process.env.PORTAL_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 const COOKIE_NAME = "portal_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function sign(payload: string): string {
+  if (!SECRET) throw new Error("PORTAL_SESSION_SECRET is not set.");
   return crypto.createHmac("sha256", SECRET).update(payload).digest("hex");
 }
 
@@ -66,7 +68,13 @@ export async function getPortalSession(
     .find((c) => c.startsWith(`${COOKIE_NAME}=`));
   if (!match) return null;
 
-  const value = decodeURIComponent(match.slice(COOKIE_NAME.length + 1));
+  if (!SECRET) return null;
+  let value = "";
+  try {
+    value = decodeURIComponent(match.slice(COOKIE_NAME.length + 1));
+  } catch {
+    return null;
+  }
   const parts = value.split(".");
   if (parts.length !== 4) return null;
   const [residentId, companyId, expiresAtStr, signature] = parts;
@@ -82,9 +90,11 @@ export async function getPortalSession(
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return null;
 
   // Oct 26 (security review): the resident must still exist and still have portal access.
+  // Oct 29 (security): "*" so password_changed_at is read when it exists (sec_auth.sql) without
+  // breaking anything in a database where it doesn't yet.
   let { data: r, error } = await supabaseAdmin
     .from("resident_accounts")
-    .select("company_id, portal_enabled, portal_access_ends_at, deleted_at")
+    .select("*")
     .eq("id", residentId)
     .maybeSingle();
   if (error) {
@@ -95,6 +105,12 @@ export async function getPortalSession(
   if (r.deleted_at || r.portal_enabled === false) return null;
   if (r.portal_access_ends_at && new Date(r.portal_access_ends_at) <= new Date()) return null;
   if (companyId && r.company_id !== companyId) return null;
+
+  // Oct 29 (security): a cookie issued before the password was last changed or reset is refused
+  // (a stolen/forgotten session ends when the resident changes the password). The cookie's issue
+  // time is its expiry minus the fixed 14-day lifetime.
+  const changedAt = (r as any).password_changed_at ? Date.parse((r as any).password_changed_at) : NaN;
+  if (Number.isFinite(changedAt) && expiresAt - MAX_AGE_SECONDS * 1000 < changedAt) return null;
 
   return { residentId, companyId: companyId || null };
 }

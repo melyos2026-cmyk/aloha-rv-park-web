@@ -1,4 +1,5 @@
 import { demoPaymentBlock } from "@/lib/demoPayments";
+import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
@@ -8,6 +9,8 @@ import {
   applicationHoldRef, attachSessionToHold, expireOlderSession, lotOpenForApplication, lotSessionExpiresAt,
   otherPaidHolder, releaseLotCheckoutHold, takeLotCheckoutHold, LOT_TAKEN_MESSAGE,
 } from "@/lib/lotCheckoutHold";
+import { tooManyFromIp, tooManyForKey } from "@/lib/marina/ipLimit";
+import { deviceHash, otherActiveHoldForApplicant, rememberHoldDevice } from "@/lib/applicantGuards";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -97,6 +100,15 @@ export async function POST(req: Request) {
         { error: "This application fee has already been paid." },
         { status: 400 }
       );
+    }
+
+    // Oct 29 (security review): each call can hold a lot for 36 minutes — flood limits per device
+    // and per park (counted in the database across every server).
+    if (await tooManyFromIp(req, `app-fee-checkout:${application.company_id}`, 15)) {
+      return NextResponse.json({ error: "Too many checkout attempts from this device. Please try again later or call the office." }, { status: 429 });
+    }
+    if (await tooManyForKey("app-fee-checkout-company", String(application.company_id), 120)) {
+      return NextResponse.json({ error: "Checkout is very busy right now. Please try again in a little while or call the office." }, { status: 429 });
     }
 
     // Aug 6 (per Mely's "semáforo" idea — check the light BEFORE letting
@@ -366,13 +378,23 @@ export async function POST(req: Request) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(application.company_id); if (demoBlocked) return demoBlocked; }
+    if (!connectSplit) { const refused = await unsplitRefusal(application.company_id, "application fee"); if (refused) return refused; } // Oct 29 (H1)
 
     // Oct 28 (per Mely — two people paying for the same lot at once): hold the lot for this
     // application while it checks out (atomic; 36 min, longer than the 31-min Stripe session).
     // Someone else holding it → 409. This same application again → its own hold is extended.
     const holdRef = applicationHoldRef(application.id);
     let hold: Awaited<ReturnType<typeof takeLotCheckoutHold>> | null = null;
+    const device = deviceHash(req);
     if (application.space_id && application.company_id) {
+      // Oct 29 (security review): one lot on hold per applicant — the same email, or the same
+      // device, can't hold a second lot at this park while another of their holds is active.
+      if (await otherActiveHoldForApplicant({ companyId: application.company_id, applicationId: application.id, email: application.email, device })) {
+        return NextResponse.json(
+          { error: "You already have another lot on hold while you check out. Finish that checkout, or wait about 30 minutes for it to expire, then try again." },
+          { status: 409 }
+        );
+      }
       hold = await takeLotCheckoutHold(application.space_id, application.company_id, holdRef);
       if (!hold.ok) {
         return NextResponse.json({ error: hold.message }, { status: hold.reason === "held" ? 409 : 503 });
@@ -393,7 +415,7 @@ export async function POST(req: Request) {
       // Stripe fee). The Connect split (application_fee_amount + transfer) happens at capture.
       payment_intent_data: {
         capture_method: "manual",
-        metadata: { lot_checkout: "application_fee", application_id: application.id, ...(application.company_id ? { company_id: application.company_id } : {}) },
+        metadata: { lot_checkout: "application_fee", application_id: application.id, ...(application.company_id ? { company_id: application.company_id } : {}), ...parkShareMetadata(alohaShare) }, // Oct 29 (H1): + park share
         ...(connectSplit
           ? {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
@@ -433,6 +455,7 @@ export async function POST(req: Request) {
 
     if (hold?.ok && hold.supported && application.space_id) {
       await attachSessionToHold(application.space_id, holdRef, session.id);
+      await rememberHoldDevice(application.id, device);
       // Their older still-open session (they went back and pressed Pay again) is closed AFTER the
       // hold points to the new one, so its "expired" event can't release the new hold.
       await expireOlderSession(hold.previousSessionId, session.id, "application_fee");

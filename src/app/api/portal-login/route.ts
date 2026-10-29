@@ -5,6 +5,33 @@ import { getSecurityAlertPrefs } from "@/lib/securityAlertPrefs";
 import { setPortalSessionCookie } from "@/lib/portalSession";
 import { hostnameFromRequest } from "@/lib/marina/host";
 
+const GENERIC_LOGIN_ERROR = "Invalid email or password. If you've tried several times, wait 15 minutes and try again.";
+const DUMMY_HASH = "$2b$12$swznDWXMuzdT/J0lOBYg1uYu8cqYH5J8fp6LJBFbciGAgz1fat4ry";
+async function dummyPasswordCheck(password: unknown) {
+  await bcrypt.compare(String(password || ""), DUMMY_HASH).catch(() => false);
+}
+
+// true when this attempt must wait (see the limits in POST). Never blocks because the check failed.
+async function loginLocked(email: string, ip: string | null): Promise<boolean> {
+  const since = new Date(Date.now() - 1000 * 60 * 15).toISOString();
+  const count = async (f: (q: any) => any) => {
+    const { count: c, error } = await f(
+      supabaseAdmin.from("resident_login_attempts").select("id", { count: "exact", head: true }).eq("success", false).gte("created_at", since)
+    );
+    return error ? 0 : c || 0;
+  };
+  try {
+    if (ip) {
+      if ((await count((q) => q.eq("attempted_email", email).eq("ip", ip))) >= 5) return true;
+      if ((await count((q) => q.eq("ip", ip))) >= 30) return true;
+    }
+    if ((await count((q) => q.eq("attempted_email", email))) >= (ip ? 20 : 5)) return true;
+  } catch {
+    /* never lock out because the check itself failed */
+  }
+  return false;
+}
+
 async function companyIdForHost(host: string): Promise<string | null> {
   if (!host) return null;
   const { data } = await supabaseAdmin.from("companies").select("id").in("domain", [host, `www.${host}`]).limit(1).maybeSingle();
@@ -26,20 +53,19 @@ export async function POST(req: Request) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
 
-  // Oct 21 (per Mely — security hardening): one IP trying many different accounts
-  // (password spraying) is paused after 30 failed sign-ins in 15 minutes.
-  // High enough that a shared office or RV-park Wi-Fi never trips it.
-  if (ip) {
-    const ipSince = new Date(Date.now() - 1000 * 60 * 15).toISOString();
-    const { count: ipFails } = await supabaseAdmin
-      .from("resident_login_attempts")
-      .select("id", { count: "exact", head: true })
-      .eq("ip", ip)
-      .eq("success", false)
-      .gte("created_at", ipSince);
-    if ((ipFails || 0) >= 30) {
-      return NextResponse.json({ error: "Too many sign-in attempts from this network. Please wait 15 minutes and try again." }, { status: 429 });
-    }
+  // Oct 29 (security): ONE generic answer for wrong password, unknown email and
+  // locked — the sign-in screen never reveals whether an account exists or is
+  // locked. Same status (401) and the same bcrypt work in every case.
+  const fail = () => NextResponse.json({ error: GENERIC_LOGIN_ERROR }, { status: 401 });
+
+  // Oct 21 / Oct 29 (security): locks are counted by the ATTEMPTED email (so an
+  // unknown email behaves exactly like a real one): 5 failures for this email
+  // from this network, 20 for this email from anywhere (slows distributed
+  // guessing), or 30 from this network (password spraying; high enough that a
+  // shared office or RV-park Wi-Fi never trips it) → wait 15 minutes.
+  if (await loginLocked(String(email), ip)) {
+    await dummyPasswordCheck(password);
+    return fail();
   }
 
   // Oct 22 (security, per Mely — "a resident can never get into another park"): sign in
@@ -58,35 +84,18 @@ export async function POST(req: Request) {
   if (error || !resident || !resident.portal_password) {
     // Log the attempt even if the email doesn't match a real account — still
     // useful history, just nothing to cross-reference yet.
+    await dummyPasswordCheck(password); // same timing as a real check
     await supabaseAdmin.from("resident_login_attempts").insert({
       resident_id: resident?.id || null,
       attempted_email: email,
       ip,
       success: false,
     });
-    return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+    return fail();
   }
 
-  // Oct 20 (security review): lock an account for 15 minutes after 5
-  // wrong passwords, so the password can't be guessed by brute force.
-  // Uses the same resident_login_attempts history already recorded below.
-  const LOCKOUT_MAX_FAILURES = 5;
-  const lockoutSince = new Date(Date.now() - 1000 * 60 * 15).toISOString();
-  const { count: lockoutFailCount } = await supabaseAdmin
-    .from("resident_login_attempts")
-    .select("id", { count: "exact", head: true })
-    .eq("resident_id", resident.id)
-    .eq("success", false)
-    .gte("created_at", lockoutSince);
-  if ((lockoutFailCount || 0) >= LOCKOUT_MAX_FAILURES) {
-    return NextResponse.json(
-      {
-        error:
-          "Too many sign-in attempts. For your security, please wait 15 minutes and try again, or use \"Forgot password\" to reset it.",
-      },
-      { status: 429 }
-    );
-  }
+  // (Oct 20 per-account lock moved above — Oct 29: it now counts by attempted
+  // email + IP and answers like a wrong password, so it reveals nothing.)
 
   // Oct 20 (security review): the password is now checked BEFORE the
   // "portal access ended" and "pay your first invoice" answers below —
@@ -149,7 +158,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+    return fail();
   }
 
   // Aug 18 (per Mely — "como se ve el portal de Merarys ahora que

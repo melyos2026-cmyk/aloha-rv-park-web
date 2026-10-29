@@ -3,13 +3,16 @@ import { PORTAL_INFO_KEY, afterHoursSentence, defaultPortalInfo, normalizePortal
 import { createClient } from "@supabase/supabase-js";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { loadReturnedFeeSettings, returnedFeePhrase } from "@/lib/platformFee";
-import { tooManyFromIp } from "@/lib/marina/ipLimit";
+import { tooManyFromIp, tooManyForKey } from "@/lib/marina/ipLimit";
 import { hostnameFromRequest } from "@/lib/marina/host";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const lotsContextCache = new Map<string, { text: string; at: number }>();
+const LOTS_CACHE_MS = 3 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,6 +62,12 @@ export async function POST(req: NextRequest) {
       .eq("domain", host)
       .maybeSingle();
     if (!company) return NextResponse.json({ error: "Not found." }, { status: 404 });
+    // Oct 29 (security review): one park's chat can't run up unlimited AI calls — at most 300
+    // visitor messages per park per hour (same cap as the marina chat), counted in the database
+    // across every server, on top of the per-device limit above.
+    if (await tooManyForKey("mely-chat-company", company.id, 300)) {
+      return NextResponse.json({ error: "Mely is very busy right now. Please try again in a little while, or call the office." }, { status: 429 });
+    }
 
     const companyName = company?.company_name || "the park";
     const address = company?.address || "";
@@ -91,8 +100,12 @@ export async function POST(req: NextRequest) {
     // Real lot data — specs, pricing, and current availability — so Mely
     // can actually answer reservation questions instead of only pointing
     // people to the map.
-    let lotsContext = "";
-    if (company?.id) {
+    // Oct 29 (security review): the lot list + 6-month booking calendar costs one database call per
+    // lot — built at most once every few minutes per park instead of on every message.
+    const cachedLots = lotsContextCache.get(company.id);
+    let lotsContext = cachedLots && Date.now() - cachedLots.at < LOTS_CACHE_MS ? cachedLots.text : "";
+    const lotsFromCache = !!lotsContext;
+    if (company?.id && !lotsFromCache) {
       const { data: lots } = await supabaseAdmin
         .from("rv_lots")
         .select(
@@ -196,6 +209,8 @@ export async function POST(req: NextRequest) {
         const calendarContext = `\n\nBooking calendar for the next 6 months (today is ${todayISO}; dates are YYYY-MM-DD; a booking from A to B means arrival on A and departure on B, so B is free again for a new arrival):\n${calendarLines.join("\n")}\n\nUse this calendar to answer which lots are open for the dates someone asks about: a lot is open for a stay if none of its booked ranges overlap the stay. Name the open lots with their prices. Say the dates are confirmed when they pick them on the interactive map. Never say who booked a lot or anything about another guest.`;
 
         lotsContext = `\n\nCurrent lot availability and specs (as of right now):\n${lotLines}${calendarContext}\n\nUse this real data to answer questions about lot sizes, pricing, and availability. The monthly price shown is the one that applies today: quote it as simply "the monthly rent right now", and NEVER use the words season, high season, low season, snowbird, off-peak or peak. If someone asks about the rent on a future date, use the "monthly rent by move-in date" schedule shown for that lot: the rent depends on the move-in date, so quote the figure for their date and say the application shows the exact amount for their lot and move-in date. If a lot shows no schedule, the monthly rent is the same all year; never guess that it will change. This list is the lots' status right now, not a calendar. The "How stays work" section below says when to send someone to the interactive map on the home page (short reservations, where they pick exact dates) and when to send them to the Apply page (long stays), or they can call the office.`;
+        lotsContextCache.set(company.id, { text: lotsContext, at: Date.now() });
+        if (lotsContextCache.size > 500) lotsContextCache.clear();
       }
     }
 
@@ -647,8 +662,10 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
     if (company?.id && sessionId) {
       const lastUserMessage = [...(messages || [])].reverse().find((m: any) => m.role === "user")?.text || "";
       await supabaseAdmin.from("mely_chat_logs").insert([
-        { company_id: company.id, session_id: sessionId, role: "user", content: lastUserMessage },
-        { company_id: company.id, session_id: sessionId, role: "assistant", content: reply },
+        // Oct 29 (security review): hidden [[...]] markers are stripped from logged visitor text —
+        // these logs are later shown to the admin's Ask Mely, which uses the same marker style.
+        { company_id: company.id, session_id: sessionId, role: "user", content: stripMarkers(lastUserMessage) },
+        { company_id: company.id, session_id: sessionId, role: "assistant", content: stripMarkers(reply) },
       ]);
     }
 
@@ -660,7 +677,9 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
         source: "mely_chat",
       });
 
-      if (process.env.RESEND_API_KEY) {
+      // Oct 29 (security review): anyone can make the chat flag an "emergency" — staff emails for
+      // one park are capped at 5 per hour (the System Health entry above is still recorded).
+      if (process.env.RESEND_API_KEY && !(await tooManyForKey("mely-emergency-email", company.id, 5))) {
         const { data: admins } = await supabaseAdmin
           .from("admin_users")
           .select("email")
@@ -694,6 +713,10 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
     console.error("mely-chat error:", err);
     return NextResponse.json({ error: "Something went wrong." }, { status: 500 });
   }
+}
+
+function stripMarkers(value: unknown): string {
+  return String(value ?? "").replace(/\[\[[\s\S]*?\]\]/g, "").replace(/\[\[|\]\]/g, "").slice(0, 4000);
 }
 
 // Oct 20 (security review): used for visitor text placed in staff emails.

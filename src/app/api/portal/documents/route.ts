@@ -35,5 +35,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: docsError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ leases: leases || [], otherDocuments: otherDocuments || [] });
+  // Oct 29 (security review): stored paths/old public URLs stay on the server — files open only
+  // through /api/portal/document-url and /api/portal/lease-document-url (signed, 5 minutes).
+  return NextResponse.json({
+    leases: (leases || []).map((l: any) => ({ ...l, lease_document_url: l.lease_document_url ? "on_file" : null })),
+    otherDocuments: (otherDocuments || []).map((d: any) => ({ ...d, file_url: "" })),
+  });
 }

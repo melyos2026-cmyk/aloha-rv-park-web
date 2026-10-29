@@ -1,3 +1,4 @@
+import { removeStoredFiles } from "@/lib/storedFile";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 
 const DEFAULT_BILL_OF_SALE_CLAUSES = `GOVERNING LAW: This Bill of Sale shall be governed by and construed in accordance with the laws of the State of Florida.
@@ -434,7 +435,7 @@ export async function signBillOfSaleAsResident(
     .eq("document_type", "bill_of_sale");
   const oldPaths = (oldBillsOfSale || []).map((d) => d.file_url).filter(Boolean);
   if (oldPaths.length > 0) {
-    await supabase.storage.from("resident-documents").remove(oldPaths);
+    await removeStoredFiles(oldPaths);
   }
   await supabase
     .from("resident_documents")

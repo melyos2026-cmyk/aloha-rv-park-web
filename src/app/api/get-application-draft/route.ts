@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { draftAccessAllowed, publicDraft } from "@/lib/applicantGuards";
+import { tooManyFromIp } from "@/lib/marina/ipLimit";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,9 +40,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "id and company_id are required." }, { status: 400 });
   }
 
+  // Oct 29 (security review): the id alone is no longer enough — the request must carry the
+  // draft cookie this browser got when it saved the application (or the invite link's token).
+  if (await tooManyFromIp(req, "application-draft", 60)) {
+    return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+  }
+  const inviteToken = req.nextUrl.searchParams.get("invite_token");
   const { data, error } = await supabaseAdmin
     .from("resident_applications")
-    .select("id, form_draft_json")
+    .select("id, form_draft_json, invite_token, created_at")
     .eq("id", id)
     .eq("company_id", companyId)
     .eq("application_fee_paid", false)
@@ -51,5 +59,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Draft not found." }, { status: 404 });
   }
 
-  return NextResponse.json({ application: data });
+  if (!draftAccessAllowed(req, data as any, inviteToken)) {
+    return NextResponse.json({ error: "Draft not found." }, { status: 404 });
+  }
+
+  return NextResponse.json(
+    { application: { id: data.id, form_draft_json: publicDraft(data.form_draft_json) } },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

@@ -22,7 +22,8 @@ export type DocSettings = { auto: boolean; requireAdditionalInsured: boolean; mi
 export async function docSettings(companyId: string): Promise<DocSettings> {
   const { data, error } = await supabaseAdmin.from("marina_booking_settings").select("*").eq("company_id", companyId).maybeSingle();
   const d: any = error ? null : data;
-  return { auto: d?.docs_auto_approve !== false, requireAdditionalInsured: !!d?.require_additional_insured, minLiability: Number(d?.min_liability) > 0 ? Number(d.min_liability) : null };
+  // Oct 29 (security review): automatic approval is OFF unless the marina explicitly turned it on.
+  return { auto: d?.docs_auto_approve === true, requireAdditionalInsured: !!d?.require_additional_insured, minLiability: Number(d?.min_liability) > 0 ? Number(d.min_liability) : null };
 }
 
 const LABEL: Record<string, string> = { insurance: "insurance", registration: "registration", id: "ID", survey: "survey", other: "document" };
@@ -147,6 +148,11 @@ export function verify(x: Extracted | null, want: { type: string; owner: string;
     checks.push({ label: "Liability", ok, detail: x.liability_amount ? `$${x.liability_amount.toLocaleString()} (minimum $${want.settings.minLiability.toLocaleString()})` : "Amount not found" });
   }
   const failed = checks.filter((c) => c.ok === false);
+  // Oct 29 (security review): insurance is never approved automatically — even when every check
+  // passes, a person in the office approves it (the checks are saved so that takes a second).
+  if (!failed.length && (!needsDate || exp) && want.type === "insurance") {
+    return { decision: "pending", reasons: ["Insurance is always approved by the office."], note: null, expires_on: exp, extracted: x, checks };
+  }
   if (!failed.length && (!needsDate || exp)) return { decision: "approved", reasons: [], note: null, expires_on: exp, extracted: x, checks };
   return { decision: "pending", reasons: failed.map((c) => `${c.label}: ${c.detail}`), note: null, expires_on: exp, extracted: x, checks };
 }

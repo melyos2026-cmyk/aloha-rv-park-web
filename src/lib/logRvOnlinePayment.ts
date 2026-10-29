@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+import { recordUnsplitPaymentIfAny } from "@/lib/parkPayoutLedger";
 
 // Oct 8 (per Mely — Shifts & Daily Close): every payment made online through Stripe is also written to
 // the RV-park payment ledger (shown separately from the drawer in Daily Close). Best-effort: it never
@@ -12,8 +13,10 @@ export async function logRvOnlinePayment(p: {
   payerName?: string | null;
   amountCents: number;
   reference?: string | null;
+  parkShareCents?: number | null; // Oct 29 (H1): what the park should get, if the caller knows it
 }): Promise<void> {
   let companyId = p.companyId;
+  let ledgerFailed: any = null;
   try {
     if (!companyId) {
       // This website is Aloha's: if a charge carries no company information, it is Aloha's.
@@ -38,6 +41,16 @@ export async function logRvOnlinePayment(p: {
     }, { onConflict: "company_id,source_type,source_id", ignoreDuplicates: true });
     if (error) throw new Error(error.message);
   } catch (err: any) {
+    ledgerFailed = err;
+  }
+  // Oct 29 (live-money audit H1): every RV online payment passes through here — if it was charged
+  // without the park's connected Stripe account, record what MelyOS holds for the park. Best-effort,
+  // idempotent per PaymentIntent, never blocks the payment.
+  if (companyId && p.reference) {
+    await recordUnsplitPaymentIfAny({ companyId, paymentIntentId: p.reference, source: p.description, payerName: p.payerName, parkShareCents: p.parkShareCents });
+  }
+  if (ledgerFailed) {
+    const err = ledgerFailed;
     console.error("logRvOnlinePayment failed:", err?.message);
     if (companyId) {
       await logSystemHealthIssue({

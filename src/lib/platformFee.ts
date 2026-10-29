@@ -212,13 +212,17 @@ export async function returnedAchFeesOnInvoices(invoiceIds: string[], companyId?
     return sum + (frozen !== null && Number.isFinite(frozen) ? Math.min(amt, Math.max(frozen, 0)) : melyosShareOfReturnedFee(settings, amt));
   }, 0) * 100) / 100;
 }
+// Oct 29 (live-money audit): always whole cents. Stripe charges whole cents, and the webhook matches
+// the fee line it adds against processing_fee_charged — an unrounded 3.5% (e.g. 29.0465) never matched.
+export const roundCents = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
 export function calculateAchFee(amount: number): number {
-  return Math.min(Math.max(amount * ACH_FEE_PERCENT, ACH_FEE_MINIMUM), ACH_FEE_MAXIMUM);
+  return roundCents(Math.min(Math.max(amount * ACH_FEE_PERCENT, ACH_FEE_MINIMUM), ACH_FEE_MAXIMUM));
 }
 
 export function calculateProcessingFee(amount: number): number {
   const percentFee = amount * PROCESSING_FEE_PERCENT;
-  return Math.max(percentFee, PROCESSING_FEE_MINIMUM);
+  return roundCents(Math.max(percentFee, PROCESSING_FEE_MINIMUM));
 }
 
 // Aug 4: Stripe's own real cut, so callers can compute MelyOS's actual net
@@ -283,7 +287,8 @@ export async function resolveConnectSplit(
     return null;
   }
 
-  const melyOsShare = Math.max(totalChargeAmount - alohaShare, 0);
+  // Oct 29 (live-money audit): cents first, so MelyOS's part is never off by a fraction of a cent.
+  const melyOsShare = Math.max(roundCents(totalChargeAmount) - roundCents(alohaShare), 0);
 
   return {
     connectedAccountId: settings.stripe_connect_account_id,

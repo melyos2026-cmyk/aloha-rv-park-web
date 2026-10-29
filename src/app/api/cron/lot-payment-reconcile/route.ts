@@ -3,8 +3,10 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { handleApplicationFeePaid, handleRentToOwnDepositPaid } from "@/lib/lotPaymentHandlers";
+import { retryOccupantInvitations } from "@/lib/occupantBackgroundCheck";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
@@ -159,5 +161,9 @@ export async function GET(request: Request) {
       `${app.full_name || "An applicant"}'s application is marked as fee PAID, but its card payment is "${pi.status.replace(/_/g, " ")}" in Stripe — the money was not collected. ${pi.status === "requires_capture" ? "The system keeps trying to finish it — do not capture it in Stripe by hand; contact MelyOS support if this stays open." : "Ask them to pay again, or mark the fee unpaid."} Stripe ${piId}, application ${app.id}.`);
   }
 
-  return NextResponse.json(out);
+  // 4) Oct 29 (live-money audit M5): household-occupant background checks paid online whose Checkr
+  //    invitation failed — the fee is already marked paid; only the invitation is retried here.
+  const occupantInvites = await retryOccupantInvitations().catch((e: any) => ({ invited: 0, failed: 0, error: e?.message }));
+
+  return NextResponse.json({ ...out, occupantInvites });
 }

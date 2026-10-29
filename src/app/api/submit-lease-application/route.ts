@@ -13,6 +13,8 @@ import {
   type LotPricing,
 } from "@/lib/applicationPricing";
 import { PARK_LEASE_TERM_FIELDS, parkLeaseTerms } from "@/lib/leaseTerms";
+import { draftAccessAllowed, draftCookieMatches, newDraftKey, setDraftCookie, storedDraftKeyHash } from "@/lib/applicantGuards";
+import { tooManyFromIp, tooManyForKey } from "@/lib/marina/ipLimit";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -213,7 +215,7 @@ export async function POST(req: NextRequest) {
       .from("resident_applications")
       .select(
         "id, company_id, status, application_fee_paid, invite_token, sent_at, monthly_rent, security_deposit, " +
-          "is_family_friend, is_returning_resident, background_check_override, form_draft_json"
+          "is_family_friend, is_returning_resident, background_check_override, form_draft_json, created_at"
       )
       .eq("id", invitationId)
       .maybeSingle();
@@ -265,6 +267,24 @@ export async function POST(req: NextRequest) {
     }
   }
   const companyId: string = hostCompany.id;
+
+  // Oct 29 (security review): an already-submitted application can only be saved again from the
+  // browser that saved it (its httpOnly draft cookie) or with the invitation link's token — the
+  // application id alone is not enough to overwrite someone's application.
+  if (existing && !draftAccessAllowed(req, existing, typeof inviteToken === "string" ? inviteToken : null)) {
+    return NextResponse.json(
+      { error: "For your security, this application can only be changed from the device it was started on, or from your invitation link. Please contact the park office." },
+      { status: 403 }
+    );
+  }
+
+  // Oct 29 (security review): flood limits — per device and per park, counted in the database.
+  if (await tooManyFromIp(req, `submit-application:${companyId}`, 20)) {
+    return NextResponse.json({ error: "Too many submissions from this device. Please try again later or call the office." }, { status: 429 });
+  }
+  if (!existing && (await tooManyForKey("submit-application-company", companyId, 60))) {
+    return NextResponse.json({ error: "We're receiving a lot of applications right now. Please try again in a little while or call the office." }, { status: 429 });
+  }
 
   // ---- Keep only applicant fields --------------------------------------
   const clean: Record<string, any> = {};
@@ -413,7 +433,17 @@ export async function POST(req: NextRequest) {
       ? { ...clean.form_draft_json }
       : {};
   delete formDraft[SERVER_TERMS_KEY];
+  // Oct 29: the draft key (and the device that opened checkout) carry over; a row without a key
+  // gets one now, sent to this browser as an httpOnly cookie below.
+  const previousTerms =
+    existing?.form_draft_json && typeof existing.form_draft_json === "object" ? existing.form_draft_json[SERVER_TERMS_KEY] || {} : {};
+  // When this save was allowed by the invite token (or the grace period) instead of this
+  // browser's cookie, a new key is issued so this browser can come back to it.
+  const keptHash = existing && draftCookieMatches(req, existing) ? storedDraftKeyHash(existing.form_draft_json) : null;
+  const freshKey = keptHash ? null : newDraftKey();
   formDraft[SERVER_TERMS_KEY] = {
+    draft_key: keptHash || freshKey!.hash,
+    ...(previousTerms?.hold_device ? { hold_device: previousTerms.hold_device } : {}),
     invite: !!adminTerms,
     ...(adminTerms
       ? { admin_monthly_rent: adminTerms.monthly_rent, admin_security_deposit: adminTerms.security_deposit }
@@ -516,5 +546,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true });
+  const res = NextResponse.json({ success: true });
+  if (freshKey) setDraftCookie(res, String(savedApplicationId), freshKey.secret);
+  return res;
 }

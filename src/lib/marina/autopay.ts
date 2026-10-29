@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, loadReturnedFeeSettings, returnedFeePhrase, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, saveAutopayAuthorizationRule } from "@/lib/platformFee";
 import type { MarinaCompany } from "./company";
 import { isDemoCompany } from "./host";
@@ -117,6 +118,13 @@ export async function dueForAutopay(companyId: string, memberId: string) {
 
 // One boater, one day: charge everything due in one payment.
 export async function chargeMember(company: MarinaCompany, m: any): Promise<{ status: "none" | "succeeded" | "processing" | "failed" | "skipped"; amount?: number; error?: string }> {
+  // Oct 29 (live-money audit M8 — never charge again): an earlier attempt is still "processing" (a bank
+  // payment clearing, or a run that stopped before recording) → nothing new is charged until the
+  // reconcile step has written or failed it.
+  {
+    const { data: open, error: openErr } = await supabaseAdmin.from("marina_autopay_attempts").select("id").eq("company_id", company.id).eq("member_id", m.id).eq("status", "processing").limit(1);
+    if (openErr || (open || []).length > 0) return { status: "skipped" };
+  }
   const rows = await dueForAutopay(company.id, m.id);
   if (!rows.length) return { status: "none" };
   const today = todayET();
@@ -233,10 +241,18 @@ export async function autopayBankFailed(companyId: string, piId: string, reason:
 export async function reconcileAutopay() {
   if (!stripe) return 0;
   let n = 0;
-  const { data } = await supabaseAdmin.from("marina_autopay_attempts").select("id, company_id, payment_intent_id").eq("status", "processing").not("payment_intent_id", "is", null).limit(200);
+  const { data } = await supabaseAdmin.from("marina_autopay_attempts").select("id, company_id, member_id, fee, payment_intent_id").eq("status", "processing").not("payment_intent_id", "is", null).limit(200);
   for (const a of data || []) {
     const pi = await stripe.paymentIntents.retrieve(a.payment_intent_id).catch(() => null);
     if (!pi) continue;
+    // Oct 29 (live-money audit M8): money moved (or is moving) but the run stopped before the payment
+    // was written on the invoices → write it now from the allocations stored on the payment, so the
+    // invoices never look unpaid (and autopay never charges them again). Never charges anything.
+    if (pi.status === "succeeded" || pi.status === "processing") {
+      const r = await recordFromAllocations(a, pi);
+      if (r === "error") continue; // try again tomorrow (the attempt stays "processing" → no new charge)
+      if (r === "recorded") { n++; continue; } // afterCharge recorded (and settled) it
+    }
     if (pi.status === "succeeded") { await settleMarinaAchPayment(a.company_id, `autopay:${pi.id}`); await supabaseAdmin.from("marina_autopay_attempts").update({ status: "succeeded" }).eq("id", a.id); n++; }
     else if (pi.status === "requires_payment_method" || pi.status === "canceled") { await autopayBankFailed(a.company_id, pi.id, pi.last_payment_error?.message || "the bank declined the transfer", { neverSubmitted: pi.status === "canceled", paymentCreated: pi.created, paymentRule: pi.metadata?.returned_fee_rule }); n++; }
   }
@@ -261,6 +277,33 @@ export async function reconcileAutopay() {
     if (company && m) { await afterCharge(company, m, a.id, pi, rows, pi.amount / 100, Number(a.fee || 0)); n++; }
   }
   return n;
+}
+
+// Oct 29 (live-money audit M8): an autopay attempt has a PaymentIntent but no payment rows on the
+// invoices (the run stopped between charging and recording). Records them from pi.metadata.allocs
+// ("<invoiceId>:<amount>;…") through afterCharge — same rows/emails as a normal run. "none_needed" =
+// rows already exist. "error" = can't tell now (no allocations / lookup failed): System Health once.
+async function recordFromAllocations(a: { id: string; company_id: string; member_id?: string | null; fee?: number | null }, pi: Stripe.PaymentIntent): Promise<"recorded" | "none_needed" | "error"> {
+  const ref = `autopay:${pi.id}`;
+  const { data: rows, error } = await supabaseAdmin.from("marina_invoice_payments").select("id").eq("company_id", a.company_id).or(`reference.eq.${ref},reference.like.${ref}:%`).limit(1);
+  if (error) return "error";
+  if ((rows || []).length > 0) return "none_needed";
+  const allocs = String(pi.metadata?.allocs || "").split(";").map((x) => x.split(":")).filter((x) => x.length === 2 && x[0] && Number(x[1]) > 0);
+  const { getMarinaById } = await import("./company");
+  const company = await getMarinaById(a.company_id);
+  const { data: m } = a.member_id ? await supabaseAdmin.from("marina_members").select("*").eq("id", a.member_id).eq("company_id", a.company_id).maybeSingle() : { data: null as any };
+  if (!allocs.length || !company || !m) {
+    const { data: had } = await supabaseAdmin.from("system_health_issues").select("id").eq("company_id", a.company_id).eq("issue_type", "marina_autopay_unrecorded").like("message", `%${pi.id}%`).limit(1);
+    if (!had?.length) {
+      await logSystemHealthIssue({ companyId: a.company_id, issueType: "marina_autopay_unrecorded", source: "marina_autopay",
+        message: `A marina autopay payment of $${(pi.amount / 100).toFixed(2)} (${pi.status}) was taken but is not recorded on any invoice, and the invoices it paid could not be read from the payment. Record it on the right invoice(s) by hand. Autopay will not charge this boater again until it is. Stripe payment ${pi.id}.` }).catch(() => null);
+    }
+    return "error";
+  }
+  const { data: invs } = await supabaseAdmin.from("marina_invoices").select("id, invoice_number").eq("company_id", a.company_id).in("id", allocs.map((x) => x[0]));
+  const list = allocs.map(([id, amt]) => ({ id, balance: Number(amt), invoice_number: (invs || []).find((i: any) => i.id === id)?.invoice_number || "invoice" }));
+  await afterCharge(company, m, a.id, pi, list, pi.amount / 100, Number(a.fee || 0));
+  return "recorded";
 }
 
 // The daily run for one marina; the office gets one summary email.

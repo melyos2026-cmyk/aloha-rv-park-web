@@ -10,6 +10,7 @@ import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import { sendBankPaymentReturnedEmail } from "@/lib/sendBankPaymentReturnedEmail";
+import { parkShareMetadata, refuseUnsplitRvPayments } from "@/lib/parkPayoutLedger";
 
 // Oct 28 (per Mely): RV residents can pay autopay by BANK (ACH) instead of card — same Stripe
 // pattern as marina autopay (src/lib/marina/autopay.ts): the bank account is saved once with a
@@ -74,6 +75,21 @@ export async function markInvoicesProcessing(invoiceIds: string[], residentId?: 
   let stampSaved = true;
   if (res.error && isMissingColumn(res.error, "processing_since")) { res = await run(false); stampSaved = false; }
   return { rows: (res.data || []) as { id: string }[], error: res.error, stampSaved };
+}
+
+// Review B1: invoices reopened because a dispute was LOST are never charged by autopay again (card
+// or bank) — marker in stripe_processed_events (source "rv_dispute"). The office collects them.
+const DISPUTE_SOURCE = "rv_dispute";
+export async function markDisputeReopened(invoiceId: string) {
+  await claimStripeEvent(`dispute_reopened:${invoiceId}`, DISPUTE_SOURCE);
+  await finishStripeEvent(`dispute_reopened:${invoiceId}`, DISPUTE_SOURCE, true);
+}
+/** ids among `invoiceIds` reopened by a lost dispute. null = can't tell (caller then charges nothing). */
+export async function disputeReopenedIds(invoiceIds: string[]): Promise<Set<string> | null> {
+  if (invoiceIds.length === 0) return new Set();
+  const { data, error } = await supabase.from("stripe_processed_events").select("event_id").eq("source", DISPUTE_SOURCE).in("event_id", invoiceIds.map((id) => `dispute_reopened:${id}`));
+  if (error) return /stripe_processed_events/.test(error.message || "") || error.code === "42P01" || error.code === "PGRST205" ? new Set() : null;
+  return new Set((data || []).map((r: any) => String(r.event_id).slice("dispute_reopened:".length)));
 }
 
 // Back to "Pending" — only rows still "Processing".
@@ -229,7 +245,9 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   if (invErr) return { status: "skipped", detail: invErr.message };
   const payable = (pendingRows || []).filter((i) => isInvoicePayableNow(i.invoice_month) && Number(i.total_amount || 0) > 0);
   const awaitingRent = await invoicesAwaitingRent(resident.id, payable.map((i) => ({ ...i, status: "Pending" })));
-  const invoices = payable.filter((i) => !awaitingRent.has(i.id)).slice(0, MAX_INVOICES);
+  const disputed = await disputeReopenedIds(payable.map((i) => i.id));
+  if (!disputed) return { status: "skipped", detail: "dispute_marker_unreadable" };
+  const invoices = payable.filter((i) => !awaitingRent.has(i.id) && !disputed.has(i.id)).slice(0, MAX_INVOICES); // Review B1
   if (invoices.length === 0) return { status: "none" };
 
   const invoiceIds = invoices.map((i) => i.id);
@@ -279,6 +297,14 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? achFee : 0)) * 100) / 100;
   const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -achFee) - returnedAchFees, 0);
   const connectSplit = await resolveConnectSplit(companyId, chargeAmount, alohaShare);
+  // Oct 29 (live-money audit H1): no payout account + the owner's refuse flag on → not charged.
+  if (!connectSplit && refuseUnsplitRvPayments()) {
+    await logOncePerResident({
+      companyId, residentId: resident.id, issueType: "park_payout_refused", since: monthStartIso(),
+      message: `Bank autopay did NOT charge ${resident.full_name || "a resident"} (${money(chargeAmount)}): this park has no connected Stripe payout account and REFUSE_UNSPLIT_RV_PAYMENTS is on. Finish Stripe Connect in Settings → Stripe.`,
+    });
+    return { status: "skipped", detail: "unsplit_refused" };
+  }
   const chargeCents = Math.round(chargeAmount * 100);
   const setKey = crypto.createHash("sha256").update([...invoiceIds].sort().join(",")).digest("hex").slice(0, 24);
   const idempotencyKey = `rv-autopay-ach-${resident.id}-${setKey}-${todayStr}-${chargeCents}`;
@@ -390,6 +416,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
         ...(claimRowId ? { claim_id: claimRowId } : {}),
+        ...parkShareMetadata(alohaShare), // Oct 29 (H1)
         // Oct 28 (review): the returned-payment fee rule the resident accepted with bank autopay.
         returned_fee_rule: await (async () => { const a = await loadAutopayAuthorizationRule("resident_accounts", resident.id, companyId); return returnedFeeRuleToDisclose("rv", companyId, { authorizedAt: a.authorizedAt ?? resident.autopay_authorized_at ?? null, storedRule: a.rule }); })(),
       },

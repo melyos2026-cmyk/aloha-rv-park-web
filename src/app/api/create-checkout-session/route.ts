@@ -7,6 +7,8 @@ import { achAllowed } from "@/lib/marina/checkout";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
 import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
+import { closeOtherInvoiceCheckouts } from "@/lib/invoiceCheckoutSessions";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -120,9 +122,14 @@ export async function POST(req: Request) {
     // MelyOS's application fee (below) and is not taxed.
     // Oct 28 (new model): the whole fee is never taxed; only MelyOS's part (if any) leaves the park's share.
     const { total: returnedFeesTotal, melyos: returnedAchFees } = await returnedAchFeeTotalsOnInvoices(invoiceIds, resident?.company_id);
-    const taxAmount = taxEnabled ? Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) : 0;
+    // Oct 29 (live-money audit): whole cents, so the tax line the webhook adds matches what Stripe charged.
+    const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
 
-    const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
+    const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? processingFee : 0)) * 100) / 100;
+
+    // Oct 29 (live-money audit — Low): the park's own name on the Stripe page (was "Aloha RV Park" for every park).
+    const { data: companyRow } = await supabase.from("companies").select("company_name").eq("id", resident?.company_id || "").maybeSingle();
+    const balanceLabel = `${companyRow?.company_name || "RV Park"} Balance`;
 
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -134,7 +141,7 @@ export async function POST(req: Request) {
           currency: "usd",
           unit_amount: Math.round(totalAmount * 100),
           product_data: {
-            name: "Aloha RV Park Balance",
+            name: balanceLabel,
             description: "Outstanding resident balance",
           },
         },
@@ -175,39 +182,35 @@ export async function POST(req: Request) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(resident?.company_id); if (demoBlocked) return demoBlocked; }
+    // Oct 29 (live-money audit H1): no connected payout account → refused only when the owner turned
+    // REFUSE_UNSPLIT_RV_PAYMENTS on; otherwise charged as before and recorded as owed to the park.
+    if (!connectSplit) { const refused = await unsplitRefusal(resident?.company_id, "invoice"); if (refused) return refused; }
 
-    // Oct 28 (review — double charge): close this resident's earlier checkouts that are still open, so
-    // an old tab can't pay the same invoices a second time. Stripe can't search sessions by metadata,
-    // so this lists open sessions from the last 24 hours (new ones expire after 31 minutes anyway).
-    try {
-      const since = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
-      let seen = 0;
-      for await (const old of stripe.checkout.sessions.list({ status: "open", created: { gte: since }, limit: 100 })) {
-        if (++seen > 1000) break;
-        // Only portal checkouts (metadata.source "portal") — never a guest-link checkout someone else opened.
-        if (old.metadata?.source === "portal" && old.metadata?.resident_id === residentId && !old.metadata?.type && old.metadata?.invoice_ids) {
-          await stripe.checkout.sessions.expire(old.id).catch(() => null);
-        }
-      }
-    } catch (e: any) {
-      console.error("create-checkout-session: could not expire earlier sessions:", e?.message);
-    }
+    // Oct 28 (review — double charge) + Oct 29 (live-money audit M14): close every other open checkout
+    // for these invoices — this resident's earlier portal checkouts AND guest-link checkouts for any
+    // of the same invoices — so an old tab can't pay the same invoices a second time.
+    await closeOtherInvoiceCheckouts(stripe, { invoiceIds, residentId });
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ach ? ["us_bank_account"] : ["card"],
       ...(ach ? { payment_method_options: { us_bank_account: { financial_connections: { permissions: ["payment_method"] }, verification_method: "instant" } } } : {}),
       line_items: lineItems,
-      ...(connectSplit
-        ? {
-            payment_intent_data: {
+      payment_intent_data: {
+        // Oct 29 (H1): the park's share travels with the payment (park_payout_ledger when unsplit).
+        // (No company_id here on purpose: a declined card inside Checkout must not raise a
+        // "payment failed" System Health issue for every attempt.)
+        metadata: parkShareMetadata(alohaShare),
+        ...(connectSplit
+          ? {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
               transfer_data: { destination: connectSplit.connectedAccountId },
               ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       metadata: {
+        ...parkShareMetadata(alohaShare),
         resident_id: residentId,
         invoice_ids: invoiceIds.join(","),
         // Aug 5 (per Mely): so the webhook can persist these as real

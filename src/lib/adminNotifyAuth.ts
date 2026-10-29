@@ -71,7 +71,9 @@ export function verifyAdminSessionToken(token: string | null | undefined): Admin
   }
   const expiresAt = Number(expiresAtStr);
   if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) return null;
-  return { adminId, companyId, role, expiresAt };
+  // Oct 29: melyos-builder may append the admin's session_version to the id part (`id~N`);
+  // revocation itself is enforced on the admin app — here only the clean id is kept.
+  return { adminId: adminId.split("~")[0], companyId, role, expiresAt };
 }
 
 // Returns null when the caller presented a valid admin session for this

@@ -4,6 +4,7 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
 import { resolveConnectSplit } from "@/lib/platformFee";
+import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -79,7 +80,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const hostHeader = req.headers.get("host") || "aloharvparkfl.com";
+    const { data: companyRow } = await supabase.from("companies").select("domain").eq("id", resident.company_id).maybeSingle();
+    const hostHeader = req.headers.get("host") || companyRow?.domain || "aloharvparkfl.com";
     const protocol = hostHeader.includes("localhost") ? "http" : "https";
     const siteUrl = `${protocol}://${hostHeader}`;
 
@@ -96,16 +98,35 @@ export async function POST(req: Request) {
       .eq("background_check_fee_paid", true);
 
     const firstSlotAlreadyUsed = (alreadyPaid || []).length > 0;
-    const alohaShare = validOccupants.reduce((sum, _, index) => {
+    // Oct 29 (live-money audit M5): each occupant's share is never more than the fee itself, and is
+    // sent to the webhook so park_share_amount is what the park really received (not the whole fee).
+    const shares = validOccupants.map((o, index) => {
       const isFirstOverall = !firstSlotAlreadyUsed && index === 0;
-      return sum + (isFirstOverall ? PARK_SHARE_FIRST : PARK_SHARE_ADDITIONAL);
-    }, 0);
+      return { id: o.id, share: Math.min(isFirstOverall ? PARK_SHARE_FIRST : PARK_SHARE_ADDITIONAL, feeAmount) };
+    });
+    const alohaShare = shares.reduce((sum, x) => sum + x.share, 0);
 
     const totalChargeAmount = feeAmount * validOccupants.length;
     const connectSplit = await resolveConnectSplit(resident.company_id, totalChargeAmount, alohaShare);
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(resident.company_id); if (demoBlocked) return demoBlocked; }
+    if (!connectSplit) { const refused = await unsplitRefusal(resident.company_id, "background check"); if (refused) return refused; } // Oct 29 (H1)
+
+    // Oct 29 (live-money audit M5 — never pay twice): close this resident's other open background-check
+    // checkouts, so an old tab can't pay for the same occupants again.
+    try {
+      const since = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+      let seen = 0;
+      for await (const old of stripe.checkout.sessions.list({ status: "open", created: { gte: since }, limit: 100 })) {
+        if (++seen > 1000) break;
+        if (old.metadata?.type === "occupant_background_check" && old.metadata?.resident_id === residentId) {
+          await stripe.checkout.sessions.update(old.id, { metadata: { ...(old.metadata || {}), superseded: "1" } }).catch(() => null);
+          await stripe.checkout.sessions.expire(old.id).catch(() => null);
+        }
+      }
+    } catch (e: any) { console.error("occupant BGC checkout: could not close older sessions:", e?.message); }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -125,20 +146,26 @@ export async function POST(req: Request) {
           },
         },
       ],
-      ...(connectSplit
-        ? {
-            payment_intent_data: {
+      payment_intent_data: {
+        metadata: parkShareMetadata(alohaShare), // Oct 29 (H1)
+        ...(connectSplit
+          ? {
               application_fee_amount: connectSplit.applicationFeeAmountCents,
               transfer_data: { destination: connectSplit.connectedAccountId },
               ...(connectSplit.statementDescriptorSuffix ? { statement_descriptor_suffix: connectSplit.statementDescriptorSuffix } : {}),
-            },
-          }
-        : {}),
+            }
+          : {}),
+      },
       metadata: {
         type: "occupant_background_check",
         resident_id: residentId,
+        company_id: resident.company_id,
         occupant_ids: validOccupants.map((o) => o.id).join(","),
+        // Oct 29 (M5): "<occupantId>:<park share>;…" — what the park receives for each one.
+        park_shares: shares.map((x) => `${x.id}:${x.share.toFixed(2)}`).join(";").slice(0, 490),
+        ...parkShareMetadata(alohaShare),
       },
+      expires_at: Math.floor(Date.now() / 1000) + 31 * 60, // Oct 29 (M5): an old link can't pay later
       success_url: `${siteUrl}/residents/background-checks?paid=1`,
       cancel_url: `${siteUrl}/residents/background-checks`,
     });

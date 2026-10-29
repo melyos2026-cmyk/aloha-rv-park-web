@@ -12,12 +12,16 @@ import { RETURNED_ACH_FEE_CHARGE_TYPE, returnedPaymentFee, returnedFeeForReturn,
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
 import { autopayBankFailed } from "@/lib/marina/autopay";
 import { emailBoaterBankPaymentReturned } from "@/lib/marina/returnedFee";
-import { isRvBankAutopayIntent, settleRvBankAutopay, failRvBankAutopay, markInvoicesProcessing, RV_AUTOPAY_SETUP_TYPE } from "@/lib/rvBankAutopay";
+import { isRvBankAutopayIntent, settleRvBankAutopay, failRvBankAutopay, markInvoicesProcessing, RV_AUTOPAY_SETUP_TYPE, RV_AUTOPAY_PI_TYPE } from "@/lib/rvBankAutopay";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
 import { sendBankPaymentReturnedEmail } from "@/lib/sendBankPaymentReturnedEmail";
 import { releaseLotCheckoutHold } from "@/lib/lotCheckoutHold";
 import { handleApplicationFeePaid, handleRentToOwnDepositPaid, logLotPaymentRetry } from "@/lib/lotPaymentHandlers";
+import { handleOccupantBackgroundCheckPaid } from "@/lib/occupantBackgroundCheck";
+import { reduceParkOwedForRefund, parkOwedForPayment, confirmSettledRefundBilled } from "@/lib/parkPayoutLedger";
+import { RV_CARD_AUTOPAY_TYPE } from "@/lib/rvCardAutopay";
+import { markDisputeReopened } from "@/lib/rvBankAutopay";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
@@ -46,6 +50,13 @@ export async function POST(req: Request) {
     try { ev = stripe.webhooks.constructEvent(raw, sig, secret); } catch { /* try the next secret */ }
   }
   if (!ev) return handleWebhook(copy); // invalid signature: the handler answers 400 as before
+  // Oct 29 (live-money audit M12): in production only LIVE events change money records. A test-mode
+  // (Sandbox) event signed for this endpoint is acknowledged (so Stripe stops retrying) and ignored.
+  // Outside production (preview / local) test events are processed as before.
+  if (ev.livemode !== true && isProductionDeployment()) {
+    console.warn(`stripe-webhook: ignored test-mode event ${ev.id} (${ev.type}) in production`);
+    return NextResponse.json({ received: true, ignored: "test_mode_event_in_production" });
+  }
   if ((await claimStripeEvent(ev.id, "web")) === "duplicate") {
     return NextResponse.json({ received: true, duplicate: true });
   }
@@ -57,6 +68,11 @@ export async function POST(req: Request) {
     await finishStripeEvent(ev.id, "web", false);
     throw e;
   }
+}
+
+function isProductionDeployment(): boolean {
+  if (process.env.VERCEL_ENV) return process.env.VERCEL_ENV === "production";
+  return process.env.NODE_ENV === "production";
 }
 
 async function handleWebhook(req: Request) {
@@ -170,6 +186,7 @@ async function handleWebhook(req: Request) {
         payerName: session.customer_details?.name || session.customer_details?.email || session.customer_email || null,
         amountCents: Number(session.amount_total || 0),
         reference: typeof session.payment_intent === "string" ? session.payment_intent : null,
+        parkShareCents: session.metadata?.park_share_cents !== undefined && Number.isFinite(Number(session.metadata.park_share_cents)) ? Number(session.metadata.park_share_cents) : null,
       });
     }
 
@@ -189,7 +206,8 @@ async function handleWebhook(req: Request) {
     }
 
     if (session.metadata?.type === "manual_reservation") {
-      await handleManualReservationPaid(session);
+      // Oct 29 (live-money audit M3): a failed write answers 500 so Stripe sends it again (idempotent).
+      if ((await handleManualReservationPaid(session)) === "retry") return NextResponse.json({ error: "retry" }, { status: 500 });
       return NextResponse.json({ received: true });
     }
 
@@ -202,7 +220,8 @@ async function handleWebhook(req: Request) {
     }
 
     if (session.metadata?.type === "occupant_background_check") {
-      await handleOccupantBackgroundCheckPaid(session);
+      // Oct 29 (live-money audit M3/M5): src/lib/occupantBackgroundCheck.ts.
+      if ((await handleOccupantBackgroundCheckPaid(session)) === "retry") return NextResponse.json({ error: "retry" }, { status: 500 });
       return NextResponse.json({ received: true });
     }
 
@@ -213,8 +232,15 @@ async function handleWebhook(req: Request) {
       return NextResponse.json({ received: true });
     }
 
+    // Oct 29 (live-money audit H2): a motor-home fill-up paid by scanning the staff's code (admin app,
+    // create-fillup-checkout). Saved here — not only when the staff screen polls — once per session.
+    if (session.metadata?.type === "propane_fillup") {
+      if ((await handlePropaneFillupPaid(session)) === "retry") return NextResponse.json({ error: "retry" }, { status: 500 });
+      return NextResponse.json({ received: true });
+    }
+
     if (session.metadata?.productId) {
-      await handlePropanePaid(session);
+      if ((await handlePropanePaid(session)) === "retry") return NextResponse.json({ error: "retry" }, { status: 500 }); // Oct 29 (M3)
       return NextResponse.json({ received: true });
     }
 
@@ -500,6 +526,9 @@ async function handleWebhook(req: Request) {
           .select("full_name, email, company_id")
           .eq("id", residentId)
           .single();
+        const { data: receiptCompany } = resident?.company_id
+          ? await supabase.from("companies").select("company_name, address").eq("id", resident.company_id).maybeSingle()
+          : { data: null as any };
 
         const { data: pending } = await supabase
           .from("resident_payments")
@@ -525,6 +554,8 @@ async function handleWebhook(req: Request) {
             transactionId: session.id,
             paymentDate: new Date(session.created * 1000),
             remainingBalance,
+            companyName: receiptCompany?.company_name || null, // Oct 29 (Low): the park's own name
+            companyAddress: receiptCompany?.address || null,
           });
         } else {
           console.log("No email found for resident, skipping receipt.");
@@ -563,28 +594,6 @@ async function handleWebhook(req: Request) {
   // Most checkout sessions in this codebase never set metadata.company_id
   // directly (only resident_id, application_id, or park) — resolves it
   // from whichever of those IS present instead of assuming one field.
-  async function resolveCompanyIdFromMetadata(metadata: Stripe.Metadata | null | undefined): Promise<string | null> {
-    if (!metadata) return null;
-    if (metadata.company_id) return metadata.company_id;
-    if (metadata.companyId) return metadata.companyId;
-    if (metadata.lot_order_id) {
-      const { data } = await supabase.from("reservations").select("company_id").eq("lot_order_id", metadata.lot_order_id).maybeSingle();
-      if (data?.company_id) return data.company_id;
-    }
-    if (metadata.resident_id) {
-      const { data } = await supabase.from("resident_accounts").select("company_id").eq("id", metadata.resident_id).maybeSingle();
-      if (data?.company_id) return data.company_id;
-    }
-    if (metadata.application_id) {
-      const { data } = await supabase.from("resident_applications").select("company_id").eq("id", metadata.application_id).maybeSingle();
-      if (data?.company_id) return data.company_id;
-    }
-    if (metadata.park) {
-      const { data } = await supabase.from("companies").select("id").eq("park_id", metadata.park).maybeSingle();
-      if (data?.id) return data.id;
-    }
-    return null;
-  }
 
   // Oct 8 (per Mely — Shifts & Daily Close): a full refund voids the online payment in the daily close;
   // a partial refund cannot be split automatically, so it is flagged in System Health for review.
@@ -633,14 +642,26 @@ async function handleWebhook(req: Request) {
   if (event.type === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
     const pi = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
+    // Refunds on this charge (to tell refunds made from MelyOS — which update the books themselves —
+    // from ones made in the Stripe dashboard).
+    // Review M1: if Stripe can't be asked right now, answer 500 (Stripe retries) — never guess that a
+    // refund came from the dashboard.
+    let refundsOnCharge: Stripe.Refund[] = [];
+    let s: Stripe.Checkout.Session | undefined;
+    if (pi) {
+      try {
+        refundsOnCharge = (await stripe.refunds.list({ charge: charge.id, limit: 100 })).data;
+        s = (await stripe.checkout.sessions.list({ payment_intent: pi, limit: 1 })).data[0];
+      } catch (e: any) {
+        console.error("charge.refunded: could not read refunds/session:", e?.message);
+        return NextResponse.json({ error: "retry" }, { status: 500 });
+      }
+    }
     // Oct 24 (per Mely): marina invoice payments refunded in Stripe.
     if (pi) {
       try {
-        const sessions = await stripe.checkout.sessions.list({ payment_intent: pi, limit: 1 });
-        const s = sessions.data[0];
         // Oct 27: refunds made from MelyOS (Invoices → Refund) update the books themselves. Decided per
         // refund: only when EVERY refund on this charge came from MelyOS is there nothing to do here.
-        const refundsOnCharge = await stripe.refunds.list({ charge: charge.id, limit: 100 }).then((x) => x.data, () => [] as Stripe.Refund[]);
         const fromMelyos = refundsOnCharge.length > 0 && refundsOnCharge.every((r) => r.metadata?.source === "melyos_marina_refund");
         if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id && fromMelyos) { /* nothing to do */ }
         else if (s && (s.metadata?.type === "marina_invoice" || s.metadata?.type === "marina_invoices") && s.metadata.company_id) {
@@ -671,6 +692,22 @@ async function handleWebhook(req: Request) {
             message: `Partial refund of $${(Number(charge.amount_refunded || 0) / 100).toFixed(2)} on an online payment of $${Number(row.amount).toFixed(2)} (${row.payer_name || "unknown payer"}). Daily Close still shows the full amount — review it.`,
           });
         }
+      }
+    }
+    // Oct 29 (live-money audit M2): an RV payment FULLY refunded from the Stripe dashboard (not from
+    // MelyOS Daily Close, which updates the books itself) — the record it paid is reopened / marked
+    // refunded and the office is told. Each step only changes rows still in the "paid" state, so a
+    // repeated event changes nothing.
+    const fromMelyosRv = refundsOnCharge.length > 0 && refundsOnCharge.every((r) => r.metadata?.source === "melyos_daily_close" || r.metadata?.source === "melyos_marina_refund");
+    // Review M3: canceling an uncaptured authorization (lot checkouts we released ourselves) also
+    // sends charge.refunded — nothing was ever collected, so it is not a dashboard refund.
+    const neverCaptured = charge.captured === false || Number(charge.amount_captured || 0) === 0;
+    if (pi && charge.refunded && !fromMelyosRv && !neverCaptured) {
+      try {
+        await handleRvFullRefundOutsideMelyos(charge, pi, s || null);
+      } catch (e: any) {
+        console.error("rv refund sync:", e?.message);
+        return NextResponse.json({ error: "retry" }, { status: 500 });
       }
     }
   }
@@ -730,12 +767,16 @@ async function handleWebhook(req: Request) {
           const ss = await stripe.checkout.sessions.list({ payment_intent: piId, limit: 1 }).catch(() => null);
           const s0 = ss?.data[0];
           if (s0 && isRvInvoiceSession(s0)) await reopenRvInvoicesForLostBankDispute(s0, dispute, companyId);
+          // Oct 29 (M2): bank autopay payments have no checkout session — the invoices are on the charge.
+          else if (!s0 && isRvAutopayCharge(charge)) await reopenRvInvoicesForLostDisputeMeta(charge.metadata, dispute, companyId);
         }
       } else {
         console.error("charge.dispute.created: could not find the company for dispute", dispute.id);
       }
     } catch (err: any) {
       console.error("charge.dispute.created handling failed:", err?.message);
+      // Oct 29 (live-money audit M2): every step above is idempotent — let Stripe retry.
+      return NextResponse.json({ error: "retry" }, { status: 500 });
     }
     return NextResponse.json({ received: true });
   }
@@ -783,8 +824,13 @@ async function handleWebhook(req: Request) {
           await returnMarinaOnlinePayment(s0.metadata.company_id, s0.id, `Lost card dispute ${dispute.id}`);
         }
         // Oct 28 (review): a lost bank (ACH) dispute on an RV resident's invoice payment reopens the invoices.
-        if (s0 && isRvInvoiceSession(s0) && charge.payment_method_details?.type === "us_bank_account") {
+        // Oct 29 (live-money audit M2): a lost CARD dispute too — the bank took the money back either way.
+        if (s0 && isRvInvoiceSession(s0)) {
           await reopenRvInvoicesForLostBankDispute(s0, dispute, companyId);
+        }
+        // Oct 29 (M2): RV autopay (card or bank) has no checkout session — the invoices are on the charge.
+        if (!s0 && isRvAutopayCharge(charge)) {
+          await reopenRvInvoicesForLostDisputeMeta(charge.metadata, dispute, companyId);
         }
         // Oct 26: autopay charges have no checkout session; the metadata is on the charge.
         if (!s0 && charge.metadata?.type === "marina_autopay" && charge.metadata.company_id) {
@@ -793,15 +839,32 @@ async function handleWebhook(req: Request) {
       }
       const source = `Stripe lost dispute ${dispute.id}`;
       const { data: done } = await supabase.from("melyos_billing_charges").select("id").eq("source", source).limit(1);
-      if (done && done.length) return NextResponse.json({ received: true });
+      // Review (Low): each charge below is deduped by its own source, so a retry after a failure in
+      // the middle still records the rest (it used to stop here and lose the park-share charge).
+      const melyosPartBilled = !!(done && done.length);
 
       const who = charge.billing_details?.name || charge.billing_details?.email || "a customer";
       const totalCents = Number(dispute.amount || 0);
-      const melyosCents = Math.min(Number(charge.application_fee_amount || 0), totalCents);
-      const parkCents = Math.max(totalCents - melyosCents, 0);
+      let melyosCents = Math.min(Number(charge.application_fee_amount || 0), totalCents);
+      let parkCents = Math.max(totalCents - melyosCents, 0);
+      // Oct 29 (live-money audit H1): a payment charged WITHOUT the park's payout account — the park's
+      // share (park_payout_ledger) never reached the park. While MelyOS still holds it, the ledger is
+      // lowered instead of billing the park; once it was paid out by hand, it is billed as before.
+      const disputePi = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id || null;
+      const unsplitOwed = !charge.transfer && disputePi ? await parkOwedForPayment(disputePi) : null;
+      let ledgerNote = "";
+      let settledLedger = false;
+      if (unsplitOwed !== null && disputePi) {
+        parkCents = Math.min(Math.round(unsplitOwed * 100), totalCents);
+        melyosCents = totalCents - parkCents;
+        const r = await reduceParkOwedForRefund(disputePi, parkCents / 100, `Lost ${disputeWord} ${dispute.id}`, `dispute:${dispute.id}`);
+        if (r.status === "reduced") { ledgerNote = `MelyOS still held the park's share ($${(parkCents / 100).toFixed(2)}) — it was taken off "owed to the park" instead of being billed.`; parkCents = 0; }
+        else if (r.status === "settled") { parkCents = Math.round(r.owed * 100); settledLedger = true; }
+        else if (r.status === "error") throw new Error("could not update park_payout_ledger"); // retried (never bill the park for money MelyOS still holds)
+      }
 
       // 1) MelyOS's own part of the payment → owed by the park.
-      if (melyosCents > 0) {
+      if (melyosCents > 0 && !melyosPartBilled) {
         await recordMelyOSBillingCharge({
           companyId,
           chargeType: "Lost chargeback (MelyOS fees)",
@@ -843,7 +906,9 @@ async function handleWebhook(req: Request) {
         } else {
           reversalNote = "no transfer found on this payment";
         }
-        if (reversalNote) {
+        // Review (Low): deduped by its own source, so a retry never bills the park's share twice.
+        const { data: hadParkShare } = reversalNote ? await supabase.from("melyos_billing_charges").select("id").eq("company_id", companyId).eq("source", `${source} (park share)`).limit(1) : { data: [] as any[] };
+        if (reversalNote && !hadParkShare?.length) {
           // Couldn't take it back automatically → record it as owed instead.
           await recordMelyOSBillingCharge({
             companyId,
@@ -854,16 +919,24 @@ async function handleWebhook(req: Request) {
             markup: 0,
           });
         }
+        // Review M2: a settled (paid-out) unsplit row is counted only once the park was billed.
+        if (settledLedger && disputePi && reversalNote) {
+          const { data: billedShare } = await supabase.from("melyos_billing_charges").select("id").eq("company_id", companyId).eq("source", `${source} (park share)`).limit(1);
+          if (!billedShare?.length) throw new Error("could not bill the park's share of the lost dispute"); // retried
+          await confirmSettledRefundBilled(disputePi, parkCents / 100, `Lost ${disputeWord} ${dispute.id}`, `dispute:${dispute.id}`);
+        }
       }
 
       await logSystemHealthIssue({
         companyId,
         issueType: "chargeback",
         source: "stripe_webhook",
-        message: `The ${disputeWord} by ${who} on a $${(totalCents / 100).toFixed(2)} payment was LOST. ${parkCents > 0 ? (reversalNote ? `The park's share ($${(parkCents / 100).toFixed(2)}) was added to MelyOS Fees Owed.` : `The park's share ($${(parkCents / 100).toFixed(2)}) was taken back from the park's payout.`) : ""} ${melyosCents > 0 ? `MelyOS's fees on that payment ($${(melyosCents / 100).toFixed(2)}) were added to MelyOS Fees Owed.` : ""}`.trim(),
+        message: `The ${disputeWord} by ${who} on a $${(totalCents / 100).toFixed(2)} payment was LOST. ${ledgerNote ? `${ledgerNote} ` : ""}${parkCents > 0 ? (reversalNote ? `The park's share ($${(parkCents / 100).toFixed(2)}) was added to MelyOS Fees Owed.` : `The park's share ($${(parkCents / 100).toFixed(2)}) was taken back from the park's payout.`) : ""} ${melyosCents > 0 ? `MelyOS's fees on that payment ($${(melyosCents / 100).toFixed(2)}) were added to MelyOS Fees Owed.` : ""}`.trim(),
       });
     } catch (err: any) {
       console.error("charge.dispute.closed handling failed:", err?.message);
+      // Oct 29 (live-money audit M2): every step above is idempotent — let Stripe retry.
+      return NextResponse.json({ error: "retry" }, { status: 500 });
     }
     return NextResponse.json({ received: true });
   }
@@ -917,6 +990,8 @@ async function handleWebhook(req: Request) {
 
   if (event.type === "payment_intent.payment_failed") {
     const intent = event.data.object as Stripe.PaymentIntent;
+    // Oct 29 (M1): card autopay failures are handled (and told to System Health) by process-autopay.
+    if (intent.metadata?.type === RV_CARD_AUTOPAY_TYPE) return NextResponse.json({ received: true });
     const amount = ((intent.amount || 0) / 100).toFixed(2);
     const companyId = await resolveCompanyIdFromMetadata(intent.metadata);
     if (companyId) {
@@ -930,6 +1005,30 @@ async function handleWebhook(req: Request) {
   }
 
   return NextResponse.json({ received: true });
+}
+
+// Oct 29: moved out of handleWebhook (unchanged) so the refund/dispute helpers below can use it.
+async function resolveCompanyIdFromMetadata(metadata: Stripe.Metadata | null | undefined): Promise<string | null> {
+  if (!metadata) return null;
+  if (metadata.company_id) return metadata.company_id;
+  if (metadata.companyId) return metadata.companyId;
+  if (metadata.lot_order_id) {
+    const { data } = await supabase.from("reservations").select("company_id").eq("lot_order_id", metadata.lot_order_id).maybeSingle();
+    if (data?.company_id) return data.company_id;
+  }
+  if (metadata.resident_id) {
+    const { data } = await supabase.from("resident_accounts").select("company_id").eq("id", metadata.resident_id).maybeSingle();
+    if (data?.company_id) return data.company_id;
+  }
+  if (metadata.application_id) {
+    const { data } = await supabase.from("resident_applications").select("company_id").eq("id", metadata.application_id).maybeSingle();
+    if (data?.company_id) return data.company_id;
+  }
+  if (metadata.park) {
+    const { data } = await supabase.from("companies").select("id").eq("park_id", metadata.park).maybeSingle();
+    if (data?.id) return data.id;
+  }
+  return null;
 }
 
 // Oct 28 (per Mely): a resident-portal invoice payment (create-checkout-session) made by bank (ACH).
@@ -1120,32 +1219,68 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
 // Oct 28 (review): a LOST dispute on an RV resident's bank (ACH) payment — the bank took the money
 // back, so the invoices it paid are owed again: Paid → Pending, and System Health tells the office.
 // Only invoices still Paid change, so a second event (created as lost, then closed) does nothing.
+// Oct 29 (live-money audit M2): card disputes and autopay payments too (reopenRvInvoicesForReturn).
 async function reopenRvInvoicesForLostBankDispute(session: Stripe.Checkout.Session, dispute: Stripe.Dispute, companyId: string) {
-  const invoiceIds = String(session.metadata?.invoice_ids || "").split(",").filter(Boolean);
-  if (invoiceIds.length === 0) return;
+  const card = session.metadata?.payment_method !== "ach";
+  await reopenRvInvoicesForReturn({
+    meta: session.metadata || {}, companyId, issueType: card ? "rv_card_dispute_lost" : "rv_bank_dispute_lost",
+    why: `A resident's ${card ? "card" : "bank (ACH)"} payment of $${(Number(dispute.amount || 0) / 100).toFixed(2)} was disputed with their bank and LOST (reason: ${dispute.reason || "not given"}). The money was taken back`,
+    ref: `Stripe dispute ${dispute.id}, session ${session.id}`,
+  });
+}
+async function reopenRvInvoicesForLostDisputeMeta(meta: Stripe.Metadata, dispute: Stripe.Dispute, companyId: string) {
+  const card = meta.payment_method !== "ach";
+  await reopenRvInvoicesForReturn({
+    meta, companyId, issueType: card ? "rv_card_dispute_lost" : "rv_bank_dispute_lost",
+    why: `A resident's ${card ? "card" : "bank"} AUTOPAY payment of $${(Number(dispute.amount || 0) / 100).toFixed(2)} was disputed with their bank and LOST (reason: ${dispute.reason || "not given"}). The money was taken back`,
+    ref: `Stripe dispute ${dispute.id}`,
+  });
+}
+// RV autopay charges (card or bank) carry their invoices in the charge metadata.
+function isRvAutopayCharge(charge: Stripe.Charge): boolean {
+  const m = charge.metadata || {};
+  return (m.type === RV_CARD_AUTOPAY_TYPE || m.type === RV_AUTOPAY_PI_TYPE) && !!m.resident_id && !!m.invoice_ids;
+}
+
+// The money of an RV invoice payment went back to the payer (lost dispute, full refund in Stripe):
+// the invoices it paid are owed again (Paid → Pending, only rows still Paid → a repeat changes
+// nothing). That payment's own Sales Tax / fee lines are removed from the first invoice (they belong
+// to the payment, not to what is owed), totals recomputed, System Health told. Returns how many
+// invoices were reopened. A failed write throws (the webhook answers 500 → Stripe retries).
+async function reopenRvInvoicesForReturn(p: { meta: Stripe.Metadata; companyId: string; issueType: string; why: string; ref: string }): Promise<number> {
+  const invoiceIds = String(p.meta.invoice_ids || "").split(",").filter(Boolean);
+  if (invoiceIds.length === 0) return 0;
   const { data: reopened, error } = await supabase
     .from("resident_invoices")
     .update({ status: "Pending" })
     .in("id", invoiceIds)
     .eq("status", "Paid")
     .select("id, invoice_month");
-  // (Only invoices this call reopened are touched below, so a repeated event changes nothing.)
-  if (error) {
-    console.error("stripe-webhook: could not reopen invoices after a lost bank dispute:", error.message);
-    return;
-  }
-  if (!reopened || reopened.length === 0) return;
+  if (error) throw new Error(`could not reopen invoices: ${error.message}`);
+  if (!reopened || reopened.length === 0) return 0;
 
-  // That payment added its own Sales Tax and fee lines to the first invoice; they belong to the
-  // payment, not to what is owed — remove them (one of each, matching what this session charged) so
-  // the next checkout doesn't tax them or add a second fee, then recompute the totals.
+  // Review B1: an invoice reopened because the bank took the money back must never be charged again
+  // automatically — the resident's autopay is turned OFF, and each invoice is marked so autopay
+  // (card and bank) skips it even if autopay is turned back on.
+  for (const r of reopened) await markDisputeReopened(r.id);
+  let autopayNote = "";
+  if (p.meta.resident_id) {
+    const { data: off, error: offErr } = await supabase.from("resident_accounts").update({ autopay_enabled: false }).eq("id", p.meta.resident_id).eq("autopay_enabled", true).select("id, full_name");
+    if (offErr) autopayNote = ` Autopay could NOT be turned off (${offErr.message}) — turn it off by hand.`;
+    else if ((off || []).length) {
+      autopayNote = " Their autopay was turned OFF so the reopened invoice is not charged again automatically.";
+      await supabase.from("resident_update_notifications").insert({ company_id: p.companyId, resident_id: p.meta.resident_id, resident_name: off![0].full_name || null, update_type: "autopay_disabled",
+        message: `Autopay was turned off for ${off![0].full_name || "a resident"} after a lost dispute.` }).then(() => null, () => null);
+    }
+  }
+
   const primaryId = invoiceIds[0];
   if (reopened.some((r) => r.id === primaryId)) {
     const wanted: { type: string; amount: number }[] = [];
-    const tax = Number(session.metadata?.tax_charged || 0);
-    const fee = Number(session.metadata?.processing_fee_charged || 0);
+    const tax = Number(p.meta.tax_charged || 0);
+    const fee = Number(p.meta.processing_fee_charged || 0);
     if (tax > 0) wanted.push({ type: "Sales Tax", amount: tax });
-    if (fee > 0) wanted.push({ type: session.metadata?.payment_method === "ach" ? "Bank Transfer Fee" : "Card Processing Fee", amount: fee });
+    if (fee > 0) wanted.push({ type: p.meta.payment_method === "ach" ? "Bank Transfer Fee" : "Card Processing Fee", amount: fee });
     if (wanted.length > 0) {
       const { data: lines } = await supabase
         .from("resident_invoice_items")
@@ -1157,26 +1292,84 @@ async function reopenRvInvoicesForLostBankDispute(session: Stripe.Checkout.Sessi
         const hit = (lines || []).find((l) => l.charge_type === w.type && !toDelete.includes(l.id) && Math.abs(Number(l.amount || 0) - w.amount) < 0.01);
         if (hit) toDelete.push(hit.id);
       }
-      if (toDelete.length > 0) {
-        await supabase.from("resident_invoice_items").delete().in("id", toDelete);
-      }
+      if (toDelete.length > 0) await supabase.from("resident_invoice_items").delete().in("id", toDelete);
     }
   }
   for (const r of reopened) {
     const { data: items } = await supabase.from("resident_invoice_items").select("amount").eq("invoice_id", r.id);
     if (items && items.length > 0) {
       const total = items.reduce((sum, i) => sum + Number(i.amount || 0), 0);
-      await supabase.from("resident_invoices").update({ total_amount: total }).eq("id", r.id);
+      await supabase.from("resident_invoices").update({ total_amount: Math.round(total * 100) / 100 }).eq("id", r.id);
     }
   }
 
   await logSystemHealthIssue({
-    companyId,
-    residentId: session.metadata?.resident_id || null,
-    issueType: "rv_bank_dispute_lost",
+    companyId: p.companyId,
+    residentId: p.meta.resident_id || null,
+    issueType: p.issueType,
     source: "stripe_webhook",
-    message: `A resident's bank (ACH) payment of $${(Number(dispute.amount || 0) / 100).toFixed(2)} was disputed with their bank and LOST (reason: ${dispute.reason || "not given"}). The money was taken back, so ${reopened.map((r) => r.invoice_month).filter(Boolean).join(", ") || "the invoice(s)"} ${reopened.length === 1 ? "is" : "are"} back to Pending (owed again). Contact the resident. Stripe dispute ${dispute.id}, session ${session.id}.`,
+    message: `${p.why}, so ${reopened.map((r) => r.invoice_month).filter(Boolean).join(", ") || "the invoice(s)"} ${reopened.length === 1 ? "is" : "are"} back to Pending (owed again).${autopayNote} Contact the resident; if they no longer owe it, write it off or add a credit. ${p.ref}.`,
   });
+  return reopened.length;
+}
+
+// Oct 29 (live-money audit M2): an RV payment was FULLY refunded from the Stripe dashboard (refunds
+// made from MelyOS Daily Close update the books themselves and never reach here). The record it paid
+// is reopened / marked refunded, the "owed to park" ledger is corrected for unsplit payments, and the
+// office is told once per charge.
+async function handleRvFullRefundOutsideMelyos(charge: Stripe.Charge, pi: string, s: Stripe.Checkout.Session | null) {
+  const meta: Stripe.Metadata = s?.metadata && Object.keys(s.metadata).length ? s.metadata : charge.metadata || {};
+  if (meta.type === "marina_invoice" || meta.type === "marina_invoices" || meta.type === "marina_autopay") return; // handled above
+  const companyId = await resolveCompanyIdFromMetadata(meta).catch(() => null);
+  if (!companyId) return;
+  const amount = (Number(charge.amount_refunded || charge.amount || 0) / 100).toFixed(2);
+  const who = charge.billing_details?.name || charge.billing_details?.email || s?.customer_details?.name || "a customer";
+  const ref = `Stripe charge ${charge.id}`;
+  let what = "";
+
+  if ((s && isRvInvoiceSession(s)) || (!s && isRvAutopayCharge(charge))) {
+    // Review B1: NOT reopened automatically — a reopened invoice would be charged again by autopay the
+    // next morning. The office decides (owed again → set it back to Pending; not owed → add a credit).
+    what = `The invoice(s) it paid (${String(meta.invoice_ids || "").split(",").filter(Boolean).join(", ")}) were left Paid — if the resident still owes this money, set the invoice back to Pending by hand (check their autopay first); if not, add a "Refund" credit line.`;
+  } else if (s && (s.metadata?.productId || s.metadata?.type === "propane_fillup")) {
+    const { data: rows, error } = await supabase.from("propane_orders").update({ status: "refunded" }).eq("stripe_session_id", s.id).neq("status", "refunded").select("id");
+    // Review M5: a CHECK constraint that doesn't allow "refunded" (sec_money.sql not run) is told, not retried.
+    if (error && (error.code === "23514" || /check constraint/i.test(error.message || ""))) what = `The propane order could NOT be marked refunded (the database doesn't allow that status yet — run sec_money.sql), so its QR code may still work. Void it by hand.`;
+    else if (error) throw new Error(`could not mark the propane order refunded: ${error.message}`);
+    else what = (rows || []).length ? "The propane order was marked refunded — its QR code no longer works." : "";
+  } else {
+    const kind = meta.type === "application_fee" ? "application fee" : meta.type === "rent_to_own_deposit" ? "Rent-to-Own deposit"
+      : meta.type === "manual_reservation" ? "reservation" : meta.type === "occupant_background_check" ? "occupant background check" : "online";
+    what = `This ${kind} payment is NOT changed automatically — update it by hand (e.g. mark the fee/deposit unpaid, cancel the reservation).`;
+  }
+
+  // Unsplit payment (park_payout_ledger): the park is owed nothing for it now.
+  let ledgerWhat = "";
+  const owed = await parkOwedForPayment(pi);
+  if (owed !== null && owed > 0) {
+    const r = await reduceParkOwedForRefund(pi, owed, "Refunded in the Stripe dashboard", `refund:${charge.id}`);
+    if (r.status === "reduced") ledgerWhat = ` The park's share was taken off "owed to the park" (MelyOS still held it).`;
+    if (r.status === "settled" && r.owed > 0) {
+      const source = `Refund ${charge.id} payout`;
+      const { data: had } = await supabase.from("melyos_billing_charges").select("id").eq("company_id", companyId).eq("source", source).limit(1);
+      if (!had?.length) {
+        await recordMelyOSBillingCharge({ companyId, chargeType: "Refund not recovered from payout", source, markup: 0, amount: r.owed,
+          description: `${who}'s payment was refunded in full ($${amount}). The park's share ($${r.owed.toFixed(2)}) had already been paid out to the park by hand, so it is owed back to MelyOS.` });
+      }
+      const { data: billedNow } = await supabase.from("melyos_billing_charges").select("id").eq("company_id", companyId).eq("source", source).limit(1);
+      if (!billedNow?.length) throw new Error("could not bill the park's refunded share"); // retried
+      await confirmSettledRefundBilled(pi, r.owed, "Refunded in the Stripe dashboard", `refund:${charge.id}`);
+      ledgerWhat = ` The park's share ($${r.owed.toFixed(2)}) had already been paid out to the park, so it was added to MelyOS Fees Owed.`;
+    }
+  }
+
+  if (what || ledgerWhat) {
+    const { data: logged } = await supabase.from("system_health_issues").select("id").eq("company_id", companyId).eq("issue_type", "rv_payment_refunded").like("message", `%${ref}%`).limit(1);
+    if (!logged?.length) {
+      await logSystemHealthIssue({ companyId, residentId: meta.resident_id || null, issueType: "rv_payment_refunded", source: "stripe_webhook",
+        message: `${who}'s payment of $${amount} was REFUNDED in full in the Stripe dashboard (not from MelyOS). ${what}${ledgerWhat} ${ref}.`.replace(/\s+/g, " ").trim() });
+    }
+  }
 }
 
 // Oct 28 (review): the application-fee and Rent-to-Own deposit handlers moved to
@@ -1199,7 +1392,7 @@ const PROPANE_PRODUCT_LABELS: Record<string, string> = {
 // happened once and wiped 2 real customer orders along with test data.
 // If bulk-clearing test data, filter by a specific test email/date range,
 // or move test rows to `status = 'test'` and filter on that instead.
-async function handlePropanePaid(session: Stripe.Checkout.Session) {
+async function handlePropanePaid(session: Stripe.Checkout.Session): Promise<"retry" | void> {
   const { productId, quantity, lotId, park, residentLot, subtotalCents, taxCents, feeCents } =
     session.metadata || {};
 
@@ -1236,14 +1429,15 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
     ).select("id");
 
     if (error) {
+      // Oct 29 (live-money audit M3): the customer paid — never acknowledge a lost order; Stripe retries.
       console.error("Error saving propane order:", error.message);
-      return;
+      return "retry";
     }
     if (!inserted || inserted.length === 0) return; // already saved (and emailed) once
 
     const { data: company } = await supabase
       .from("companies")
-      .select("id")
+      .select("id, company_name")
       .eq("park_id", park || "aloha")
       .single();
 
@@ -1276,7 +1470,7 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Aloha RV Park <noreply@aloharvparkfl.com>",
+            from: `${String(company?.company_name || "Aloha RV Park").replace(/[<>,"]/g, "")} <noreply@aloharvparkfl.com>`, // Oct 29 (Low): the park's own name
             to: customerEmail,
             subject: "Your Propane Pickup QR Code",
             html: `
@@ -1299,131 +1493,73 @@ async function handlePropanePaid(session: Stripe.Checkout.Session) {
     }
   } catch (err) {
     console.error("Error saving propane order:", err);
+    return "retry"; // Oct 29 (M3): the insert is idempotent (stripe_session_id), so a retry is safe
   }
 }
 
-// Aug 4 (per Mely): reuses the same real Checkr integration already built
-// for lease-application occupants — creates a real Checkr candidate +
-// invitation (email sent automatically by Checkr) for each Household
-// Occupant paid for in this checkout, one charge covering however many
-// were selected on /residents/background-checks.
-async function handleOccupantBackgroundCheckPaid(session: Stripe.Checkout.Session) {
-  const occupantIdsRaw = session.metadata?.occupant_ids || "";
-  const occupantIds = occupantIdsRaw.split(",").filter(Boolean);
-
-  if (occupantIds.length === 0) {
-    console.log("Occupant background check webhook missing occupant_ids metadata");
-    return;
+// Oct 29 (live-money audit H2): the motor-home fill-up the staff rang up (admin app
+// create-fillup-checkout) and the customer paid by scanning. Already "picked up" (the fill-up
+// happened before paying). Saved once per Stripe session — the staff screen's polling
+// (fillup-checkout-status) uses the same upsert, so whichever comes first saves it, the other
+// changes nothing (and only the one that saved it notifies the office).
+async function handlePropaneFillupPaid(session: Stripe.Checkout.Session): Promise<"retry" | void> {
+  const m = session.metadata || {};
+  const companyId = m.companyId || m.company_id || null;
+  if (!companyId) return;
+  const { data: company, error: coErr } = await supabase.from("companies").select("id, park_id").eq("id", companyId).maybeSingle();
+  if (coErr) return "retry"; // Review (Low): a read failure is retried, not dropped
+  if (!company) return;
+  const now = new Date().toISOString();
+  const { data: inserted, error } = await supabase.from("propane_orders").upsert({
+    park_id: m.parkId || company.park_id || null,
+    product_id: "motorhome",
+    product_label: "Motor Home 40LB Tank",
+    quantity: parseFloat(m.gallons || "0"),
+    unit: "gallon",
+    amount_total: (session.amount_total || 0) / 100,
+    subtotal_amount: m.subtotalCents != null ? Number(m.subtotalCents) / 100 : null,
+    tax_amount: m.taxCents != null ? Number(m.taxCents) / 100 : null,
+    fee_amount: m.feeCents != null ? Number(m.feeCents) / 100 : null,
+    currency: session.currency || "usd",
+    customer_email: session.customer_details?.email || null,
+    stripe_session_id: session.id,
+    stripe_payment_intent: (session.payment_intent as string) || null,
+    status: "paid",
+    paid_at: now,
+    qr_token: crypto.randomBytes(16).toString("hex"),
+    redeemed: true,
+    redeemed_at: now,
+    redeemed_by: m.staffName || null,
+  }, { onConflict: "stripe_session_id", ignoreDuplicates: true }).select("id");
+  if (error) {
+    console.error("Error saving propane fill-up:", error.message);
+    return "retry";
   }
-
-  const { data: loadedOccupants, error } = await supabase
-    .from("resident_occupants")
-    .select("id, full_name, email, resident_id, company_id, background_check_fee_paid, checkr_candidate_id")
-    .in("id", occupantIds);
-
-  if (error || !loadedOccupants || loadedOccupants.length === 0) {
-    console.log("Occupant background check webhook: could not load occupants", error?.message);
-    return;
-  }
-
-  // Oct 20 (security review — webhook idempotency): an occupant that's
-  // already marked paid AND already has a Checkr candidate was handled by
-  // an earlier delivery of this same event — never invite them twice.
-  const occupants = loadedOccupants.filter(
-    (o: any) => !(o.background_check_fee_paid === true && o.checkr_candidate_id)
-  );
-  if (occupants.length === 0) {
-    console.warn("Occupant background check webhook: all occupants already invited — duplicate delivery, skipping.");
-    return;
-  }
-
-  const { data: resident } = await supabase
-    .from("resident_accounts")
-    .select("full_name, email, company_id")
-    .eq("id", occupants[0].resident_id)
-    .maybeSingle();
-
-  // Aug 10 (per Mely): the background check fee residents pay is now
-  // 100% the park's revenue — MelyOS's own cut comes from a separate
-  // Checkr Billing charge to the park's admin instead, not from this
-  // payment. Reads the SAME admin-editable fee the checkout itself
-  // charged (create-occupant-background-check-checkout-session already
-  // pulls this from lease_defaults.application_fee_per_additional).
-  // Also pulls the same Checkr Work Location State + Default Package the
-  // admin configured in Lease Defaults, so this occupant flow uses the
-  // exact same integration/settings as the main lease-application flow
-  // instead of its own separate hardcoded package.
-  let occupantFeeAmount = 5.0;
-  let checkrWorkLocationState = "";
-  let checkrPackageSlug = "";
-  if (occupants[0].company_id) {
-    const { data: settings } = await supabase
-      .from("park_settings")
-      .select("lease_defaults, checkr_work_location_state, checkr_default_package_slug")
-      .eq("company_id", occupants[0].company_id)
-      .maybeSingle();
-    occupantFeeAmount =
-      Number(settings?.lease_defaults?.application_fee_per_additional) || 5.0;
-    checkrWorkLocationState = settings?.checkr_work_location_state || "";
-    checkrPackageSlug = settings?.checkr_default_package_slug || "basic_plus_criminal";
-  }
-
-  if (!checkrWorkLocationState) {
-    console.log(
-      "Occupant background check: company hasn't set Checkr Work Location State in Lease Defaults — skipping all Checkr invitations for this checkout."
-    );
-    return;
-  }
-
-  for (const occupant of occupants) {
-    try {
-      // customId format "occupant::<occupantId>" — distinguishes this
-      // from the "<applicationId>::<personKey>" format used for lease
-      // applications, so the Checkr webhook can tell which table to
-      // update when results come back.
-      const { candidateId } = await createCheckrInvitation({
-        applicationId: "occupant",
-        personKey: occupant.id,
-        email: occupant.email || resident?.email || "",
-        fullName: occupant.full_name,
-        state: checkrWorkLocationState,
-        packageSlug: checkrPackageSlug,
-      });
-
-      await supabase
-        .from("resident_occupants")
-        .update({
-          checkr_candidate_id: candidateId,
-          background_check_status: "invitation_sent",
-          background_check_fee_paid: true,
-          park_share_amount: occupantFeeAmount,
-          park_share_paid_out: false,
-          checkr_package_slug: checkrPackageSlug,
-          checkr_invitation_sent_at: new Date().toISOString(),
-        })
-        .eq("id", occupant.id);
-    } catch (err: any) {
-      console.log(`Could not create Checkr invitation for occupant ${occupant.id}:`, err.message);
-    }
-  }
-
-  if (resident?.company_id) {
-    await supabase.from("resident_update_notifications").insert({
-      company_id: resident.company_id,
-      resident_id: occupants[0].resident_id,
-      resident_name: resident.full_name || null,
-      update_type: "occupant_background_check_paid",
-      message: `${resident.full_name || "A resident"} paid for a background check for: ${occupants
-        .map((o) => o.full_name)
-        .join(", ")}.`,
-    });
-  }
+  if (!inserted || inserted.length === 0) return; // already saved
+  await supabase.from("resident_update_notifications").insert({
+    company_id: companyId,
+    resident_name: session.customer_details?.name || session.customer_details?.email || null,
+    update_type: "propane_payment",
+    message: `Bought ${m.gallons || ""} gal Motor Home fill-up — paid $${((session.amount_total || 0) / 100).toFixed(2)}`,
+  }).then(() => null, () => null);
 }
 
-async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
+// Oct 29 (live-money audit M5): handleOccupantBackgroundCheckPaid moved to src/lib/occupantBackgroundCheck.ts.
+
+async function handleManualReservationPaid(session: Stripe.Checkout.Session): Promise<"retry" | void> {
   const lotOrderId = session.metadata?.lot_order_id;
+  const amountPaid = ((session.amount_total || 0) / 100).toFixed(2);
+  // Oct 29 (live-money audit M3): money arrived but the reservation can't be matched → the office is
+  // told (it never just disappears into the logs).
+  const tellOffice = async (issueType: string, message: string) => {
+    const cid = session.metadata?.company_id || (await resolveCompanyIdFromMetadata(session.metadata).catch(() => null));
+    if (!cid) { console.error("manual reservation webhook:", message); return; }
+    const { data: had } = await supabase.from("system_health_issues").select("id").eq("company_id", cid).eq("issue_type", issueType).like("message", `%${session.id}%`).limit(1);
+    if (had?.length) return;
+    await logSystemHealthIssue({ companyId: cid, issueType, source: "stripe_webhook", message });
+  };
   if (!lotOrderId) {
-    console.log("Manual reservation webhook missing lot_order_id metadata");
+    await tellOffice("reservation_payment_review", `A reservation payment of $${amountPaid} arrived without its reservation reference, so it was not applied to any reservation. Find it in Stripe and apply it by hand, or refund it. Stripe session ${session.id}.`);
     return;
   }
 
@@ -1435,15 +1571,25 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
   // Oct 20 (security review): only mark the order paid if what was
   // actually paid covers the saved reservation amount.
   {
-    const { data: order } = await supabase.from("lot_orders").select("amount_total, status, lot_id, park_id, arrival_date, departure_date, customer_name, stripe_session_id").eq("id", lotOrderId).maybeSingle();
+    const { data: order, error: orderErr } = await supabase.from("lot_orders").select("amount_total, status, lot_id, park_id, arrival_date, departure_date, customer_name, stripe_session_id, stripe_payment_intent").eq("id", lotOrderId).maybeSingle();
+    if (orderErr) return "retry";
     const dueCents = Math.round(Number((order as any)?.amount_total || 0) * 100);
     if (!order) {
-      console.log("Manual reservation webhook: lot_order not found", lotOrderId);
+      await tellOffice("reservation_payment_review", `A reservation payment of $${amountPaid} arrived for a reservation that no longer exists (order ${lotOrderId}). Nothing was applied — refund it or book it by hand. Stripe session ${session.id}.`);
       return;
     }
-    if ((order as any).status === "paid") return; // retried delivery
+    if ((order as any).status === "paid") {
+      // Oct 29 (live-money audit M4): a retried delivery of the SAME payment changes nothing; a
+      // SECOND payment for an already-paid reservation (two links / two tabs) is a duplicate.
+      const samePayment = (order as any).stripe_session_id === session.id
+        || (!!(order as any).stripe_payment_intent && (order as any).stripe_payment_intent === (typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id));
+      if (!samePayment) {
+        await tellOffice("rv_possible_duplicate_payment", `${(order as any).customer_name || "A guest"} paid $${amountPaid} AGAIN for a reservation on Lot ${(order as any).lot_id} that was already paid (${(order as any).arrival_date || ""} to ${(order as any).departure_date || ""}). This is a duplicate payment — refund it from Shifts & Daily Close. Stripe session ${session.id}.`);
+      }
+      return;
+    }
     if (Number(session.amount_total || 0) + 1 < dueCents) {
-      console.error("Manual reservation webhook: paid less than the reservation amount", { lotOrderId, paid: session.amount_total, dueCents });
+      await tellOffice("reservation_payment_review", `${(order as any).customer_name || "A guest"} paid $${amountPaid} for a reservation on Lot ${(order as any).lot_id} that costs $${(dueCents / 100).toFixed(2)} (the amount changed after the payment link was made). The reservation was NOT marked paid — collect the difference and mark it by hand, or refund. Stripe session ${session.id}.`);
       return;
     }
     // Oct 28 (per Mely — two people paying for the same lot): the reservation row holds the dates
@@ -1523,7 +1669,7 @@ async function handleManualReservationPaid(session: Stripe.Checkout.Session) {
 
   if (error) {
     console.log("Error updating lot_orders after manual reservation payment:", error.message);
-    return;
+    return "retry"; // Oct 29 (M3): Stripe sends it again (the paid check above makes it idempotent)
   }
 
   console.log(`Manual reservation payment confirmed for lot_order ${lotOrderId}.`);

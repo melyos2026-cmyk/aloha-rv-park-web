@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
   const { data: listings, error } = await supabase
     .from("marketplace_listings")
-    .select("*, resident_accounts(full_name, rv_lots(lot_name)), marketplace_listing_photos(photo_url, sort_order)")
+    .select("*, resident_accounts(full_name), marketplace_listing_photos(photo_url, sort_order)")
     .eq("company_id", companyId)
     .eq("status", "active")
     .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
@@ -44,6 +44,19 @@ export async function GET(req: NextRequest) {
   // internal fields (boater id, moderation notes) in the public answer.
   const clean = (listings || [])
     .filter((l: any) => !l.member_id)
-    .map(({ member_id, moderation_note, resident_id, ...rest }: any) => rest);
+    .map(({ member_id, moderation_note, resident_id, resident_accounts, ...rest }: any) => ({
+      ...rest,
+      // Oct 29 (security review): the public sees the seller's first name + last initial only,
+      // and never their lot number (where they live in the park).
+      resident_accounts: { full_name: publicSellerName(resident_accounts?.full_name) },
+    }));
   return NextResponse.json({ listings: clean });
+}
+
+// "Maria Lopez Rivera" → "Maria L."; a single name stays as is; empty → "Resident".
+function publicSellerName(full: unknown): string {
+  const parts = String(full || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "Resident";
+  if (parts.length === 1) return parts[0].slice(0, 40);
+  return `${parts[0].slice(0, 40)} ${parts[parts.length - 1].charAt(0).toUpperCase()}.`;
 }

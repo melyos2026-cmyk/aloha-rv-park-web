@@ -30,10 +30,24 @@ export async function POST(req: NextRequest) {
   const forwardedFor = req.headers.get("x-forwarded-for");
   const ip = forwardedFor ? forwardedFor.split(",")[0].trim() : null;
 
-  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (typeof paymentMethodId !== "string" || !/^pm_[A-Za-z0-9_]+$/.test(paymentMethodId)) {
+    return NextResponse.json({ error: "Card not found. Please try again." }, { status: 400 });
+  }
+  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId).catch(() => null);
+  if (!paymentMethod) return NextResponse.json({ error: "Card not found. Please try again." }, { status: 400 });
   // Oct 28 (review): this route saves CARD autopay only (bank autopay: /api/portal/bank-autopay).
   if (paymentMethod.type !== "card") {
     return NextResponse.json({ error: "This is not a card. Please use a card here, or set up autopay by bank." }, { status: 400 });
+  }
+  // Oct 29 (live-money audit — Low): the card must be the one saved on THIS resident's own Stripe
+  // customer (create-setup-intent attaches it there). Otherwise someone could point autopay at a
+  // card id from another customer.
+  {
+    const { data: owner } = await supabase.from("resident_accounts").select("stripe_customer_id").eq("id", residentId).maybeSingle();
+    const pmCustomer = typeof paymentMethod.customer === "string" ? paymentMethod.customer : paymentMethod.customer?.id || null;
+    if (!owner?.stripe_customer_id || !pmCustomer || pmCustomer !== owner.stripe_customer_id) {
+      return NextResponse.json({ error: "This card isn't saved on your account. Please add it again." }, { status: 400 });
+    }
   }
   const last4 = paymentMethod.card?.last4 || null;
 

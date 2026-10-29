@@ -27,3 +27,21 @@ export async function tooManyFromIp(req: Request, scope: string, maxPerHour: num
   if (Math.random() < 0.02) await supabaseAdmin.from("marina_rate_hits").delete().lt("at", new Date(Date.now() - 86400_000).toISOString()).then(() => null, () => null);
   return false;
 }
+
+// Oct 29 (security review): the same database counter, keyed by anything (a company id, an email,
+// a scope), for per-company and per-email caps. The key is stored only as a salted hash.
+// Returns true when `max` hits within `windowMs` were already counted (this one is then not counted).
+export async function tooManyForKey(scope: string, rawKey: string, max: number, windowMs = 3600_000): Promise<boolean> {
+  const key = crypto.createHmac("sha256", SALT).update(`${scope}|key|${String(rawKey).toLowerCase()}`).digest("hex").slice(0, 40);
+  const since = new Date(Date.now() - windowMs).toISOString();
+  const { count, error } = await supabaseAdmin.from("marina_rate_hits").select("id", { count: "exact", head: true }).eq("key", key).gte("at", since);
+  if (error) {
+    const now = Date.now(), h = mem.get(key);
+    if (!h || now - h.at > windowMs) { mem.set(key, { n: 1, at: now }); return false; }
+    if (h.n >= max) return true;
+    h.n++; return false;
+  }
+  if ((count || 0) >= max) return true;
+  await supabaseAdmin.from("marina_rate_hits").insert({ key }).then(() => null, () => null);
+  return false;
+}

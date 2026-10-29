@@ -15,14 +15,40 @@ const esc = (v: string) => v.replace(/[<>&"]/g, "");
 
 // A paid web reservation becomes confirmed, and (for real marinas) the guest gets an email.
 // Safe to call twice: only a still-pending reservation is changed.
+// Oct 29 (live-money audit M7): two guests can pay for the same slip and dates (two open checkouts).
+// Before a booking is confirmed by its payment, the slip is checked again: another CONFIRMED (or
+// checked-in) booking overlapping these dates → this one is NOT confirmed and the office is told
+// (refund or move the guest). The exclusion constraint marina_reservations_no_overlap (sec_money.sql)
+// makes the same rule atomic in the database (23P01).
+async function slipTakenFor(companyId: string, r: { id: string; slip_id: string; start_date: string; end_date: string }): Promise<boolean | null> {
+  const { data, error } = await supabaseAdmin.from("marina_reservations").select("id")
+    .eq("company_id", companyId).eq("slip_id", r.slip_id).in("status", ["confirmed", "checked_in"]).neq("id", r.id)
+    .lt("start_date", r.end_date).gt("end_date", r.start_date).limit(1);
+  if (error) return null;
+  return (data || []).length > 0;
+}
+async function tellSlipTaken(companyId: string, r: any, how: string) {
+  const { data: had } = await supabaseAdmin.from("system_health_issues").select("id").eq("company_id", companyId).eq("issue_type", "marina_double_booking").like("message", `%${r.id}%`).limit(1);
+  if (had?.length) return;
+  await logSystemHealthIssue({ companyId, issueType: "marina_double_booking", source: "stripe",
+    message: `${r.guest_name || "A guest"} ${how} for slip reservation ${r.start_date} to ${r.end_date}, but that slip was already booked for those dates by someone else. The booking was NOT confirmed — offer another slip or refund the payment. Reservation ${r.id}.` }).catch(() => null);
+  await supabaseAdmin.from("resident_update_notifications").insert({ company_id: companyId, resident_name: r.guest_name || null, update_type: "double_booking_alert",
+    message: `⚠️ ${r.guest_name || "A guest"} paid for a slip that was already booked (${r.start_date} to ${r.end_date}). Offer another slip or refund.` }).then(() => null, () => null);
+}
+
 async function confirmReservationForInvoice(companyId: string, invoiceId: string) {
-  const { data: rows } = await supabaseAdmin
+  const { data: pending } = await supabaseAdmin.from("marina_reservations").select("id, slip_id, start_date, end_date, guest_name")
+    .eq("company_id", companyId).eq("invoice_id", invoiceId).eq("status", "pending").limit(1);
+  const p0: any = pending?.[0];
+  if (p0 && (await slipTakenFor(companyId, p0)) === true) { await tellSlipTaken(companyId, p0, "paid"); return; }
+  const { data: rows, error: confirmErr } = await supabaseAdmin
     .from("marina_reservations")
     .update({ status: "confirmed" })
     .eq("company_id", companyId)
     .eq("invoice_id", invoiceId)
     .eq("status", "pending")
     .select("*");
+  if (confirmErr?.code === "23P01" && p0) { await tellSlipTaken(companyId, p0, "paid"); return; }
   const r: any = rows?.[0];
   if (!r) return;
   // Oct 26 (per Mely): paid with a deposit → the balance becomes its own invoice.
@@ -187,9 +213,21 @@ export async function returnMarinaPaymentRef(companyId: string, reference: strin
 // 6 days, before the card hold expires) → the regular price is charged. See the admin app
 // lib/marinaHolds.ts. Safe to call twice.
 export async function cardHoldPlaced(companyId: string, invoiceId: string, pi: string, sessionId: string, held: number, feePassed: boolean, captureBefore: string | null): Promise<"ok" | "error" | "no_booking"> {
+  // Oct 29 (live-money audit M7): the slip is checked again before the hold confirms the booking.
+  {
+    const { data: pending } = await supabaseAdmin.from("marina_reservations").select("id, slip_id, start_date, end_date, guest_name")
+      .eq("company_id", companyId).eq("invoice_id", invoiceId).eq("status", "pending").limit(1);
+    const p0: any = pending?.[0];
+    if (p0) {
+      const taken = await slipTakenFor(companyId, p0);
+      if (taken === null) return "error"; // can't check now → Stripe retries
+      if (taken) { await tellSlipTaken(companyId, p0, "placed a card hold"); return "no_booking"; } // the hold is released
+    }
+  }
   const { data: rows, error } = await supabaseAdmin.from("marina_reservations")
     .update({ status: "confirmed", hold_pi: pi, hold_session: sessionId, hold_amount: held, hold_placed_at: new Date().toISOString(), hold_fee_passed: feePassed, hold_capture_before: captureBefore })
     .eq("company_id", companyId).eq("invoice_id", invoiceId).eq("status", "pending").select("*");
+  if (error?.code === "23P01") return "no_booking"; // the slip was just taken (exclusion constraint) → hold released
   if (error) return "error";
   const r: any = rows?.[0];
   if (!r) {

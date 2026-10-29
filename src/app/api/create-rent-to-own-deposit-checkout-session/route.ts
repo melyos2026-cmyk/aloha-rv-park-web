@@ -1,4 +1,5 @@
 import { demoPaymentBlock } from "@/lib/demoPayments";
+import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
@@ -95,6 +96,7 @@ export async function POST(req: Request) {
 
     // Oct 21 (per Mely): no real payments on demo companies.
     { const demoBlocked = await demoPaymentBlock(application.company_id); if (demoBlocked) return demoBlocked; }
+    if (!connectSplit) { const refused = await unsplitRefusal(application.company_id, "Rent-to-Own deposit"); if (refused) return refused; } // Oct 29 (H1)
 
     // Oct 28 (per Mely — two people paying for the same lot at once): another live application
     // already paid for this lot → stop; otherwise hold the lot for this application while it checks
@@ -123,7 +125,7 @@ export async function POST(req: Request) {
         // cancels the authorization if it went to someone else. The Connect split happens at capture.
         payment_intent_data: {
           capture_method: "manual",
-          metadata: { lot_checkout: "rent_to_own_deposit", application_id: application.id, ...(application.company_id ? { company_id: application.company_id } : {}) },
+          metadata: { lot_checkout: "rent_to_own_deposit", application_id: application.id, ...(application.company_id ? { company_id: application.company_id } : {}), ...parkShareMetadata(alohaShare) }, // Oct 29 (H1): + park share
           ...(connectSplit
             ? {
                 application_fee_amount: connectSplit.applicationFeeAmountCents,

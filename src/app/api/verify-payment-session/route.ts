@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { supabase } from "@/lib/supabase";
+import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { getPortalSession } from "@/lib/portalSession";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const sessionId = searchParams.get("session_id");
 
-    if (!sessionId) {
+    if (!sessionId || !/^cs_[A-Za-z0-9_]{10,255}$/.test(sessionId)) {
       return NextResponse.json({ error: "Missing session_id" }, { status: 400 });
     }
 
@@ -18,6 +19,14 @@ export async function GET(req: Request) {
     });
 
     const residentId = session.metadata?.resident_id || null;
+
+    // Oct 29 (security review): the amount, card/bank and charge details are shown only to the
+    // signed-in resident this payment belongs to. Anyone else with the link gets the status only.
+    const portal = await getPortalSession(req);
+    if (!residentId || !portal || portal.residentId !== residentId) {
+      return NextResponse.json({ paymentStatus: session.payment_status, limited: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const paymentIdsRaw = session.metadata?.payment_ids || "";
     const paymentIds = paymentIdsRaw.split(",").filter(Boolean);
 
@@ -42,7 +51,8 @@ export async function GET(req: Request) {
       const { data: paidCharges } = await supabase
         .from("resident_payments")
         .select("*")
-        .in("id", paymentIds);
+        .in("id", paymentIds)
+        .eq("resident_id", residentId);
 
       chargesPaid = (paidCharges || []).map((p) => ({
         label:
@@ -81,6 +91,7 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
+      limited: false,
       paymentStatus: session.payment_status,
       amountPaid: (session.amount_total || 0) / 100,
       receiptNumber: paymentIntentObj?.id || sessionId,

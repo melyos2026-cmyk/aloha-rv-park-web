@@ -16,13 +16,20 @@ type ReceiptData = {
   transactionId: string;
   paymentDate: Date;
   remainingBalance: number;
+  // Oct 29 (live-money audit — Low): the park's own name/address (defaults: Aloha, as before).
+  companyName?: string | null;
+  companyAddress?: string | null;
 };
+
+const esc = (v: string) => v.replace(/[<>&"]/g, "");
 
 function formatMoney(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
 export async function sendReceiptEmail(data: ReceiptData) {
+  const parkName = esc(String(data.companyName || "Aloha RV Park"));
+  const parkAddress = data.companyName ? (data.companyAddress ? esc(String(data.companyAddress)) : "") : "4648 S. Orange Blossom Trl, Kissimmee, FL 34746";
   const chargesHtml = data.chargesPaid
     .map(
       (c) =>
@@ -37,7 +44,7 @@ export async function sendReceiptEmail(data: ReceiptData) {
   <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background:#e1f8f7; padding:24px;">
     <div style="background:#ffffff; border:1px solid #16a34a; border-radius:12px; padding:24px;">
       <h1 style="color:#111; font-size:22px; margin:0 0 4px 0;">Payment Receipt</h1>
-      <p style="color:#333; font-size:14px; margin:0 0 20px 0;">Aloha RV Park</p>
+      <p style="color:#333; font-size:14px; margin:0 0 20px 0;">${parkName}</p>
 
       <div style="border-bottom:1px solid #eee; padding-bottom:16px; margin-bottom:16px;">
         <p style="color:#111; font-size:15px; margin:0;">Hi ${data.residentName},</p>
@@ -70,7 +77,7 @@ export async function sendReceiptEmail(data: ReceiptData) {
     </div>
 
     <p style="text-align:center; color:#888; font-size:12px; margin-top:16px;">
-      Aloha RV Park · 4648 S. Orange Blossom Trl, Kissimmee, FL 34746
+      ${parkName}${parkAddress ? ` · ${parkAddress}` : ""}
     </p>
     <p style="text-align:center; color:#bbb; font-size:10px; margin-top:4px;">
       Powered by MelyOS.io
@@ -80,7 +87,7 @@ export async function sendReceiptEmail(data: ReceiptData) {
 
   try {
     const result = await resend.emails.send({
-      from: "Aloha RV Park <noreply@aloharvparkfl.com>",
+      from: `${parkName.replace(/[<>,]/g, "")} <noreply@aloharvparkfl.com>`,
       to: data.toEmail,
       subject: `Payment Receipt - ${formatMoney(data.amountPaid)}`,
       html,
