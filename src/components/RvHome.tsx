@@ -154,31 +154,26 @@ export default function RvHome() {
       {parkFull && <RvWaitlist parkName={company?.company_name} limits={parkLimits} />}
 
       {/* Map Section */}
-      <section id="map" style={{ padding: "80px 24px", background: "var(--white)" }}>
+      {/* Oct 29 (per Mely): compact header — same information, less space. */}
+      <section id="map" style={{ padding: "44px 24px 80px", background: "var(--white)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>{parkFull ? "Fully Booked" : "Available Now"}</div>
-            <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900 }}>Lot Map</h2>
-            <p style={{ fontSize: 15, color: "var(--gray)", marginTop: 12 }}>Click any green or orange lot to check availability and book your spot</p>
+          <div style={{ textAlign: "center", marginBottom: 4 }}>
+            <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 6 }}>{parkFull ? "Fully Booked" : "Available Now"}</div>
+            <h2 style={{ fontSize: "clamp(26px, 3vw, 34px)", fontWeight: 900, margin: 0 }}>Lot Map</h2>
             {company?.park_id ? (
-              <>
+              <p style={{ fontSize: 13.5, color: "var(--gray)", margin: "8px auto 0", maxWidth: 640, lineHeight: 1.55 }}>
+                Click any green or orange lot to check availability and book your spot. For the clearest view of every lot, use a computer or{" "}
                 <a
                   href={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{
-                    display: "inline-block", marginTop: 16,
-                    background: "var(--red)", color: "#fff",
-                    padding: "10px 22px", borderRadius: 6, fontWeight: 700, fontSize: 14,
-                    textDecoration: "none"
-                  }}
+                  style={{ color: "var(--red-dark)", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, whiteSpace: "nowrap" }}
                 >
-                  🔍 Open Map Full Screen
+                  open the map full screen ↗
                 </a>
-                <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10, marginBottom: 0 }}>For the clearest view of every lot, we recommend checking the map from a desktop or laptop computer.</p>
-              </>
+              </p>
             ) : (
-              <p style={{ fontSize: 14, color: "var(--gray)", marginTop: 16 }}>Map coming soon — contact the office for lot availability.</p>
+              <p style={{ fontSize: 14, color: "var(--gray)", marginTop: 12 }}>Map coming soon — contact the office for lot availability.</p>
             )}
           </div>
           {company?.park_id && (
