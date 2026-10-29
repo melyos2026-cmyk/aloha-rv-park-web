@@ -137,17 +137,26 @@ function BankAutopaySetup({ residentId, parkName, bank, onCancel }: { residentId
     if (!res || !res.ok || !j.url) { setBusy(false); setError(j.error || "Could not open the secure page. Please try again."); return; }
     window.location.href = j.url;
   }
+  // Oct 28 (per Mely — "que se vea mejor"): short checklist, the legal authorization in a tidy
+  // scrollable box, and one clear full-width button.
+  const point = (t: React.ReactNode) => (
+    <li style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
+      <span aria-hidden style={{ flexShrink: 0, marginTop: 2, width: 16, height: 16, borderRadius: 999, background: "#dcfce7", color: "#15803d", fontSize: 11, fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✓</span>
+      <span>{t}</span>
+    </li>
+  );
   return (
     <div>
-      <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 10, lineHeight: 1.5 }}>
-        You&apos;ll link your checking or savings account on Stripe&apos;s secure page (log in to your bank — no account numbers to type).
-        Each payment takes <strong>3–5 business days</strong> to clear. Bank autopay pays balances of {money(bank.achMin)} or more; a smaller balance waits and is added to the next one (you can always pay it yourself).
-      </p>
-      <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 6, padding: "10px 12px", marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#374151", marginBottom: 4 }}>
-          Bank Debit (ACH) Authorization
+      <ul style={{ listStyle: "none", padding: 0, margin: "0 0 14px", display: "grid", gap: 8 }}>
+        {point(<>Link your checking or savings account on a <strong>secure page</strong> — log in to your bank, no account numbers to type.</>)}
+        {point(<>Each payment takes <strong>3–5 business days</strong> to clear.</>)}
+        {point(<>Balances of <strong>{money(bank.achMin)}</strong> or more are paid automatically; a smaller balance is added to the next one (you can always pay it yourself).</>)}
+      </ul>
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, marginBottom: 12, overflow: "hidden" }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase", color: "#374151", background: "#f9fafb", padding: "8px 12px", borderBottom: "1px solid #e5e7eb" }}>
+          Bank debit (ACH) authorization
         </div>
-        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55, margin: 0 }}>{bankAutopayAuthorizationText(parkName, bank.returnFeePhrase)}</p>
+        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, margin: 0, padding: "10px 12px", maxHeight: 132, overflowY: "auto" }}>{bankAutopayAuthorizationText(parkName, bank.returnFeePhrase)}</p>
       </div>
       <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 12, cursor: "pointer" }}>
         <input
@@ -163,9 +172,9 @@ function BankAutopaySetup({ residentId, parkName, bank, onCancel }: { residentId
         <button
           onClick={start}
           disabled={busy || !agreed}
-          style={{ background: "#16a34a", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: busy || !agreed ? "default" : "pointer", opacity: busy || !agreed ? 0.6 : 1 }}
+          style={{ flex: "1 1 220px", background: "#16a34a", color: "#fff", border: "none", padding: "12px 20px", borderRadius: 8, fontWeight: 800, fontSize: 15, cursor: busy || !agreed ? "default" : "pointer", opacity: busy || !agreed ? 0.55 : 1 }}
         >
-          {busy ? "Opening secure page..." : "Link Bank & Enable Autopay"}
+          {busy ? "Opening secure page..." : "Link my bank & turn on autopay"}
         </button>
         {onCancel && (
           <button onClick={onCancel} disabled={busy} style={{ background: "none", border: "1.5px solid var(--border)", padding: "8px 16px", borderRadius: 6, fontSize: 13, cursor: "pointer" }}>
@@ -179,37 +188,36 @@ function BankAutopaySetup({ residentId, parkName, bank, onCancel }: { residentId
 
 function MethodChoice({ value, onChange, bank }: { value: "ach" | "card"; onChange: (v: "ach" | "card") => void; bank: BankAutopayOption }) {
   const lowest = bank.passFee && bank.achFee < bank.cardFee;
-  const opt = (v: "ach" | "card", title: string, sub: string, badge?: string) => (
-    <label
-      style={{
-        display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", borderRadius: 6, padding: "10px 12px",
-        border: value === v ? "2px solid #16a34a" : "2px solid var(--border)", background: value === v ? "#f0fdf4" : "#fff",
-      }}
-    >
-      <input type="radio" name="autopay-method" checked={value === v} onChange={() => onChange(v)} style={{ marginTop: 3 }} />
-      <span style={{ display: "block" }}>
-        <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontWeight: 800 }}>
-          {title}
-          {badge && <span style={{ background: "#16a34a", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{badge}</span>}
-        </span>
-        <span style={{ display: "block", fontSize: 12.5, color: "var(--gray)", marginTop: 2 }}>{sub}</span>
-      </span>
-    </label>
-  );
   const example = bank.exampleAmount > 0 ? ` on ${money(bank.exampleAmount)}` : "";
+  const tile = (v: "ach" | "card", title: string, fee: string, sub: string, badge?: string) => {
+    const on = value === v;
+    return (
+      <label style={{
+        position: "relative", display: "block", cursor: "pointer", borderRadius: 10, padding: "14px 14px 12px",
+        border: on ? "2px solid #16a34a" : "1.5px solid var(--border)", background: on ? "#f0fdf4" : "#fff",
+        boxShadow: on ? "0 1px 6px rgba(22,163,74,.15)" : "none",
+      }}>
+        <input type="radio" name="autopay-method" checked={on} onChange={() => onChange(v)} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} />
+        <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontWeight: 800, fontSize: 15 }}>{title}</span>
+          <span aria-hidden style={{ width: 18, height: 18, borderRadius: 999, border: on ? "5px solid #16a34a" : "2px solid #cbd5e1", background: "#fff", flexShrink: 0 }} />
+        </span>
+        {badge && <span style={{ display: "inline-block", marginTop: 6, background: "#16a34a", color: "#fff", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{badge}</span>}
+        <span style={{ display: "block", marginTop: 8, fontSize: 18, fontWeight: 900, color: "#111827" }}>{fee}</span>
+        <span style={{ display: "block", fontSize: 12, color: "var(--gray)", marginTop: 2, lineHeight: 1.4 }}>{sub}</span>
+      </label>
+    );
+  };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-      {opt(
-        "ach",
-        "Bank account (ACH)",
-        bank.passFee
-          ? `Fee ${money(bank.achFee)}${example}${lowest ? ` — ${money(bank.cardFee - bank.achFee)} less than card` : ""} · clears in 3–5 business days`
-          : "No fee · clears in 3–5 business days",
-        lowest ? "Recommended · lowest fee" : "Recommended",
-      )}
-      {opt("card", "Card", bank.passFee ? `Fee ${money(bank.cardFee)}${example} · charged instantly` : "No fee · charged instantly")}
-      <p style={{ fontSize: 12, color: "#b45309", background: "#fffbeb", padding: 8, borderRadius: 6, margin: 0 }}>
-        {returnedFeeSentence(bank.returnFeePhrase)} Autopay is then turned off.
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        {tile("ach", "Bank account", bank.passFee ? `${money(bank.achFee)} fee` : "No fee",
+          `${bank.passFee ? `${example ? `${example.trim()} · ` : ""}` : ""}${lowest ? `${money(bank.cardFee - bank.achFee)} less than card · ` : ""}clears in 3–5 business days`,
+          lowest ? "Recommended · lowest fee" : "Recommended")}
+        {tile("card", "Card", bank.passFee ? `${money(bank.cardFee)} fee` : "No fee", `${bank.passFee && example ? `${example.trim()} · ` : ""}charged instantly`)}
+      </div>
+      <p style={{ fontSize: 11.5, color: "var(--gray)", margin: "8px 2px 0", lineHeight: 1.45 }}>
+        {returnedFeeSentence(bank.returnFeePhrase)} Bank autopay is then turned off.
       </p>
     </div>
   );
@@ -286,7 +294,7 @@ export default function AutopaySection({
     return (
       <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16 }}>
         {noticeEl}
-        <p style={{ fontWeight: 700, marginBottom: 4 }}>✅ Autopay is on</p>
+        <p style={{ fontWeight: 800, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}><span aria-hidden style={{ width: 20, height: 20, borderRadius: 999, background: "#16a34a", color: "#fff", fontSize: 12, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>✓</span>Autopay is on</p>
         <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 12 }}>
           {isBank
             ? `Bank account ending in ${cardLast4 || "—"} — your balance is paid from your bank automatically each month (clears in 3–5 business days).`

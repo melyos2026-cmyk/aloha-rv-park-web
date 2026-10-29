@@ -1344,7 +1344,16 @@ export default function ResidentDashboard() {
           <div className="rent-balance-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {autopayAvailable && residentId ? (
               <div className="autopay-card" style={card}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>💳 Autopay</h2>
+                {/* Oct 28 (per Mely): cleaner header, no emoji */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <span aria-hidden style={{ width: 36, height: 36, borderRadius: 10, background: "#dcfce7", color: "#15803d", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+                  </span>
+                  <div>
+                    <h2 style={{ fontWeight: 900, fontSize: 18, margin: 0 }}>Autopay</h2>
+                    <div style={{ fontSize: 12.5, color: "var(--gray)" }}>Pay your monthly balance automatically</div>
+                  </div>
+                </div>
                 <AutopaySection
                   residentId={residentId}
                   autopayEnabled={autopayEnabled}
