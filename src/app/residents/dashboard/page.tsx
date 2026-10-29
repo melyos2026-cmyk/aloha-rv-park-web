@@ -14,6 +14,8 @@ import { closeSeenNotifications } from "@/lib/closeNotifications";
 import { isInvoicePayableNow, invoicePayableFrom, isPayAheadInvoice } from "@/lib/invoicePayable";
 import LeaseAddendaCard, { fetchLeaseAddenda, type PortalAddendum } from "@/components/LeaseAddendaCard";
 import { ParkInfoSection, ParkInfoHomeCard, fetchParkInfo, type ParkInfoData } from "@/components/ParkInfo";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang, adoptSavedPortalLang } from "@/lib/portalI18n";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -93,19 +95,15 @@ const SUBMENU: Partial<Record<SectionId, SubItem[]>> = {
 };
 const sectionFor = (h: string): SectionId | null =>
   SECTIONS.some((x) => x.id === h) ? (h as SectionId) : ANCHOR_SECTION[h] || null;
-const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function NavIcon({ d }: { d: string }) {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
 }
 
-
-// "Nov 1, 2026" from "2026-11-01" (no time-zone shift).
-function formatShortDate(iso: string): string {
-  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return String(iso);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-}
+// Oct 29 (i18n): inline messages are translated when set, so their color can't be read from the
+// English text any more. BAD (an invisible zero-width space) marks an error message (shown red).
+const BAD = "\u200B";
+const SUBMITTED = "Submitted ✓";
 
 export default function ResidentDashboard() {
   const [resident, setResident] = useState<any>(null);
@@ -117,6 +115,9 @@ export default function ResidentDashboard() {
   // the very first screen, not just tucked away in Household Occupants.
   const [pendingBgChecks, setPendingBgChecks] = useState<any[]>([]);
   const [message, setMessage] = useState("Loading...");
+  // Oct 29 (per the owner): the portal in English / Spanish / Portuguese (src/lib/portalI18n.ts).
+  // `money`: the same USD amount, formatted for the resident's language.
+  const { lang, t, tp, st, money, date, dateTime, dateLabel, err, returnedFeeSentence } = usePortalLang();
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [pendingInvoices, setPendingInvoices] = useState<any[]>([]);
   // Line items per pending invoice (Aug 4) — e.g. "Monthly Rent $500",
@@ -343,6 +344,8 @@ export default function ResidentDashboard() {
     )
       .then((res) => res.json())
       .catch(() => ({ resident: null, error: "Failed to load profile." }));
+    // The language saved on the account (if the column exists) — only when this browser has no choice yet.
+    adoptSavedPortalLang(residentData?.portal_language);
 
     setResidentId(residentId);
     setAutopayEnabled(!!residentData?.autopay_enabled);
@@ -358,7 +361,7 @@ export default function ResidentDashboard() {
     setEditingRvInfo(!residentData?.rv_make && !residentData?.rv_model && !residentData?.rv_vin_or_tag);
 
     if (profileError || !residentData) {
-      setMessage("Resident not found.");
+      setMessage(profileError === "Failed to load profile." ? "Failed to load profile." : "Resident not found.");
       return;
     }
     setResident(residentData);
@@ -567,7 +570,7 @@ export default function ResidentDashboard() {
 
     if (!response.ok) {
       setStartingPayment(false);
-      void portalAlert(data.error || "Could not start payment.");
+      void portalAlert(err(data.error) || t("Could not start payment."));
       return;
     }
 
@@ -588,7 +591,7 @@ export default function ResidentDashboard() {
 
   async function handleSubmitMoveOut() {
     if (!moveOutDate) {
-      setMoveOutMessage("Please choose a date first.");
+      setMoveOutMessage(t("Please choose a date first."));
       return;
     }
     setMoveOutSubmitting(true);
@@ -601,9 +604,9 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setMoveOutMessage(`Error: ${result.error}`);
+        setMoveOutMessage(t("Error: {detail}", { detail: err(result.error) }));
       } else {
-        setMoveOutMessage("Submitted ✓");
+        setMoveOutMessage(SUBMITTED);
         setActiveLease((prev: any) => ({
           ...prev,
           requested_move_out_date: moveOutDate,
@@ -611,13 +614,13 @@ export default function ResidentDashboard() {
         }));
       }
     } catch {
-      setMoveOutMessage("Something went wrong. Please try again.");
+      setMoveOutMessage(t("Something went wrong. Please try again."));
     }
     setMoveOutSubmitting(false);
   }
 
   async function handleCancelMoveOut() {
-    if (!(await portalConfirm("Cancel your move-out request? You can submit a new date afterward.", { danger: true }))) return;
+    if (!(await portalConfirm(t("Cancel your move-out request? You can submit a new date afterward."), { danger: true }))) return;
     setMoveOutSubmitting(true);
     setMoveOutMessage("");
     try {
@@ -628,7 +631,7 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setMoveOutMessage(`Error: ${result.error}`);
+        setMoveOutMessage(t("Error: {detail}", { detail: err(result.error) }));
       } else {
         setActiveLease((prev: any) => ({
           ...prev,
@@ -640,7 +643,7 @@ export default function ResidentDashboard() {
         setMoveOutMessage("");
       }
     } catch {
-      setMoveOutMessage("Something went wrong. Please try again.");
+      setMoveOutMessage(t("Something went wrong. Please try again."));
     }
     setMoveOutSubmitting(false);
   }
@@ -682,14 +685,14 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setResidentInfoMessage("Could not save changes: " + (result?.error || res.status));
+        setResidentInfoMessage(BAD + t("Could not save changes: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
 
       setEditingResidentInfo(false);
       loadResidentDashboard();
-    } catch (err: any) {
-      setResidentInfoMessage("Could not save changes (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setResidentInfoMessage(BAD + t("Could not save changes (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
@@ -700,14 +703,14 @@ export default function ResidentDashboard() {
   async function savePets() {
     setPetsMessage("");
     if (petsAllowedInput && petDetailsInput.length === 0) {
-      setPetsMessage("Please select how many pets you have.");
+      setPetsMessage(BAD + t("Please select how many pets you have."));
       return;
     }
     if (
       petsAllowedInput &&
       petDetailsInput.some((p) => !p.type.trim() || !p.name.trim() || !p.breed.trim() || !p.color.trim() || !p.weight.trim() || !p.shots_provided)
     ) {
-      setPetsMessage("Please fill in type, name, breed, color, weight, and shots records for each pet.");
+      setPetsMessage(BAD + t("Please fill in type, name, breed, color, weight, and shots records for each pet."));
       return;
     }
     try {
@@ -724,14 +727,14 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setPetsMessage("Could not save pets: " + (result?.error || res.status));
+        setPetsMessage(BAD + t("Could not save pets: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
 
       setEditingPets(false);
       loadResidentDashboard();
-    } catch (err: any) {
-      setPetsMessage("Could not save pets (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setPetsMessage(BAD + t("Could not save pets (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
@@ -750,34 +753,34 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setEmergencyContactMessage("Could not save changes: " + (result?.error || res.status));
+        setEmergencyContactMessage(BAD + t("Could not save changes: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
 
       setEditingEmergencyContact(false);
       loadResidentDashboard();
-    } catch (err: any) {
-      setEmergencyContactMessage("Could not save changes (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setEmergencyContactMessage(BAD + t("Could not save changes (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
   async function addOccupant() {
     setOccupantMessage("");
     if (!occFullName.trim()) {
-      setOccupantMessage("Please enter a full name.");
+      setOccupantMessage(BAD + t("Please enter a full name."));
       return;
     }
     // Mely asked (Aug 2) that Stay Start/End Date be required before a
     // visitor can be saved, not just optional.
     if (occType === "visitor" && (!occStayStart || !occStayEnd)) {
-      setOccupantMessage("Please enter both a Stay Start Date and Stay End Date.");
+      setOccupantMessage(BAD + t("Please enter both a Stay Start Date and Stay End Date."));
       return;
     }
     // Aug 4 (per Mely): Date of Birth is required for Household Occupants
     // — it's how the system knows whether a background check is legally
     // required (18+) before move-in is compliant.
     if (occType === "household" && !occDateOfBirth) {
-      setOccupantMessage("Please enter this person's Date of Birth.");
+      setOccupantMessage(BAD + t("Please enter this person's Date of Birth."));
       return;
     }
     // Oct 19 (per Mely — Aloha's paper application): adults (18+) living
@@ -787,15 +790,15 @@ export default function ResidentDashboard() {
     const occIsAdult = occType === "household" && occAge !== null && occAge >= 18;
     const occSsnDigits = occSsn.replace(/\D/g, "");
     if (occIsAdult && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(occEmail.trim())) {
-      setOccupantMessage("Please enter a valid email for this adult (18+).");
+      setOccupantMessage(BAD + t("Please enter a valid email for this adult (18+)."));
       return;
     }
     if (occIsAdult && !editingVisitorId && occSsnDigits.length !== 9) {
-      setOccupantMessage("Please enter this adult's Social Security # (9 digits).");
+      setOccupantMessage(BAD + t("Please enter this adult's Social Security # (9 digits)."));
       return;
     }
     if (occIsAdult && editingVisitorId && occSsnDigits.length > 0 && occSsnDigits.length !== 9) {
-      setOccupantMessage("Social Security # must be 9 digits (or leave it blank to keep the one on file).");
+      setOccupantMessage(BAD + t("Social Security # must be 9 digits (or leave it blank to keep the one on file)."));
       return;
     }
 
@@ -825,7 +828,7 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setOccupantMessage((editingVisitorId ? "Could not update visitor: " : "Could not add: ") + (result?.error || res.status));
+        setOccupantMessage(BAD + t(editingVisitorId ? "Could not update visitor: {detail}" : "Could not add: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
 
@@ -852,8 +855,8 @@ export default function ResidentDashboard() {
           window.scrollTo({ top, behavior: "smooth" });
         }
       }, 150);
-    } catch (err: any) {
-      setOccupantMessage("Could not save (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setOccupantMessage(BAD + t("Could not save (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
@@ -877,7 +880,7 @@ export default function ResidentDashboard() {
   }
 
   async function deleteVisitor(id: string) {
-    if (!(await portalConfirm("Remove this person?", { danger: true }))) return;
+    if (!(await portalConfirm(t("Remove this person?"), { danger: true }))) return;
     setOccupantMessage("");
 
     // SECURITY (Aug 2): moved from a direct client-side Supabase delete to
@@ -890,20 +893,20 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setOccupantMessage("Could not remove: " + (result?.error || res.status));
+        setOccupantMessage(BAD + t("Could not remove: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
 
       loadResidentDashboard();
-    } catch (err: any) {
-      setOccupantMessage("Could not remove (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setOccupantMessage(BAD + t("Could not remove (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
   async function addVehicle() {
     setVehicleMessage("");
     if (!vehPlate.trim()) {
-      setVehicleMessage("Please enter a license plate.");
+      setVehicleMessage(BAD + t("Please enter a license plate."));
       return;
     }
 
@@ -929,7 +932,7 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setVehicleMessage((editingVehicleId ? "Could not update vehicle: " : "Could not add vehicle: ") + (result?.error || res.status));
+        setVehicleMessage(BAD + t(editingVehicleId ? "Could not update vehicle: {detail}" : "Could not add vehicle: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
 
@@ -953,13 +956,13 @@ export default function ResidentDashboard() {
       setVehState("");
       setAddingVehicle(false);
       loadResidentDashboard();
-    } catch (err: any) {
-      setVehicleMessage("Could not save vehicle (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setVehicleMessage(BAD + t("Could not save vehicle (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
   async function deleteVehicle(vehicleId: string) {
-    const confirmed = await portalConfirm("Remove this vehicle?");
+    const confirmed = await portalConfirm(t("Remove this vehicle?"));
     if (!confirmed) return;
     setVehicleMessage("");
 
@@ -973,12 +976,12 @@ export default function ResidentDashboard() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setVehicleMessage("Could not remove vehicle: " + (result?.error || res.status));
+        setVehicleMessage(BAD + t("Could not remove vehicle: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
       loadResidentDashboard();
-    } catch (err: any) {
-      setVehicleMessage("Could not remove vehicle (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setVehicleMessage(BAD + t("Could not remove vehicle (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
@@ -1005,14 +1008,14 @@ export default function ResidentDashboard() {
       const result = await res.json();
 
       if (!res.ok) {
-        setRvMessage("Could not save RV info: " + (result?.error || res.status));
+        setRvMessage(BAD + t("Could not save RV info: {detail}", { detail: err(result?.error) || res.status }));
       } else {
-        setRvMessage("RV info saved.");
+        setRvMessage(t("RV info saved."));
         setEditingRvInfo(false);
         loadResidentDashboard(); // Oct 26: refresh so the "add your home info" reminder clears right away
       }
-    } catch (err: any) {
-      setRvMessage("Could not save RV info (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setRvMessage(BAD + t("Could not save RV info (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
     setSavingRvInfo(false);
   }
@@ -1080,7 +1083,7 @@ export default function ResidentDashboard() {
   if (!resident) {
     return (
       <div style={{ padding: 60, textAlign: "center", background: "#f6f5f5", minHeight: "100vh" }}>
-        <p>{message}</p>
+        <p>{t(message)}</p>
       </div>
     );
   }
@@ -1115,25 +1118,25 @@ export default function ResidentDashboard() {
   type AttnItem = { key: string; text: string; sub?: string; tone: "bad" | "warn" | "info"; go: SectionId; href?: string; anchor?: string };
   const attention: AttnItem[] = [];
   if (overdueInvoices.length) {
-    attention.push({ key: "od", text: `${overdueInvoices.length} overdue invoice${overdueInvoices.length === 1 ? "" : "s"}`, sub: `${money(overdueTotal)} past due`, tone: "bad", go: "pay", anchor: "charges" });
+    attention.push({ key: "od", text: tp(overdueInvoices.length, "{n} overdue invoice", "{n} overdue invoices"), sub: t("{amount} past due", { amount: money(overdueTotal) }), tone: "bad", go: "pay", anchor: "charges" });
   } else if (pendingInvoices.length) {
-    attention.push({ key: "due", text: `Balance due: ${money(outstandingBalance)}`, sub: nextPaymentDate ? `Next payment due ${nextPaymentDate}` : `${pendingInvoices.length} invoice${pendingInvoices.length === 1 ? "" : "s"} to pay`, tone: "warn", go: "pay", anchor: "charges" });
+    attention.push({ key: "due", text: t("Balance due: {amount}", { amount: money(outstandingBalance) }), sub: nextPaymentDate ? t("Next payment due {date}", { date: dateLabel(nextPaymentDate) }) : tp(pendingInvoices.length, "{n} invoice to pay", "{n} invoices to pay"), tone: "warn", go: "pay", anchor: "charges" });
   }
-  if (autopayFailed) attention.push({ key: "ap", text: autopayMethod === "ach" ? "Autopay could not take the bank payment" : "Autopay could not charge your card", sub: autopayMethod === "ach" ? "Pay by hand or set up autopay again" : "Update your card or pay by hand", tone: "bad", go: "pay", anchor: "autopay" });
+  if (autopayFailed) attention.push({ key: "ap", text: t(autopayMethod === "ach" ? "Autopay could not take the bank payment" : "Autopay could not charge your card"), sub: t(autopayMethod === "ach" ? "Pay by hand or set up autopay again" : "Update your card or pay by hand"), tone: "bad", go: "pay", anchor: "autopay" });
   for (const p of bgTodo) {
     attention.push(p.has_id_uploaded
-      ? { key: "bg" + p.id, text: "Background check needed", sub: `${p.full_name} — ID received, start the check`, tone: "bad", go: "household", href: "/residents/background-checks" }
-      : { key: "id" + p.id, text: "Photo ID needed", sub: `${p.full_name} is 18+ — upload an ID, then the background check`, tone: "bad", go: "household", href: `/residents/documents?forOccupant=${p.id}` });
+      ? { key: "bg" + p.id, text: t("Background check needed"), sub: t("{name} — ID received, start the check", { name: p.full_name }), tone: "bad", go: "household", href: "/residents/background-checks" }
+      : { key: "id" + p.id, text: t("Photo ID needed"), sub: t("{name} is 18+ — upload an ID, then the background check", { name: p.full_name }), tone: "bad", go: "household", href: `/residents/documents?forOccupant=${p.id}` });
   }
-  if (!bgTodo.length && pendingBgChecks.length) attention.push({ key: "bgp", text: "Background check needed", sub: `${pendingBgChecks.length} household occupant${pendingBgChecks.length === 1 ? "" : "s"}`, tone: "bad", go: "household", href: "/residents/background-checks" });
+  if (!bgTodo.length && pendingBgChecks.length) attention.push({ key: "bgp", text: t("Background check needed"), sub: tp(pendingBgChecks.length, "{n} household occupant", "{n} household occupants"), tone: "bad", go: "household", href: "/residents/background-checks" });
   const addendaToSign = leaseAddenda.filter((a) => a.status === "pending");
-  for (const a of addendaToSign) attention.push({ key: "la" + a.id, text: `Please sign: ${a.title}`, sub: "Review and sign it online — it takes a minute", tone: "warn", go: "home", anchor: "lease-addendum" });
-  if (billOfSaleToSign) attention.push({ key: "bos", text: "Sign your Bill of Sale", sub: "Your Rent-to-Own home is paid off", tone: "warn", go: "lot", anchor: "rent-to-own" });
-  if (rvInfoMissing) attention.push({ key: "rv", text: "Add your home/unit info", sub: "Make, model and VIN / Tag #", tone: "warn", go: "lot", anchor: "home-info" });
-  if (emergencyMissing) attention.push({ key: "ec", text: "Add an emergency contact", tone: "warn", go: "more", anchor: "profile" });
-  if (petsNoShots.length) attention.push({ key: "pets", text: "Pet shots records not provided", sub: petsNoShots.map((p: any) => p.name || "Pet").join(", "), tone: "warn", go: "lot", anchor: "parking-pets" });
-  if (propaneReady.length) attention.push({ key: "pr", text: `${propaneReady.length} propane order${propaneReady.length === 1 ? "" : "s"} ready for pickup`, sub: "Show the QR code to staff", tone: "info", go: "requests", anchor: "propane" });
-  if (unreadNotifs.length) attention.push({ key: "nt", text: `${unreadNotifs.length} new notification${unreadNotifs.length === 1 ? "" : "s"}`, sub: unreadNotifs[0]?.message, tone: "info", go: "messages" });
+  for (const a of addendaToSign) attention.push({ key: "la" + a.id, text: t("Please sign: {title}", { title: a.title }), sub: t("Review and sign it online — it takes a minute"), tone: "warn", go: "home", anchor: "lease-addendum" });
+  if (billOfSaleToSign) attention.push({ key: "bos", text: t("Sign your Bill of Sale"), sub: t("Your Rent-to-Own home is paid off"), tone: "warn", go: "lot", anchor: "rent-to-own" });
+  if (rvInfoMissing) attention.push({ key: "rv", text: t("Add your home/unit info"), sub: t("Make, model and VIN / Tag #"), tone: "warn", go: "lot", anchor: "home-info" });
+  if (emergencyMissing) attention.push({ key: "ec", text: t("Add an emergency contact"), tone: "warn", go: "more", anchor: "profile" });
+  if (petsNoShots.length) attention.push({ key: "pets", text: t("Pet shots records not provided"), sub: petsNoShots.map((p: any) => p.name || t("Pet")).join(", "), tone: "warn", go: "lot", anchor: "parking-pets" });
+  if (propaneReady.length) attention.push({ key: "pr", text: tp(propaneReady.length, "{n} propane order ready for pickup", "{n} propane orders ready for pickup"), sub: t("Show the QR code to staff"), tone: "info", go: "requests", anchor: "propane" });
+  if (unreadNotifs.length) attention.push({ key: "nt", text: tp(unreadNotifs.length, "{n} new notification", "{n} new notifications"), sub: unreadNotifs[0]?.message, tone: "info", go: "messages" });
 
   const badge: Partial<Record<SectionId, number>> = {
     pay: pendingInvoices.length + (autopayFailed ? 1 : 0),
@@ -1145,7 +1148,7 @@ export default function ResidentDashboard() {
   };
   const moreTabBadge = (badge.household || 0) + (badge.requests || 0) + (badge.more || 0);
   const Badge = ({ n }: { n?: number }) => (n ? <span className="rp-nav-badge">{n}</span> : null);
-  const sectionTitle = SECTIONS.find((x) => x.id === section)?.label || "";
+  const sectionTitle = t(SECTIONS.find((x) => x.id === section)?.label || "");
   // Oct 28 (per Mely): Requests holds maintenance (if the park turned it on) and propane orders.
   // Nothing to show there → hide the Requests nav item too.
   const requestsVisible = maintenanceEnabled || propaneOrders.length > 0;
@@ -1155,7 +1158,7 @@ export default function ResidentDashboard() {
     openSection(item.go);
   }
 
-  const Tile = ({ go, h, lines, cta = "View all", anchor }: { go: SectionId; h: string; lines: (string | null | false | undefined)[]; cta?: string; anchor?: string }) => (
+  const Tile = ({ go, h, lines, cta = t("View all"), anchor }: { go: SectionId; h: string; lines: (string | null | false | undefined)[]; cta?: string; anchor?: string }) => (
     <button type="button" className="rp-tile" onClick={() => goTo({ go, anchor })}>
       <span className="rp-tile-h">{h}<Badge n={anchor ? undefined : badge[go]} /></span>
       {lines.filter(Boolean).map((l, n) => <span key={n} className={n === 0 ? "rp-tile-main" : "rp-tile-line"}>{l}</span>)}
@@ -1165,9 +1168,24 @@ export default function ResidentDashboard() {
 
   const rtoLine = rentToOwnPlan
     ? rentToOwnPlan.status === "pending_signatures"
-      ? "Rent-to-Own paid off — Bill of Sale"
-      : `Rent-to-Own: ${money(Number(rentToOwnPlan.paid_so_far || 0))} of ${money(Number(rentToOwnPlan.total_price || 0))}`
+      ? t("Rent-to-Own paid off — Bill of Sale")
+      : t("Rent-to-Own: {paid} of {total}", { paid: money(Number(rentToOwnPlan.paid_so_far || 0)), total: money(Number(rentToOwnPlan.total_price || 0)) })
     : null;
+
+  // Grace period after the due date (Lease Defaults) — shown on Home and in Pay.
+  const graceNote = (() => {
+    if (!lateGrace.on || !nextPaymentDate) return null;
+    const d = new Date(nextPaymentDate);
+    if (isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + lateGrace.days);
+    return (
+      <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>
+        {lateGrace.days > 0
+          ? tp(lateGrace.days, "Grace period: {n} day, until the end of {date}. A late fee applies after that date.", "Grace period: {n} days, until the end of {date}. A late fee applies after that date.", { date: date(d, { weekday: "long", month: "long", day: "numeric", year: "numeric" }) })
+          : t("No grace period: a late fee applies after the due date.")}
+      </span>
+    );
+  })();
 
   const notifRow = (n: any, isNew: boolean) => (
                     <div
@@ -1193,7 +1211,7 @@ export default function ResidentDashboard() {
                       >
                         <div>{n.message}</div>
                         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                          {new Date(n.created_at).toLocaleString("en-US", { timeZone: "America/New_York" })}
+                          {dateTime(n.created_at, { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" })}
                         </div>
                       </div>
                       {/* Sep 18 (per Mely): lets the resident dismiss a
@@ -1205,7 +1223,8 @@ export default function ResidentDashboard() {
                           loadNotifications();
                         }}
                         style={{ background: "none", border: "none", color: "#9ca3af", cursor: "pointer", fontSize: 14, padding: "0 4px", lineHeight: 1 }}
-                        title="Dismiss"
+                        title={t("Dismiss")}
+                        aria-label={t("Dismiss")}
                       >
                         ✕
                       </button>
@@ -1217,13 +1236,16 @@ export default function ResidentDashboard() {
       <section className="rp-hero">
         <div style={{ maxWidth: 1140, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#d3f8e2", fontWeight: 600, marginBottom: 8 }}>Resident Portal</div>
-            <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, marginBottom: 4 }}>{section === "home" ? `Welcome, ${resident.full_name}` : sectionTitle}</h1>
-            <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : (resident.companies?.company_name || "")}</p>
+            <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#d3f8e2", fontWeight: 600, marginBottom: 8 }}>{t("Resident Portal")}</div>
+            <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, marginBottom: 4 }}>{section === "home" ? t("Welcome, {name}", { name: resident.full_name }) : sectionTitle}</h1>
+            <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? t("Lot {name}", { name: resident.rv_lots.lot_name }) : (resident.companies?.company_name || "")}</p>
             <ResidentPushAlerts residentId={residentId} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative", flexWrap: "wrap" }}>
+            {/* Oct 29 (per the owner): EN / ES / PT — saved in this browser and on the account */}
+            <PortalLangSwitcher residentId={residentId} />
             <button
+              aria-label={t("Notifications")}
               onClick={() => {
                 // Sep 19 (per Mely): opening the bell itself marks
                 // everything read automatically — no manual confirm
@@ -1259,17 +1281,17 @@ export default function ResidentDashboard() {
                 }}
               >
                 <div style={{ padding: "10px 14px", borderBottom: "1px solid #e5e7eb" }}>
-                  <strong style={{ fontSize: 13 }}>Notifications</strong>
+                  <strong style={{ fontSize: 13 }}>{t("Notifications")}</strong>
                 </div>
                 {notifications.length === 0 ? (
-                  <p style={{ padding: 16, fontSize: 13, color: "#6b7280" }}>Nothing yet.</p>
+                  <p style={{ padding: 16, fontSize: 13, color: "#6b7280" }}>{t("Nothing yet.")}</p>
                 ) : (
                   notifications.map((n) => notifRow(n, !n.resident_read_at))
                 )}
               </div>
             )}
             <button onClick={logout} style={{ background: "transparent", border: "1.5px solid #000000", color: "#000000", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
-              Sign Out
+              {t("Sign Out")}
             </button>
           </div>
         </div>
@@ -1277,16 +1299,16 @@ export default function ResidentDashboard() {
 
       <section className="rp-wrap">
         <div className="rp-portal">
-          <nav className="rp-nav" aria-label="Resident portal">
+          <nav className="rp-nav" aria-label={t("Resident Portal")}>
             {navSections.map((x) => (
               <Fragment key={x.id}>
               <button type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined}>
-                <NavIcon d={x.id === "more" ? "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" : x.icon} /><span>{x.label}</span><Badge n={badge[x.id]} />
+                <NavIcon d={x.id === "more" ? "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" : x.icon} /><span>{t(x.label)}</span><Badge n={badge[x.id]} />
               </button>
               {section === x.id && subItems(x.id).length > 0 && (
                 <div className="rp-subnav">
                   {subItems(x.id).map((it) => (
-                    <button key={it.label} type="button" onClick={() => openSub(it)}>{it.label}</button>
+                    <button key={it.label} type="button" onClick={() => openSub(it)}>{t(it.label)}</button>
                   ))}
                 </div>
               )}
@@ -1297,22 +1319,22 @@ export default function ResidentDashboard() {
           <AppBadge n={attention.length} />
           <div className="rp-main">
             {section !== "home" && subItems(section).length > 0 && (
-              <div className="rp-subchips" role="navigation" aria-label="In this section">
-                {subItems(section).map((it) => <button key={it.label} type="button" onClick={() => openSub(it)}>{it.label}</button>)}
+              <div className="rp-subchips" role="navigation" aria-label={t("In this section")}>
+                {subItems(section).map((it) => <button key={it.label} type="button" onClick={() => openSub(it)}>{t(it.label)}</button>)}
               </div>
             )}
             {/* Oct 26 (per Mely): inside a section, show what the red number means — tap one to go
                 straight to it. The number goes away by itself once it's done. */}
             {section !== "home" && message === "" && attention.some((a) => a.go === section) && (
               <div className="rp-attn">
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>To do here</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("To do here")}</h2>
                 {attention.filter((a) => a.go === section).map((a) => {
                   const body = (<><span className={`rp-attn-dot ${a.tone}`} /><span className="rp-attn-text"><b>{a.text}</b>{a.sub && <small>{a.sub}</small>}</span><span className="rp-attn-go">→</span></>);
                   return a.href
                     ? <button key={a.key} type="button" className="rp-attn-row" onClick={() => router.push(a.href!)}>{body}</button>
                     : <button key={a.key} type="button" className="rp-attn-row" onClick={() => goTo(a)}>{body}</button>;
                 })}
-                <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>The red number goes away as soon as each item is done.</p>
+                <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{t("The red number goes away as soon as each item is done.")}</p>
               </div>
             )}
             {section === "home" && (<>
@@ -1329,27 +1351,27 @@ export default function ResidentDashboard() {
               )}
               <div className="rp-balance">
                 <div>
-                  <div style={label}>Outstanding Balance</div>
-                  <div className="rp-balance-big" style={{ color: outstandingBalance > 0 ? "#b91c1c" : "var(--green)" }}>${outstandingBalance.toFixed(2)}</div>
+                  <div style={label}>{t("Outstanding Balance")}</div>
+                  <div className="rp-balance-big" style={{ color: outstandingBalance > 0 ? "#b91c1c" : "var(--green)" }}>{money(outstandingBalance)}</div>
                   {overdueInvoices.length > 0 ? (
-                    <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13 }}>{money(overdueTotal)} overdue</div>
+                    <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 13 }}>{t("{amount} overdue", { amount: money(overdueTotal) })}</div>
                   ) : nextPaymentDate ? (
-                    <div style={{ color: "var(--gray)", fontSize: 13 }}>Next Payment (Due Date): <strong>{nextPaymentDate}</strong>{(() => { if (!lateGrace.on || !nextPaymentDate) return null; const d = new Date(nextPaymentDate); if (isNaN(d.getTime())) return null; d.setDate(d.getDate() + lateGrace.days); return <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>{lateGrace.days > 0 ? `Grace period: ${lateGrace.days} day${lateGrace.days === 1 ? "" : "s"}, until the end of ${d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. A late fee applies after that date.` : "No grace period: a late fee applies after the due date."}</span>; })()}</div>
+                    <div style={{ color: "var(--gray)", fontSize: 13 }}>{t("Next Payment (Due Date):")} <strong>{dateLabel(nextPaymentDate)}</strong>{graceNote}</div>
                   ) : null}
                   {processingTotal > 0 && (
-                    <div style={{ color: "#1e40af", fontWeight: 700, fontSize: 13 }}>{money(processingTotal)} bank payment processing · clears in 3–5 business days</div>
+                    <div style={{ color: "#1e40af", fontWeight: 700, fontSize: 13 }}>{t("{amount} bank payment processing · clears in 3–5 business days", { amount: money(processingTotal) })}</div>
                   )}
                   {payAheadTotal > 0 && (
-                    <div style={{ color: "#166534", fontSize: 13 }}>Next month&apos;s invoice is ready ({money(payAheadTotal)}) — <button type="button" className="rp-link-btn" onClick={() => openSection("pay")}>pay ahead (optional)</button></div>
+                    <div style={{ color: "#166534", fontSize: 13 }}>{t("Next month's invoice is ready ({amount}) —", { amount: money(payAheadTotal) })} <button type="button" className="rp-link-btn" onClick={() => openSection("pay")}>{t("pay ahead (optional)")}</button></div>
                   )}
                 </div>
                 <div className="rp-balance-btns">
                   {acceptOnlinePayments && outstandingBalance > 0 && (
                     <button onClick={handlePayNow} style={{ background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
-                      Pay Now
+                      {t("Pay Now")}
                     </button>
                   )}
-                  <button type="button" className="rp-link-btn" onClick={() => openSection("pay")}>{pendingInvoices.length ? "See charges" : "Payments"} →</button>
+                  <button type="button" className="rp-link-btn" onClick={() => openSection("pay")}>{pendingInvoices.length ? t("See charges") : t("Payments")} →</button>
                 </div>
               </div>
 
@@ -1370,7 +1392,7 @@ export default function ResidentDashboard() {
 
               {message === "" && (attention.length > 0 ? (
                 <div className="rp-attn">
-                  <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Needs your attention</h2>
+                  <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("Needs your attention")}</h2>
                   {attention.map((a) => {
                     const body = (<><span className={`rp-attn-dot ${a.tone}`} /><span className="rp-attn-text"><b>{a.text}</b>{a.sub && <small>{a.sub}</small>}</span><span className="rp-attn-go">→</span></>);
                     return a.href
@@ -1379,42 +1401,42 @@ export default function ResidentDashboard() {
                   })}
                 </div>
               ) : (
-                <div className="rp-allset" role="status">✓ You&apos;re all set. Nothing needs your attention right now.</div>
+                <div className="rp-allset" role="status">{t("✓ You're all set. Nothing needs your attention right now.")}</div>
               ))}
 
-              <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" compact />
+              <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" compact portal />
               <div className="rp-tiles">
-                <Tile go="pay" h="Payments" lines={[
-                  pendingInvoices.length ? `${money(outstandingBalance)} due · ${pendingInvoices.length} invoice${pendingInvoices.length === 1 ? "" : "s"}` : "All paid up",
-                  nextPaymentDate && `Next payment ${nextPaymentDate}`,
-                  autopayAvailable && (autopayEnabled ? `Autopay on${autopayCardLast4 ? ` · ${autopayMethod === "ach" ? "bank" : "card"} •••• ${autopayCardLast4}` : ""}` : "Autopay off"),
+                <Tile go="pay" h={t("Payments")} lines={[
+                  pendingInvoices.length ? tp(pendingInvoices.length, "{amount} due · {n} invoice", "{amount} due · {n} invoices", { amount: money(outstandingBalance) }) : t("All paid up"),
+                  nextPaymentDate && t("Next payment {date}", { date: dateLabel(nextPaymentDate) }),
+                  autopayAvailable && (autopayEnabled ? `${t("Autopay on")}${autopayCardLast4 ? ` · ${t(autopayMethod === "ach" ? "bank" : "card")} •••• ${autopayCardLast4}` : ""}` : t("Autopay off")),
                 ]} />
-                <Tile go="lot" h="My lot & home" lines={[
-                  resident.rv_lots?.lot_name ? `Lot ${resident.rv_lots.lot_name}` : (resident.companies?.company_name || "My lot"),
-                  rvInfoMissing ? "Home/unit info not added yet" : `${rvType || "RV"} — ${[rvYear, rvMake, rvModel].filter(Boolean).join(" ")}`,
-                  rtoLine || (activeLease?.requested_move_out_date ? `Move-out requested: ${activeLease.requested_move_out_date}` : null),
+                <Tile go="lot" h={t("My lot & home")} lines={[
+                  resident.rv_lots?.lot_name ? t("Lot {name}", { name: resident.rv_lots.lot_name }) : (resident.companies?.company_name || t("My lot")),
+                  rvInfoMissing ? t("Home/unit info not added yet") : `${t(rvType || "RV")} — ${[rvYear, rvMake, rvModel].filter(Boolean).join(" ")}`,
+                  rtoLine || (activeLease?.requested_move_out_date ? t("Move-out requested: {date}", { date: date(activeLease.requested_move_out_date) }) : null),
                 ]} />
                 {electricUsage.length > 0 && (
-                  <Tile go="pay" anchor="electric" h="Electric usage" cta="Details" lines={[
-                    `${electricUsage[0]?.billing_month || ""} · ${electricUsage[0]?.current_reading || 0} kWh`,
-                    `Electric Charge ${money(Number(electricUsage[0]?.charge_amount || 0))}`,
+                  <Tile go="pay" anchor="electric" h={t("Electric usage")} cta={t("Details")} lines={[
+                    `${dateLabel(electricUsage[0]?.billing_month || "")} · ${electricUsage[0]?.current_reading || 0} kWh`,
+                    t("Electric Charge {amount}", { amount: money(Number(electricUsage[0]?.charge_amount || 0)) }),
                   ]} />
                 )}
                 {(householdPeople.length + visitorPeople.length + vehicles.length) > 0 && (
-                  <Tile go="household" h="Household" lines={[
-                    [householdPeople.length && `${householdPeople.length} occupant${householdPeople.length === 1 ? "" : "s"}`, visitorPeople.length && `${visitorPeople.length} visitor${visitorPeople.length === 1 ? "" : "s"}`, vehicles.length && `${vehicles.length} vehicle${vehicles.length === 1 ? "" : "s"}`].filter(Boolean).join(" · "),
-                    bgTodo.length ? `${bgTodo.length} background check${bgTodo.length === 1 ? "" : "s"} needed` : householdPeople.slice(0, 3).map((p: any) => p.full_name).join(", "),
+                  <Tile go="household" h={t("Household")} lines={[
+                    [householdPeople.length && tp(householdPeople.length, "{n} occupant", "{n} occupants"), visitorPeople.length && tp(visitorPeople.length, "{n} visitor", "{n} visitors"), vehicles.length && tp(vehicles.length, "{n} vehicle", "{n} vehicles")].filter(Boolean).join(" · "),
+                    bgTodo.length ? tp(bgTodo.length, "{n} background check needed", "{n} background checks needed") : householdPeople.slice(0, 3).map((p: any) => p.full_name).join(", "),
                   ]} />
                 )}
                 {(openMaintenance.length > 0 || propaneOrders.length > 0) && (
-                  <Tile go="requests" h="Requests" lines={[
-                    openMaintenance.length ? `${openMaintenance.length} open maintenance request${openMaintenance.length === 1 ? "" : "s"}` : `${propaneReady.length} propane order${propaneReady.length === 1 ? "" : "s"} ready`,
-                    openMaintenance[0] && `${openMaintenance[0].subject || "Request"} — ${openMaintenance[0].status}`,
-                    openMaintenance.length > 0 && propaneReady.length > 0 && `${propaneReady.length} propane order${propaneReady.length === 1 ? "" : "s"} ready for pickup`,
+                  <Tile go="requests" h={t("Requests")} lines={[
+                    openMaintenance.length ? tp(openMaintenance.length, "{n} open maintenance request", "{n} open maintenance requests") : tp(propaneReady.length, "{n} propane order ready", "{n} propane orders ready"),
+                    openMaintenance[0] && `${openMaintenance[0].subject || t("Request")} — ${st(openMaintenance[0].status)}`,
+                    openMaintenance.length > 0 && propaneReady.length > 0 && tp(propaneReady.length, "{n} propane order ready for pickup", "{n} propane orders ready for pickup"),
                   ]} />
                 )}
-                <Tile go="messages" h="Messages" cta={notifications.length || announcements.length ? "Open" : "View"} lines={[
-                  unreadNotifs.length ? `${unreadNotifs.length} new notification${unreadNotifs.length === 1 ? "" : "s"}` : announcements[0] ? announcements[0].title : notifications[0] ? "Notifications" : "No messages yet",
+                <Tile go="messages" h={t("Messages")} cta={notifications.length || announcements.length ? t("Open") : t("View")} lines={[
+                  unreadNotifs.length ? tp(unreadNotifs.length, "{n} new notification", "{n} new notifications") : announcements[0] ? announcements[0].title : notifications[0] ? t("Notifications") : t("No messages yet"),
                   unreadNotifs.length ? unreadNotifs[0].message : announcements[0] ? announcements[0].message : notifications[0]?.message,
                 ]} />
               </div>
@@ -1448,8 +1470,8 @@ export default function ResidentDashboard() {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
                   </span>
                   <div>
-                    <h2 style={{ fontWeight: 900, fontSize: 18, margin: 0 }}>Autopay</h2>
-                    <div style={{ fontSize: 12.5, color: "var(--gray)" }}>Pay your monthly balance automatically</div>
+                    <h2 style={{ fontWeight: 900, fontSize: 18, margin: 0 }}>{t("Autopay")}</h2>
+                    <div style={{ fontSize: 12.5, color: "var(--gray)" }}>{t("Pay your monthly balance automatically")}</div>
                   </div>
                 </div>
                 <AutopaySection
@@ -1465,22 +1487,22 @@ export default function ResidentDashboard() {
               </div>
             ) : (
               <div className="autopay-card" style={card}>
-                <p style={label}>Rent Amount</p>
-                <p style={bigNumber}>${resident.rent_amount}</p>
+                <p style={label}>{t("Rent Amount")}</p>
+                <p style={bigNumber}>{money(resident.rent_amount)}</p>
               </div>
             )}
             <div className="balance-card" style={{ ...cardAccent, order: -1, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "16px 20px" }}>
               <div>
-                <p style={{ ...label, marginBottom: 2 }}>Outstanding Balance</p>
-                <p style={{ fontSize: 28, fontWeight: 900, margin: 0, lineHeight: 1.1, color: outstandingBalance > 0 ? "#b91c1c" : "#111827" }}>${outstandingBalance.toFixed(2)}</p>
-                <p style={{ fontSize: 12.5, color: "var(--gray)", margin: "4px 0 0" }}>{outstandingBalance > 0 ? "Due on your account now" : "Nothing due right now"}</p>
+                <p style={{ ...label, marginBottom: 2 }}>{t("Outstanding Balance")}</p>
+                <p style={{ fontSize: 28, fontWeight: 900, margin: 0, lineHeight: 1.1, color: outstandingBalance > 0 ? "#b91c1c" : "#111827" }}>{money(outstandingBalance)}</p>
+                <p style={{ fontSize: 12.5, color: "var(--gray)", margin: "4px 0 0" }}>{outstandingBalance > 0 ? t("Due on your account now") : t("Nothing due right now")}</p>
               </div>
               {acceptOnlinePayments && outstandingBalance > 0 && (
               <button
                 onClick={handlePayNow}
                 style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "12px 26px", fontWeight: 800, fontSize: 15, cursor: "pointer" }}
               >
-                Pay Now
+                {t("Pay Now")}
               </button>
               )}
             </div>
@@ -1489,13 +1511,13 @@ export default function ResidentDashboard() {
               <div id="charges" className="rp-anchor">
           {processingInvoices.length > 0 && (
             <div style={{ ...card, background: "#eff6ff", border: "1.5px solid #93c5fd" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>🏦 Bank payment processing</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("🏦 Bank payment processing")}</h2>
               <p style={{ color: "#1e3a8a", fontSize: 13, marginBottom: 10 }}>
-                Your bank payment was received and takes 3–5 business days to clear. There is nothing to pay on these invoices meanwhile.
+                {t("Your bank payment was received and takes 3–5 business days to clear. There is nothing to pay on these invoices meanwhile.")}
               </p>
               {processingInvoices.map((inv) => (
                 <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, padding: "6px 0", borderTop: "1px solid #bfdbfe" }}>
-                  <span>Invoice — {inv.invoice_month} <span style={{ background: "#dbeafe", color: "#1e40af", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700, marginLeft: 4 }}>Processing (bank)</span></span>
+                  <span>{t("Invoice — {month}", { month: dateLabel(inv.invoice_month) })} <span style={{ background: "#dbeafe", color: "#1e40af", borderRadius: 999, padding: "2px 8px", fontSize: 12, fontWeight: 700, marginLeft: 4 }}>{t("Processing (bank)")}</span></span>
                   <span style={{ fontWeight: 700 }}>{money(Number(inv.total_amount || 0))}</span>
                 </div>
               ))}
@@ -1503,10 +1525,10 @@ export default function ResidentDashboard() {
           )}
           {upcomingInvoices.length > 0 && (
             <div style={{ ...card, background: "#f9fafb" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Upcoming</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("Upcoming")}</h2>
               {upcomingInvoices.map((inv) => (
                 <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                  <span>Invoice — {inv.invoice_month} <span style={{ color: "var(--gray)", fontSize: 13 }}>· {inv.preparing_reason === "electric" ? inv.preparing_message : inv.preparing_until ? `Being prepared — available ${inv.preparing_until}` : `available to pay on ${invoicePayableFrom(inv.invoice_month, undefined, invoiceGenDay)}`}</span></span>
+                  <span>{t("Invoice — {month}", { month: dateLabel(inv.invoice_month) })} <span style={{ color: "var(--gray)", fontSize: 13 }}>· {inv.preparing_reason === "electric" ? err(inv.preparing_message) : inv.preparing_until ? t("Being prepared — available {date}", { date: dateLabel(inv.preparing_until) }) : t("available to pay on {date}", { date: dateLabel(invoicePayableFrom(inv.invoice_month, undefined, invoiceGenDay)) })}</span></span>
                   <span style={{ fontWeight: 700 }}>{money(Number(inv.total_amount || 0))}</span>
                 </div>
               ))}
@@ -1514,22 +1536,24 @@ export default function ResidentDashboard() {
           )}
           {payAheadInvoices.length > 0 && (
             <div style={{ ...card, background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Pay ahead (optional)</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("Pay ahead (optional)")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 10 }}>
-                Next month&apos;s invoice is ready. You can pay it now if you like, or any time until its due date{autopayEnabled ? " — autopay pays it on the due date" : ""}.
+                {autopayEnabled
+                  ? t("Next month's invoice is ready. You can pay it now if you like, or any time until its due date — autopay pays it on the due date.")
+                  : t("Next month's invoice is ready. You can pay it now if you like, or any time until its due date.")}
               </p>
               {payAheadInvoices.map((inv) => {
                 const items = invoiceItemsByInvoice[inv.id] || [];
                 return (
                   <div key={inv.id} style={{ borderTop: "1px solid #bbf7d0", padding: "8px 0" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, fontWeight: 700 }}>
-                      <span>Invoice — {inv.invoice_month}{inv.due_date ? ` · due ${formatShortDate(inv.due_date)}` : ""}</span>
+                      <span>{inv.due_date ? t("Invoice — {month} · due {date}", { month: dateLabel(inv.invoice_month), date: date(String(inv.due_date).slice(0, 10)) }) : t("Invoice — {month}", { month: dateLabel(inv.invoice_month) })}</span>
                       <span>{money(Number(inv.total_amount || 0))}</span>
                     </div>
                     {items.map((item: any) => (
                       <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
-                        <span>{item.description || item.charge_type || "Charge"}</span>
-                        <span>${Number(item.amount || 0).toFixed(2)}</span>
+                        <span>{t(item.description || item.charge_type || "Charge")}</span>
+                        <span>{money(item.amount)}</span>
                       </div>
                     ))}
                   </div>
@@ -1540,18 +1564,18 @@ export default function ResidentDashboard() {
                   onClick={handlePayAhead}
                   style={{ marginTop: 12, width: "100%", background: "#fff", border: "2px solid #16a34a", borderRadius: 6, padding: 12, fontWeight: 700, cursor: "pointer" }}
                 >
-                  Pay ahead {money(payAheadTotal)}
+                  {t("Pay ahead {amount}", { amount: money(payAheadTotal) })}
                 </button>
               )}
             </div>
           )}
           {pendingInvoices.length > 0 && (
             <div style={card}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Outstanding Charges</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("Outstanding Charges")}</h2>
               {nextPaymentDate && (
                 <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
-                  Next Payment (Due Date): <strong>{nextPaymentDate}</strong>
-                  {(() => { if (!lateGrace.on || !nextPaymentDate) return null; const d = new Date(nextPaymentDate); if (isNaN(d.getTime())) return null; d.setDate(d.getDate() + lateGrace.days); return <span style={{ display: "block", fontSize: 12, color: "var(--gray)", fontWeight: 400 }}>{lateGrace.days > 0 ? `Grace period: ${lateGrace.days} day${lateGrace.days === 1 ? "" : "s"}, until the end of ${d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}. A late fee applies after that date.` : "No grace period: a late fee applies after the due date."}</span>; })()}
+                  {t("Next Payment (Due Date):")} <strong>{dateLabel(nextPaymentDate)}</strong>
+                  {graceNote}
                 </p>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1559,37 +1583,37 @@ export default function ResidentDashboard() {
                   const items = invoiceItemsByInvoice[inv.id] || [];
                   return (
                     <div key={inv.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12 }}>
-                      <p style={{ fontWeight: 700, marginBottom: 8 }}>Invoice — {inv.invoice_month}</p>
+                      <p style={{ fontWeight: 700, marginBottom: 8 }}>{t("Invoice — {month}", { month: dateLabel(inv.invoice_month) })}</p>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {items.length > 0 ? (
                           items.map(item => (
                             <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 14 }}>
-                              <span style={{ color: "var(--gray)" }}>{item.description || item.charge_type || "Charge"}</span>
-                              <span style={{ fontWeight: 700 }}>${Number(item.amount || 0).toFixed(2)}</span>
+                              <span style={{ color: "var(--gray)" }}>{t(item.description || item.charge_type || "Charge")}</span>
+                              <span style={{ fontWeight: 700 }}>{money(item.amount)}</span>
                             </div>
                           ))
                         ) : (
-                          <p style={{ color: "var(--gray)", fontSize: 13 }}>Rent + any recurring charges</p>
+                          <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Rent + any recurring charges")}</p>
                         )}
                       </div>
                       <div style={{ borderTop: "1.5px solid var(--border)", marginTop: 10, paddingTop: 10, display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ fontWeight: 700 }}>Invoice Total</span>
-                        <span style={{ fontWeight: 900 }}>${Number(inv.total_amount || 0).toFixed(2)}</span>
+                        <span style={{ fontWeight: 700 }}>{t("Invoice Total")}</span>
+                        <span style={{ fontWeight: 900 }}>{money(inv.total_amount)}</span>
                       </div>
                     </div>
                   );
                 })}
               </div>
               <div style={{ borderTop: "1.5px solid var(--border)", marginTop: 16, paddingTop: 16, display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontWeight: 900 }}>Total Due</span>
-                <span style={{ fontWeight: 900 }}>${outstandingBalance.toFixed(2)}</span>
+                <span style={{ fontWeight: 900 }}>{t("Total Due")}</span>
+                <span style={{ fontWeight: 900 }}>{money(outstandingBalance)}</span>
               </div>
               {acceptOnlinePayments && (
               <button
                 onClick={handlePayNow}
                 style={{ marginTop: 16, width: "100%", background: "#d3f8e2", border: "2px solid #16a34a", borderRadius: 6, padding: 14, fontWeight: 700, cursor: "pointer" }}
               >
-                Pay Online
+                {t("Pay Online")}
               </button>
               )}
             </div>
@@ -1597,35 +1621,35 @@ export default function ResidentDashboard() {
               </div>
               <div className="rp-links">
             <button onClick={() => router.push("/residents/invoices")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🧾 Invoices</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View your monthly invoices and charges.</p>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🧾 Invoices")}</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View your monthly invoices and charges.")}</p>
             </button>
             <button onClick={() => router.push("/residents/payment-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📜 Payment History</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View completed payments.</p>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📜 Payment History")}</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View completed payments.")}</p>
             </button>
               </div>
               <div id="electric" className="rp-anchor">
           <div style={card}>
-            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>⚡ Electric Usage</h2>
+            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("⚡ Electric Usage")}</h2>
             {electricUsage.length === 0 ? (
-              <p style={{ color: "var(--gray)" }}>No electric usage available yet.</p>
+              <p style={{ color: "var(--gray)" }}>{t("No electric usage available yet.")}</p>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div><p style={label}>Billing Month</p><p style={bigNumber}>{electricUsage[0]?.billing_month || "N/A"}</p></div>
+                <div><p style={label}>{t("Billing Month")}</p><p style={bigNumber}>{electricUsage[0]?.billing_month ? dateLabel(electricUsage[0].billing_month) : t("N/A")}</p></div>
                 {/* Oct 20: parks that don't use meter numbers (the lot identifies the meter) don't show this */}
                 {electricUsage[0]?.meter_number && (
-                  <div><p style={label}>Meter Number</p><p style={bigNumber}>{electricUsage[0].meter_number}</p></div>
+                  <div><p style={label}>{t("Meter Number")}</p><p style={bigNumber}>{electricUsage[0].meter_number}</p></div>
                 )}
-                <div><p style={label}>This Month's Usage</p><p style={bigNumber}>{electricUsage[0]?.current_reading || 0} kWh</p></div>
-                <div><p style={label}>Last Month's Usage</p><p style={bigNumber}>{electricUsage[0]?.previous_reading || 0} kWh</p></div>
-                <div><p style={label}>Days of Service</p><p style={bigNumber}>{electricUsage[0]?.days_of_service ?? "N/A"}</p></div>
-                <div><p style={label}>Included kWh</p><p style={bigNumber}>{electricUsage[0]?.included_kwh || 0} kWh</p></div>
-                <div><p style={label}>Billable kWh</p><p style={bigNumber}>{electricUsage[0]?.billable_kwh || 0} kWh</p></div>
-                <div><p style={label}>Rate per kWh</p><p style={bigNumber}>${Number(electricUsage[0]?.rate_per_kwh || 0).toFixed(2)}</p></div>
+                <div><p style={label}>{t("This Month's Usage")}</p><p style={bigNumber}>{electricUsage[0]?.current_reading || 0} kWh</p></div>
+                <div><p style={label}>{t("Last Month's Usage")}</p><p style={bigNumber}>{electricUsage[0]?.previous_reading || 0} kWh</p></div>
+                <div><p style={label}>{t("Days of Service")}</p><p style={bigNumber}>{electricUsage[0]?.days_of_service ?? t("N/A")}</p></div>
+                <div><p style={label}>{t("Included kWh")}</p><p style={bigNumber}>{electricUsage[0]?.included_kwh || 0} kWh</p></div>
+                <div><p style={label}>{t("Billable kWh")}</p><p style={bigNumber}>{electricUsage[0]?.billable_kwh || 0} kWh</p></div>
+                <div><p style={label}>{t("Rate per kWh")}</p><p style={bigNumber}>{money(electricUsage[0]?.rate_per_kwh)}</p></div>
                 <div style={{ gridColumn: "span 2", borderTop: "1.5px solid var(--border)", paddingTop: 16 }}>
-                  <p style={label}>Electric Charge</p>
-                  <p style={{ fontSize: 30, fontWeight: 900, color: "#b91c1c" }}>${Number(electricUsage[0]?.charge_amount || 0).toFixed(2)}</p>
+                  <p style={label}>{t("Electric Charge")}</p>
+                  <p style={{ fontSize: 30, fontWeight: 900, color: "#b91c1c" }}>{money(electricUsage[0]?.charge_amount)}</p>
                 </div>
               </div>
             )}
@@ -1633,8 +1657,8 @@ export default function ResidentDashboard() {
               </div>
           {electricUsage.length > 0 && (
             <button onClick={() => router.push("/electric-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📊 Electric Usage History</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View monthly electric readings, charges, and usage history.</p>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📊 Electric Usage History")}</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View monthly electric readings, charges, and usage history.")}</p>
             </button>
           )}
             </>)}
@@ -1644,18 +1668,17 @@ export default function ResidentDashboard() {
           {rentToOwnPlan && rentToOwnPlan.status === "pending_signatures" && (
             <div style={{ ...card, marginTop: 16, background: "#fffbeb", border: "2px solid #f59e0b" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>
-                🎉 Your Rent-to-Own home is fully paid off!
+                {t("🎉 Your Rent-to-Own home is fully paid off!")}
               </h2>
               <p style={{ ...label, marginBottom: 12 }}>
-                To finalize your Bill of Sale, both you and the park need to digitally sign. Type your full
-                legal name below to sign your side.
+                {t("To finalize your Bill of Sale, both you and the park need to digitally sign. Type your full legal name below to sign your side.")}
               </p>
               {rentToOwnPlan.resident_signed_at ? (
                 <p style={{ fontSize: 14, fontWeight: 700, color: "#16a34a" }}>
-                  ✓ You signed on {new Date(rentToOwnPlan.resident_signed_at).toLocaleDateString("en-US", { timeZone: "America/New_York" })}.{" "}
+                  {t("✓ You signed on {date}.", { date: date(rentToOwnPlan.resident_signed_at, { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" }) })}{" "}
                   {rentToOwnPlan.admin_signed_at
-                    ? "Waiting on the final document to generate — refresh in a moment."
-                    : "Waiting on the park's signature to finalize your Bill of Sale."}
+                    ? t("Waiting on the final document to generate — refresh in a moment.")
+                    : t("Waiting on the park's signature to finalize your Bill of Sale.")}
                 </p>
               ) : (
                 <>
@@ -1663,7 +1686,7 @@ export default function ResidentDashboard() {
                     type="text"
                     value={billOfSaleSignatureInput}
                     onChange={(e) => setBillOfSaleSignatureInput(e.target.value)}
-                    placeholder="Type your full legal name to sign"
+                    placeholder={t("Type your full legal name to sign")}
                     style={{ width: "100%", maxWidth: 360, padding: "10px 12px", borderRadius: 6, border: "1px solid #d1d5db", marginBottom: 10 }}
                   />
                   <br />
@@ -1684,13 +1707,13 @@ export default function ResidentDashboard() {
                       const result = await res.json();
                       setSigningBillOfSale(false);
                       if (!res.ok) {
-                        setBillOfSaleMessage(result.error || "Something went wrong. Please try again.");
+                        setBillOfSaleMessage(err(result.error) || t("Something went wrong. Please try again."));
                         return;
                       }
                       setBillOfSaleMessage(
                         result.completed
-                          ? "Signed! Your Bill of Sale is finalized — find it under Documents."
-                          : "Signed! Waiting on the park's signature to finalize your Bill of Sale."
+                          ? t("Signed! Your Bill of Sale is finalized — find it under Documents.")
+                          : t("Signed! Waiting on the park's signature to finalize your Bill of Sale.")
                       );
                       fetch(`/api/portal/rent-to-own-plan?residentId=${residentId}`)
                         .then((r) => r.json())
@@ -1699,7 +1722,7 @@ export default function ResidentDashboard() {
                     }}
                     style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
                   >
-                    {signingBillOfSale ? "Signing..." : "Sign Bill of Sale"}
+                    {signingBillOfSale ? t("Signing...") : t("Sign Bill of Sale")}
                   </button>
                 </>
               )}
@@ -1709,18 +1732,18 @@ export default function ResidentDashboard() {
           {rentToOwnPlan && rentToOwnPlan.status !== "pending_signatures" && (
             <div style={{ ...card, marginTop: 16 }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>
-                🏡 Rent-to-Own Plan {rentToOwnPlan.lot_name ? `— Lot ${rentToOwnPlan.lot_name}` : ""}
+                {t("🏡 Rent-to-Own Plan")} {rentToOwnPlan.lot_name ? `— ${t("Lot {name}", { name: rentToOwnPlan.lot_name })}` : ""}
               </h2>
               <p style={{ ...label, marginBottom: 12 }}>
-                ${Number(rentToOwnPlan.monthly_principal).toFixed(2)}/month toward your total purchase price
+                {t("{amount}/month toward your total purchase price", { amount: money(rentToOwnPlan.monthly_principal) })}
               </p>
               <div style={{ fontSize: 14, marginBottom: 6 }}>
-                ${rentToOwnPlan.paid_so_far.toFixed(2)} paid of ${Number(rentToOwnPlan.total_price).toLocaleString()}
+                {t("{paid} paid of {total}", { paid: money(rentToOwnPlan.paid_so_far), total: money(rentToOwnPlan.total_price) })}
                 {" — "}
-                <strong>${rentToOwnPlan.remaining.toFixed(2)} remaining</strong>
+                <strong>{t("{amount} remaining", { amount: money(rentToOwnPlan.remaining) })}</strong>
               </div>
               <div style={{ ...label, marginBottom: 6 }}>
-                {Math.max(0, Math.ceil(rentToOwnPlan.remaining / rentToOwnPlan.monthly_principal))} payment(s) left
+                {(() => { const left = Math.max(0, Math.ceil(rentToOwnPlan.remaining / rentToOwnPlan.monthly_principal)); return tp(left, "{n} payment left", "{n} payments left"); })()}
               </div>
               <div style={{ width: "100%", background: "#e5e7eb", borderRadius: 999, height: 10 }}>
                 <div
@@ -1738,13 +1761,13 @@ export default function ResidentDashboard() {
               <div id="home-info" className="rp-anchor">
           <div style={{ ...card, marginTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18 }}>🏠 Home/Unit Info</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("🏠 Home/Unit Info")}</h2>
               {!editingRvInfo && (
                 <button
                   onClick={() => { setEditingRvInfo(true); setRvMessage(""); }}
                   style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                 >
-                  Edit
+                  {t("Edit")}
                 </button>
               )}
             </div>
@@ -1753,17 +1776,17 @@ export default function ResidentDashboard() {
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, marginBottom: 12 }}>
                   <select value={rvType} onChange={e => setRvType(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }}>
-                    <option value="RV">RV</option>
-                    <option value="Park Model">Park Model</option>
-                    <option value="Mobile Home">Mobile Home</option>
-                    <option value="Other">Other</option>
+                    <option value="RV">{t("RV")}</option>
+                    <option value="Park Model">{t("Park Model")}</option>
+                    <option value="Mobile Home">{t("Mobile Home")}</option>
+                    <option value="Other">{t("Other")}</option>
                   </select>
-                  <input placeholder="Make" value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Model" value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Year" value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Length (ft)" type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Width (ft) — optional" type="number" value={rvWidthFt} onChange={e => setRvWidthFt(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="VIN / Tag #" value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
+                  <input placeholder={t("Make")} value={rvMake} onChange={e => setRvMake(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Model")} value={rvModel} onChange={e => setRvModel(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Year")} value={rvYear} onChange={e => setRvYear(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Length (ft)")} type="number" value={rvLengthFt} onChange={e => setRvLengthFt(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Width (ft) — optional")} type="number" value={rvWidthFt} onChange={e => setRvWidthFt(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("VIN / Tag #")} value={rvVinOrTag} onChange={e => setRvVinOrTag(e.target.value)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box", border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, gridColumn: "span 2" }} />
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -1771,7 +1794,7 @@ export default function ResidentDashboard() {
                     disabled={savingRvInfo}
                     style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: savingRvInfo ? "default" : "pointer", opacity: savingRvInfo ? 0.7 : 1 }}
                   >
-                    {savingRvInfo ? "Saving..." : "Save"}
+                    {savingRvInfo ? t("Saving...") : t("Save")}
                   </button>
                   {/* Only offer Cancel once there's actually saved data to fall back to
                       — a resident entering this info for the first time has nothing to
@@ -1792,26 +1815,26 @@ export default function ResidentDashboard() {
                       disabled={savingRvInfo}
                       style={{ background: "transparent", color: "#000", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
                     >
-                      Cancel
+                      {t("Cancel")}
                     </button>
                   )}
                 </div>
               </>
             ) : (
               <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12 }}>
-                <p style={{ fontWeight: 700 }}>{rvType || "RV"} — {rvYear} {rvMake} {rvModel}</p>
-                <p style={{ fontSize: 13 }}>{rvLengthFt ? `${rvLengthFt} ft` : "Length not set"}</p>
-                <p style={{ color: "var(--gray)", fontSize: 13 }}>VIN / Tag #: {rvVinOrTag || "—"}</p>
+                <p style={{ fontWeight: 700 }}>{t(rvType || "RV")} — {rvYear} {rvMake} {rvModel}</p>
+                <p style={{ fontSize: 13 }}>{rvLengthFt ? t("{n} ft", { n: rvLengthFt }) : t("Length not set")}</p>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("VIN / Tag #: {value}", { value: rvVinOrTag || "—" })}</p>
               </div>
             )}
-            {rvMessage && <p style={{ fontSize: 13, marginTop: 8, color: rvMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{rvMessage}</p>}
+            {rvMessage && <p style={{ fontSize: 13, marginTop: 8, color: rvMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{rvMessage}</p>}
           </div>
               </div>
               <div id="parking-pets" className="rp-anchor">
           {!editingPets ? (
             <div style={{ ...card, marginTop: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <h2 style={{ fontWeight: 900, fontSize: 18 }}>🅿️ Parking &amp; Pets</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("🅿️ Parking & Pets")}</h2>
                 <button
                   onClick={() => {
                     setPetsAllowedInput(!!resident?.pets_allowed);
@@ -1827,51 +1850,51 @@ export default function ResidentDashboard() {
                   }}
                   style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                 >
-                  Edit Pets
+                  {t("Edit Pets")}
                 </button>
               </div>
 
-              <p><strong>Parking:</strong>{" "}
+              <p><strong>{t("Parking:")}</strong>{" "}
                 {resident?.parking_provided
-                  ? `${resident?.parking_spaces || "Designated"} space(s)${
-                      resident?.parking_free ? "" : `, $${Number(resident?.parking_cost || 0).toFixed(2)}`
+                  ? `${t("{n} space(s)", { n: resident?.parking_spaces || t("Designated") })}${
+                      resident?.parking_free ? "" : `, ${money(resident?.parking_cost)}`
                     }`
-                  : "Not provided"}
+                  : t("Not provided")}
               </p>
-              <p style={{ marginTop: 8 }}><strong>Pets:</strong>{" "}
+              <p style={{ marginTop: 8 }}><strong>{t("Pets:")}</strong>{" "}
                 {resident?.pets_allowed
-                  ? `${resident?.pets_count || 0} pet(s)${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
-                  : "Not permitted"}
+                  ? `${t("{n} pet(s)", { n: resident?.pets_count || 0 })}${resident?.pets_types ? ` (${resident.pets_types})` : ""}`
+                  : t("Not permitted")}
               </p>
               {resident?.pets_allowed && Array.isArray(resident?.pet_details) && resident.pet_details.length > 0 && (
                 <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
                   {resident.pet_details.map((p: PortalPet, i: number) => (
                     <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", fontSize: 13 }}>
-                      <strong>{p.name || `Pet ${i + 1}`}</strong>
-                      {` — ${[p.type, p.breed, p.color, p.weight ? `${p.weight} lbs` : ""].filter(Boolean).join(", ")}`}
+                      <strong>{p.name || t("Pet {n}", { n: i + 1 })}</strong>
+                      {` — ${[p.type, p.breed, p.color, p.weight ? t("{n} lbs", { n: p.weight }) : ""].filter(Boolean).join(", ")}`}
                       <span style={{ color: p.shots_provided === "yes" ? "#16a34a" : "#b45309", marginLeft: 6 }}>
-                        {p.shots_provided === "yes" ? "Shots records provided" : "Shots records not provided"}
+                        {p.shots_provided === "yes" ? t("Shots records provided") : t("Shots records not provided")}
                       </span>
                     </div>
                   ))}
                 </div>
               )}
-              <p style={{ marginTop: 8 }}><strong>Parking Sticker ID#(s):</strong>{" "}
+              <p style={{ marginTop: 8 }}><strong>{t("Parking Sticker ID#(s):")}</strong>{" "}
                 {vehicles.length === 0
-                  ? "No vehicles on file"
-                  : vehicles.map((v) => v.parking_sticker_id || "Not yet assigned").join(", ")}
+                  ? t("No vehicles on file")
+                  : vehicles.map((v) => v.parking_sticker_id || t("Not yet assigned")).join(", ")}
               </p>
-              <p style={{ marginTop: 8 }}><strong>Gate Access Clickers Issued:</strong> {resident?.gate_clickers_count ?? 0}</p>
-              <p style={{ marginTop: 8 }}><strong>Mailbox Keys Issued:</strong> {resident?.mailbox_keys_count ?? 0}</p>
-              <p style={{ marginTop: 8 }}><strong>Mailbox #:</strong> {resident?.mailbox_number || "Not yet assigned"}</p>
+              <p style={{ marginTop: 8 }}><strong>{t("Gate Access Clickers Issued:")}</strong> {resident?.gate_clickers_count ?? 0}</p>
+              <p style={{ marginTop: 8 }}><strong>{t("Mailbox Keys Issued:")}</strong> {resident?.mailbox_keys_count ?? 0}</p>
+              <p style={{ marginTop: 8 }}><strong>{t("Mailbox #:")}</strong> {resident?.mailbox_number || t("Not yet assigned")}</p>
 
               <p style={{ color: "var(--gray)", fontSize: 12, marginTop: 12 }}>
-                Lost or damaged items may be subject to a replacement fee — contact the office for details.
+                {t("Lost or damaged items may be subject to a replacement fee — contact the office for details.")}
               </p>
             </div>
           ) : (
             <div style={{ ...card, marginTop: 16 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Pets</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Edit Pets")}</h2>
               {petRestrictions.trim() && (
                 <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 13, color: "#78350f", whiteSpace: "pre-wrap" }}>
                   ⚠️ {petRestrictions}
@@ -1885,12 +1908,12 @@ export default function ResidentDashboard() {
                   checked={petsAllowedInput}
                   onChange={(e) => setPetsAllowedInput(e.target.checked)}
                 />
-                <span>I have pet(s)</span>
+                <span>{t("I have pet(s)")}</span>
               </div>
               {petsAllowedInput && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>How many pets?</label>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("How many pets?")}</label>
                     <select
                       value={String(petDetailsInput.length)}
                       onChange={(e) => {
@@ -1911,18 +1934,18 @@ export default function ResidentDashboard() {
                     const lbl = { fontSize: 12, color: "var(--gray)" } as const;
                     return (
                       <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                        <strong style={{ fontSize: 13 }}>Pet {i + 1}</strong>
-                        <div><label style={lbl}>Type</label><input style={inputStyle} placeholder="e.g. Dog, Cat" value={pet.type} onChange={(e) => update({ type: e.target.value })} /></div>
-                        <div><label style={lbl}>Name of your pet</label><input style={inputStyle} value={pet.name} onChange={(e) => update({ name: e.target.value })} /></div>
-                        <div><label style={lbl}>Breed</label><input style={inputStyle} value={pet.breed} onChange={(e) => update({ breed: e.target.value })} /></div>
-                        <div><label style={lbl}>Color</label><input style={inputStyle} value={pet.color} onChange={(e) => update({ color: e.target.value })} /></div>
-                        <div><label style={lbl}>Weight (lbs)</label><input style={inputStyle} inputMode="numeric" value={pet.weight} onChange={(e) => update({ weight: e.target.value })} /></div>
+                        <strong style={{ fontSize: 13 }}>{t("Pet {n}", { n: i + 1 })}</strong>
+                        <div><label style={lbl}>{t("Type")}</label><input style={inputStyle} placeholder={t("e.g. Dog, Cat")} value={pet.type} onChange={(e) => update({ type: e.target.value })} /></div>
+                        <div><label style={lbl}>{t("Name of your pet")}</label><input style={inputStyle} value={pet.name} onChange={(e) => update({ name: e.target.value })} /></div>
+                        <div><label style={lbl}>{t("Breed")}</label><input style={inputStyle} value={pet.breed} onChange={(e) => update({ breed: e.target.value })} /></div>
+                        <div><label style={lbl}>{t("Color")}</label><input style={inputStyle} value={pet.color} onChange={(e) => update({ color: e.target.value })} /></div>
+                        <div><label style={lbl}>{t("Weight (lbs)")}</label><input style={inputStyle} inputMode="numeric" value={pet.weight} onChange={(e) => update({ weight: e.target.value })} /></div>
                         <div>
-                          <label style={lbl}>Provided shots records?</label>
+                          <label style={lbl}>{t("Provided shots records?")}</label>
                           <select style={{ ...inputStyle, background: "#fff" }} value={pet.shots_provided} onChange={(e) => update({ shots_provided: e.target.value as PortalPet["shots_provided"] })}>
-                            <option value="">Select...</option>
-                            <option value="yes">Yes</option>
-                            <option value="no">No</option>
+                            <option value="">{t("Select...")}</option>
+                            <option value="yes">{t("Yes")}</option>
+                            <option value="no">{t("No")}</option>
                           </select>
                         </div>
                       </div>
@@ -1930,33 +1953,33 @@ export default function ResidentDashboard() {
                   })}
                 </div>
               )}
-              <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
+              <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>{t("The park office is notified whenever you update this information.")}</p>
               <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
-                <button onClick={savePets} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
-                <button onClick={() => { setEditingPets(false); setPetsMessage(""); }} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                {petsMessage && <p style={{ fontSize: 13, color: petsMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{petsMessage}</p>}
+                <button onClick={savePets} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t("Save")}</button>
+                <button onClick={() => { setEditingPets(false); setPetsMessage(""); }} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t("Cancel")}</button>
+                {petsMessage && <p style={{ fontSize: 13, color: petsMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{petsMessage}</p>}
               </div>
             </div>
           )}
               </div>
               <div className="rp-links">
             <button id="documents" className="rp-anchor" onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement and any signed resident agreements.</p>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📄 Documents")}</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View and print your signed lease agreement and any signed resident agreements.")}</p>
             </button>
             {activeLease && (
               <button
                 onClick={() => setShowMoveOutModal(true)}
                 style={{ ...card, textAlign: "left", cursor: "pointer" }}
               >
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
-                <p style={{ color: "var(--gray)", fontSize: 13 }}>Let us know your planned move-out date.</p>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🚪 Moving Out?")}</h2>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Let us know your planned move-out date.")}</p>
               </button>
             )}
               </div>
               {activeLease?.requested_move_out_date && (
                 <p style={{ fontSize: 13, color: "var(--gray)", margin: 0 }}>
-                  Requested move-out date: <strong>{activeLease.requested_move_out_date}</strong> <span style={{ color: "#16a34a", fontWeight: 700 }}>Submitted ✓</span>
+                  {t("Requested move-out date:")} <strong>{date(activeLease.requested_move_out_date)}</strong> <span style={{ color: "#16a34a", fontWeight: 700 }}>{t("Submitted ✓")}</span>
                 </p>
               )}
             </>)}
@@ -1964,38 +1987,38 @@ export default function ResidentDashboard() {
             {section === "household" && (<>
           {pendingBgChecks.length > 0 && (
             <div style={{ ...card, border: "2px solid #fb923c", background: "#fff7ed" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6, color: "#9a3412" }}>⚠️ Background Check Needed</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6, color: "#9a3412" }}>{t("⚠️ Background Check Needed")}</h2>
               <p style={{ fontSize: 13, color: "#9a3412", marginBottom: 12 }}>
                 {pendingBgChecks.length === 1
-                  ? "1 household occupant still needs a background check paid for and started."
-                  : `${pendingBgChecks.length} household occupants still need a background check paid for and started.`}
+                  ? t("1 household occupant still needs a background check paid for and started.")
+                  : t("{n} household occupants still need a background check paid for and started.", { n: pendingBgChecks.length })}
               </p>
               <button
                 onClick={() => router.push("/residents/background-checks")}
                 style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
               >
-                Continue to Background Check(s)
+                {t("Continue to Background Check(s)")}
               </button>
             </div>
           )}
           <div id="household-occupants" style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18 }}>Household Occupants</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("Household Occupants")}</h2>
               <button onClick={() => { setOccType("household"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setOccDateOfBirth(""); setAddingOccupant(!addingOccupant || occType !== "household"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {addingOccupant && occType === "household" ? "Cancel" : "+ Add"}
+                {addingOccupant && occType === "household" ? t("Cancel") : t("+ Add")}
               </button>
             </div>
-            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>People living here permanently. Anyone 18 or older requires a background check.</p>
+            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>{t("People living here permanently. Anyone 18 or older requires a background check.")}</p>
 
             {addingOccupant && occType === "household" && (
               <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  <input placeholder="Full Name" value={occFullName} onChange={e => setOccFullName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Relationship" value={occRelationship} onChange={e => setOccRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Phone" value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Email" value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Full Name")} value={occFullName} onChange={e => setOccFullName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Relationship")} value={occRelationship} onChange={e => setOccRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Phone")} value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Email")} value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <div style={{ gridColumn: "span 2" }}>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Date of Birth (required)</label>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Date of Birth (required)")}</label>
                     <input type="date" value={occDateOfBirth} onChange={e => setOccDateOfBirth(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                   {(() => {
@@ -2004,7 +2027,7 @@ export default function ResidentDashboard() {
                     return (
                       <div style={{ gridColumn: "span 2" }}>
                         <label style={{ fontSize: 12, color: "var(--gray)" }}>
-                          Social Security # {editingVisitorId ? "(leave blank to keep the one on file)" : "(required for adults 18+)"}
+                          {t(editingVisitorId ? "Social Security # (leave blank to keep the one on file)" : "Social Security # (required for adults 18+)")}
                         </label>
                         <input
                           placeholder="123-45-6789"
@@ -2019,16 +2042,16 @@ export default function ResidentDashboard() {
                           style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }}
                         />
                         <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 4 }}>
-                          Email is also required for adults. Stored securely; the office only sees the last 4 digits.
+                          {t("Email is also required for adults. Stored securely; the office only sees the last 4 digits.")}
                         </p>
                       </div>
                     );
                   })()}
                 </div>
                 <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
-                  {editingVisitorId ? "Update Occupant" : "Save"}
+                  {editingVisitorId ? t("Update Occupant") : t("Save")}
                 </button>
-                {occupantMessage && occType === "household" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith("Could not") || occupantMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
+                {occupantMessage && occType === "household" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
               </div>
             )}
 
@@ -2045,23 +2068,24 @@ export default function ResidentDashboard() {
                   {/* Oct 19 (per Mely): show the date of birth the way it was entered (mm/dd/yyyy) */}
                   {person.date_of_birth && (
                     <p style={{ color: "var(--gray)", fontSize: 12 }}>
-                      Date of Birth: {(() => {
+                      {t("Date of Birth: {date}", { date: (() => {
                         const m = String(person.date_of_birth).match(/^(\d{4})-(\d{2})-(\d{2})/);
-                        return m ? `${m[2]}/${m[3]}/${m[1]}` : String(person.date_of_birth);
-                      })()}
-                      {age !== null ? ` · Age: ${age}` : ""}
+                        // English keeps mm/dd/yyyy (as entered); Spanish/Portuguese read dd/mm/yyyy.
+                        return m ? (lang === "en" ? `${m[2]}/${m[3]}/${m[1]}` : `${m[3]}/${m[2]}/${m[1]}`) : String(person.date_of_birth);
+                      })() })}
+                      {age !== null ? t(" · Age: {n}", { n: age }) : ""}
                     </p>
                   )}
-                  {!person.date_of_birth && age !== null && <p style={{ color: "var(--gray)", fontSize: 12 }}>Age: {age}</p>}
+                  {!person.date_of_birth && age !== null && <p style={{ color: "var(--gray)", fontSize: 12 }}>{t("Age: {n}", { n: age })}</p>}
                   <div style={{ display: "flex", gap: 12, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
-                    <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
+                    <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>{t("Edit")}</button>
+                    <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>{t("Remove")}</button>
                   </div>
                   {needsBackgroundCheck && (
                     <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: bgDone ? "#f0fdf4" : "#fff7ed", border: bgDone ? "1px solid #bbf7d0" : "1px solid #fed7aa" }}>
                       {bgDone ? (
                         <p style={{ fontSize: 12, color: "#166534", fontWeight: 700 }}>
-                          Background check: {bgStatus === "Passed" ? "Passed" : bgStatus === "Needs Review" ? "Needs Review" : "In progress"}
+                          {t("Background check: {status}", { status: t(bgStatus === "Passed" ? "Passed" : bgStatus === "Needs Review" ? "Needs Review" : "In progress") })}
                         </p>
                       ) : !person.has_id_uploaded ? (
                         // Aug 4 (per Mely): step 1 only — don't show
@@ -2070,23 +2094,23 @@ export default function ResidentDashboard() {
                         // confused into thinking they can skip ahead.
                         <>
                           <p style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, marginBottom: 6 }}>
-                            This person is 18 or older — a background check is required before move-in is compliant.
+                            {t("This person is 18 or older — a background check is required before move-in is compliant.")}
                           </p>
                           <p style={{ fontSize: 12, color: "#9a3412", marginBottom: 8 }}>
-                            Please upload a photo ID in Documents, then proceed with the background check.
+                            {t("Please upload a photo ID in Documents, then proceed with the background check.")}
                           </p>
                           <button onClick={() => router.push(`/residents/documents?forOccupant=${person.id}`)} style={{ background: "#fff", border: "1.5px solid #9a3412", color: "#9a3412", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            Upload ID
+                            {t("Upload ID")}
                           </button>
                         </>
                       ) : (
                         // Step 2 — ID is on file, now they can proceed.
                         <>
                           <p style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, marginBottom: 8 }}>
-                            ID received. Now proceed with the background check.
+                            {t("ID received. Now proceed with the background check.")}
                           </p>
                           <button onClick={() => router.push("/residents/background-checks")} style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                            Proceed with Background Check
+                            {t("Proceed with Background Check")}
                           </button>
                         </>
                       )}
@@ -2095,37 +2119,37 @@ export default function ResidentDashboard() {
                 </div>
               );
             })}
-            {occupants.filter(p => p.occupant_type !== "visitor").length === 0 && <p style={{ color: "var(--gray)" }}>No household occupants listed.</p>}
+            {occupants.filter(p => p.occupant_type !== "visitor").length === 0 && <p style={{ color: "var(--gray)" }}>{t("No household occupants listed.")}</p>}
           </div>
           <div id="visitors-section" style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18 }}>Visitors</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("Visitors")}</h2>
               <button onClick={() => { setOccType("visitor"); setEditingVisitorId(null); setOccFullName(""); setOccRelationship(""); setOccPhone(""); setOccEmail(""); setOccStayStart(""); setOccStayEnd(""); setAddingOccupant(!addingOccupant || occType !== "visitor"); }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {addingOccupant && occType === "visitor" ? "Cancel" : "+ Add"}
+                {addingOccupant && occType === "visitor" ? t("Cancel") : t("+ Add")}
               </button>
             </div>
-            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>Temporary guests. You can add, edit, or remove these anytime.</p>
+            <p style={{ fontSize: 11, color: "var(--gray)", marginBottom: 12 }}>{t("Temporary guests. You can add, edit, or remove these anytime.")}</p>
 
             {addingOccupant && occType === "visitor" && (
               <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  <input placeholder="Full Name" value={occFullName} onChange={e => setOccFullName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Relationship" value={occRelationship} onChange={e => setOccRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Phone" value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Email" value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Full Name")} value={occFullName} onChange={e => setOccFullName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Relationship")} value={occRelationship} onChange={e => setOccRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Phone")} value={occPhone} onChange={e => setOccPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Email")} value={occEmail} onChange={e => setOccEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Stay Start Date (required)</label>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Stay Start Date (required)")}</label>
                     <input type="date" value={occStayStart} onChange={e => setOccStayStart(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Stay End Date (required)</label>
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Stay End Date (required)")}</label>
                     <input type="date" value={occStayEnd} onChange={e => setOccStayEnd(e.target.value)} required style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                 </div>
                 <button onClick={addOccupant} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
-                  {editingVisitorId ? "Update Visitor" : "Save Visitor"}
+                  {editingVisitorId ? t("Update Visitor") : t("Save Visitor")}
                 </button>
-                {occupantMessage && occType === "visitor" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith("Could not") || occupantMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
+                {occupantMessage && occType === "visitor" && <p style={{ fontSize: 13, marginTop: 8, color: occupantMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{occupantMessage}</p>}
               </div>
             )}
 
@@ -2136,42 +2160,42 @@ export default function ResidentDashboard() {
                 <p style={{ color: "var(--gray)", fontSize: 13 }}>{person.phone} {person.email}</p>
                 {(person.stay_start_date || person.stay_end_date) && (
                   <p style={{ color: "var(--gray)", fontSize: 12 }}>
-                    Stay: {person.stay_start_date || "?"} to {person.stay_end_date || "?"}
+                    {t("Stay: {start} to {end}", { start: person.stay_start_date ? date(person.stay_start_date) : "?", end: person.stay_end_date ? date(person.stay_end_date) : "?" })}
                   </p>
                 )}
                 <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                  <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Edit</button>
-                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>Remove</button>
+                  <button onClick={() => startEditVisitor(person)} style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>{t("Edit")}</button>
+                  <button onClick={() => deleteVisitor(person.id)} style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}>{t("Remove")}</button>
                 </div>
               </div>
             ))}
-            {occupants.filter(p => p.occupant_type === "visitor").length === 0 && <p style={{ color: "var(--gray)" }}>No visitors listed.</p>}
+            {occupants.filter(p => p.occupant_type === "visitor").length === 0 && <p style={{ color: "var(--gray)" }}>{t("No visitors listed.")}</p>}
           </div>
               <div id="vehicles" className="rp-anchor">
           <div style={card}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18 }}>Vehicles</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("Vehicles")}</h2>
               <button onClick={() => {
                 setEditingVehicleId(null);
                 setVehMake(""); setVehModel(""); setVehYear(""); setVehColor(""); setVehPlate(""); setVehState("");
                 setAddingVehicle(!addingVehicle);
               }} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {addingVehicle ? "Cancel" : "+ Add"}
+                {addingVehicle ? t("Cancel") : t("+ Add")}
               </button>
             </div>
 
             {addingVehicle && (
               <div style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 16, marginBottom: 12 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  <input placeholder="Make" value={vehMake} onChange={e => setVehMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Model" value={vehModel} onChange={e => setVehModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Year" value={vehYear} onChange={e => setVehYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="Color" value={vehColor} onChange={e => setVehColor(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="License Plate" value={vehPlate} onChange={e => setVehPlate(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-                  <input placeholder="License State" value={vehState} onChange={e => setVehState(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Make")} value={vehMake} onChange={e => setVehMake(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Model")} value={vehModel} onChange={e => setVehModel(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Year")} value={vehYear} onChange={e => setVehYear(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("Color")} value={vehColor} onChange={e => setVehColor(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("License Plate")} value={vehPlate} onChange={e => setVehPlate(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+                  <input placeholder={t("License State")} value={vehState} onChange={e => setVehState(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
                 </div>
-                <button onClick={addVehicle} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{editingVehicleId ? "Update Vehicle" : "Save Vehicle"}</button>
-                {vehicleMessage && <p style={{ fontSize: 13, marginTop: 8, color: vehicleMessage.startsWith("Could not") || vehicleMessage.startsWith("Please") ? "#dc2626" : "#16a34a" }}>{vehicleMessage}</p>}
+                <button onClick={addVehicle} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{editingVehicleId ? t("Update Vehicle") : t("Save Vehicle")}</button>
+                {vehicleMessage && <p style={{ fontSize: 13, marginTop: 8, color: vehicleMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{vehicleMessage}</p>}
               </div>
             )}
 
@@ -2179,8 +2203,8 @@ export default function ResidentDashboard() {
               <div key={v.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginBottom: 8 }}>
                 <p style={{ fontWeight: 700 }}>{v.vehicle_year} {v.vehicle_make} {v.vehicle_model}</p>
                 <p style={{ fontSize: 13 }}>{v.color}</p>
-                <p style={{ color: "var(--gray)", fontSize: 13 }}>Plate: {v.license_plate} {v.license_state}</p>
-                <p style={{ color: "var(--gray)", fontSize: 13 }}>Parking Sticker ID#: {v.parking_sticker_id || "Not yet assigned"}</p>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Plate: {value}", { value: `${v.license_plate || ""} ${v.license_state || ""}`.trim() })}</p>
+                <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Parking Sticker ID#: {value}", { value: v.parking_sticker_id || t("Not yet assigned") })}</p>
                 <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                   <button
                     onClick={() => {
@@ -2195,18 +2219,18 @@ export default function ResidentDashboard() {
                     }}
                     style={{ background: "none", border: "none", color: "var(--gray)", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}
                   >
-                    Edit
+                    {t("Edit")}
                   </button>
                   <button
                     onClick={() => deleteVehicle(v.id)}
                     style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, textDecoration: "underline", cursor: "pointer", padding: 0 }}
                   >
-                    Remove
+                    {t("Remove")}
                   </button>
                 </div>
               </div>
             ))}
-            {vehicles.length === 0 && <p style={{ color: "var(--gray)" }}>No vehicles listed.</p>}
+            {vehicles.length === 0 && <p style={{ color: "var(--gray)" }}>{t("No vehicles listed.")}</p>}
           </div>
               </div>
               <div id="golf-carts" className="rp-anchor">
@@ -2225,21 +2249,21 @@ export default function ResidentDashboard() {
               <div id="maintenance" className="rp-anchor">
           {maintenanceEnabled && (
           <div onClick={() => router.push("/residents/maintenance")} style={{ ...card, cursor: "pointer" }}>
-            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Maintenance Requests</h2>
-            <p style={{ color: "var(--gray)", fontSize: 13 }}>Report issues and track maintenance progress.</p>
+            <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("Maintenance Requests")}</h2>
+            <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Report issues and track maintenance progress.")}</p>
           </div>
           )}
           {!requestsVisible && (
-            <div style={card}><p style={{ color: "var(--gray)", fontSize: 13 }}>Maintenance requests are handled by the office — please call or message us.</p></div>
+            <div style={card}><p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Maintenance requests are handled by the office — please call or message us.")}</p></div>
           )}
               </div>
               {openMaintenance.length > 0 && (
                 <div style={card}>
-                  <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Open Requests</h2>
+                  <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Open Requests")}</h2>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {openMaintenance.slice(0, 5).map((r: any) => (
                       <button key={r.id} type="button" className="rp-attn-row" onClick={() => router.push("/residents/maintenance")}>
-                        <span className="rp-attn-text"><b>{r.subject || "Maintenance request"}</b><small>{r.status}{r.priority ? ` · ${r.priority} priority` : ""}</small></span>
+                        <span className="rp-attn-text"><b>{r.subject || t("Maintenance request")}</b><small>{st(r.status)}{r.priority ? t(" · {p} priority", { p: st(r.priority) }) : ""}</small></span>
                         <span className="rp-attn-go">→</span>
                       </button>
                     ))}
@@ -2249,7 +2273,7 @@ export default function ResidentDashboard() {
               <div id="propane" className="rp-anchor">
           {propaneOrders.length > 0 && (
             <div style={{ ...card, marginTop: 16 }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>⛽ Propane Orders</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("⛽ Propane Orders")}</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {propaneOrders.map((order) => (
                   <div
@@ -2260,25 +2284,24 @@ export default function ResidentDashboard() {
                     {order.qr_token ? (
                       <img
                         src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(order.qr_token)}`}
-                        alt="Propane pickup QR code"
+                        alt={t("Propane pickup QR code")}
                         style={{ width: 100, height: 100, flexShrink: 0 }}
                       />
                     ) : null}
                     <div style={{ flex: 1 }}>
                       <p style={{ fontWeight: 700, margin: 0 }}>
-                        {order.quantity} {order.unit === "gallon" ? "gallons" : "×"} {order.product_label}
+                        {order.unit === "gallon" ? t("{n} gallons", { n: order.quantity }) : `${order.quantity} ×`} {order.product_label}
                       </p>
                       <p style={{ color: "var(--gray)", fontSize: 13, margin: "2px 0" }}>
-                        ${Number(order.amount_total).toFixed(2)} — paid{" "}
-                        {new Date(order.paid_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {t("{amount} — paid {date}", { amount: money(order.amount_total), date: date(order.paid_at, { month: "short", day: "numeric", year: "numeric" }) })}
                       </p>
                       <p style={{ fontSize: 12.5, margin: "4px 0", color: order.redeemed ? "#16a34a" : "#b45309", fontWeight: 700 }}>
                         {(() => {
                           const maxRedemptions = order.unit === "tank" ? Math.max(1, Math.floor(order.quantity)) : 1;
                           const count = order.redeemed_count || 0;
-                          if (order.redeemed) return "✅ Fully picked up";
-                          if (count > 0) return `🕓 Picked up ${count}/${maxRedemptions} — show this code to staff for the rest`;
-                          return "🕓 Ready for pickup — show this code to staff";
+                          if (order.redeemed) return t("✅ Fully picked up");
+                          if (count > 0) return t("🕓 Picked up {count}/{max} — show this code to staff for the rest", { count, max: maxRedemptions });
+                          return t("🕓 Ready for pickup — show this code to staff");
                         })()}
                       </p>
                       <button
@@ -2292,7 +2315,7 @@ export default function ResidentDashboard() {
                         }}
                         style={{ fontSize: 12, color: "var(--gray)", background: "none", border: "none", textDecoration: "underline", cursor: "pointer", padding: 0 }}
                       >
-                        Remove from my portal
+                        {t("Remove from my portal")}
                       </button>
                     </div>
                   </div>
@@ -2305,9 +2328,9 @@ export default function ResidentDashboard() {
 
             {section === "messages" && (<>
               <div id="notifications" className="rp-anchor" style={card}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>🔔 Notifications</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("🔔 Notifications")}</h2>
                 {notifications.length === 0 ? (
-                  <p style={{ color: "var(--gray)", fontSize: 13 }}>Nothing yet.</p>
+                  <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Nothing yet.")}</p>
                 ) : (
                   <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
                     {notifications.map((n) => notifRow(n, !n.resident_read_at || freshNotifIds.has(String(n.id))))}
@@ -2317,7 +2340,7 @@ export default function ResidentDashboard() {
               <div id="announcements" className="rp-anchor">
           {announcements.length > 0 && (
             <div style={card}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Announcements</h2>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Announcements")}</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {announcements.map(a => (
                   <div key={a.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12 }}>
@@ -2330,18 +2353,18 @@ export default function ResidentDashboard() {
           )}
               </div>
               {announcements.length === 0 && (
-                <div style={card}><p style={{ color: "var(--gray)", fontSize: 13 }}>No announcements from the park right now.</p></div>
+                <div style={card}><p style={{ color: "var(--gray)", fontSize: 13 }}>{t("No announcements from the park right now.")}</p></div>
               )}
             </>)}
 
             {section === "info" && <ParkInfoSection data={parkInfo} />}
 
             {section === "more" && (<>
-              <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" />
+              <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" portal />
               <div className="rp-more-list">
                 {(["household", "requests", "info"] as SectionId[]).filter((id) => id !== "requests" || requestsVisible).map((id) => {
                   const x = SECTIONS.find((s) => s.id === id)!;
-                  return <button key={id} type="button" onClick={() => openSection(id)}><NavIcon d={x.icon} /><span>{x.label}</span><Badge n={badge[id]} /><span className="rp-attn-go">→</span></button>;
+                  return <button key={id} type="button" onClick={() => openSection(id)}><NavIcon d={x.icon} /><span>{t(x.label)}</span><Badge n={badge[id]} /><span className="rp-attn-go">→</span></button>;
                 })}
               </div>
               <div id="profile" className="rp-anchor">
@@ -2349,31 +2372,31 @@ export default function ResidentDashboard() {
             {!editingResidentInfo ? (
               <div id="resident-info" style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h2 style={{ fontWeight: 900, fontSize: 18 }}>Resident Information</h2>
-                  <button onClick={openEditResidentInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                  <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("Resident Information")}</h2>
+                  <button onClick={openEditResidentInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t("Edit")}</button>
                 </div>
-                <p><strong>Email:</strong> {resident.email || "No email"}</p>
-                <p style={{ marginTop: 8 }}><strong>Phone:</strong> {resident.phone || "No phone"}</p>
+                <p><strong>{t("Email:")}</strong> {resident.email || t("No email")}</p>
+                <p style={{ marginTop: 8 }}><strong>{t("Phone:")}</strong> {resident.phone || t("No phone")}</p>
                 <SmsAlertsToggle residentId={resident.id} parkName={resident?.companies?.company_name || ""} phone={resident.phone} />
               </div>
             ) : (
               <div id="resident-info" style={card}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Resident Information</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Edit Resident Information")}</h2>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Email</label>
-                    <input placeholder="Email" value={formEmail} onChange={e => setFormEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Email")}</label>
+                    <input placeholder={t("Email")} value={formEmail} onChange={e => setFormEmail(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Phone</label>
-                    <input placeholder="Phone" value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Phone")}</label>
+                    <input placeholder={t("Phone")} value={formPhone} onChange={e => setFormPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                 </div>
-                <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
+                <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>{t("The park office is notified whenever you update this information.")}</p>
                 <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
-                  <button onClick={saveResidentInfo} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
-                  <button onClick={() => setEditingResidentInfo(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                  {residentInfoMessage && <p style={{ fontSize: 13, color: residentInfoMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{residentInfoMessage}</p>}
+                  <button onClick={saveResidentInfo} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t("Save")}</button>
+                  <button onClick={() => setEditingResidentInfo(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t("Cancel")}</button>
+                  {residentInfoMessage && <p style={{ fontSize: 13, color: residentInfoMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{residentInfoMessage}</p>}
                 </div>
               </div>
             )}
@@ -2381,35 +2404,35 @@ export default function ResidentDashboard() {
             {!editingEmergencyContact ? (
               <div id="emergency-contact" style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <h2 style={{ fontWeight: 900, fontSize: 18 }}>Emergency Contact</h2>
-                  <button onClick={openEditEmergencyContact} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                  <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("Emergency Contact")}</h2>
+                  <button onClick={openEditEmergencyContact} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t("Edit")}</button>
                 </div>
-                <p><strong>Name:</strong> {resident.emergency_contact_name || "None"}</p>
-                <p><strong>Phone:</strong> {resident.emergency_contact_phone || "None"}</p>
-                <p><strong>Relationship:</strong> {resident.emergency_contact_relationship || "None"}</p>
+                <p><strong>{t("Name:")}</strong> {resident.emergency_contact_name || t("None")}</p>
+                <p><strong>{t("Phone:")}</strong> {resident.emergency_contact_phone || t("None")}</p>
+                <p><strong>{t("Relationship:")}</strong> {resident.emergency_contact_relationship || t("None")}</p>
               </div>
             ) : (
               <div id="emergency-contact" style={card}>
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Emergency Contact</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Edit Emergency Contact")}</h2>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Name</label>
-                    <input placeholder="Name" value={formEmergencyName} onChange={e => setFormEmergencyName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Name")}</label>
+                    <input placeholder={t("Name")} value={formEmergencyName} onChange={e => setFormEmergencyName(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Phone</label>
-                    <input placeholder="Phone" value={formEmergencyPhone} onChange={e => setFormEmergencyPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Phone")}</label>
+                    <input placeholder={t("Phone")} value={formEmergencyPhone} onChange={e => setFormEmergencyPhone(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: "var(--gray)" }}>Relationship</label>
-                    <input placeholder="e.g. Mother, Spouse, Friend" value={formEmergencyRelationship} onChange={e => setFormEmergencyRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
+                    <label style={{ fontSize: 12, color: "var(--gray)" }}>{t("Relationship")}</label>
+                    <input placeholder={t("e.g. Mother, Spouse, Friend")} value={formEmergencyRelationship} onChange={e => setFormEmergencyRelationship(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" }} />
                   </div>
                 </div>
-                <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>The park office is notified whenever you update this information.</p>
+                <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 8 }}>{t("The park office is notified whenever you update this information.")}</p>
                 <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
-                  <button onClick={saveEmergencyContact} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Save</button>
-                  <button onClick={() => setEditingEmergencyContact(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-                  {emergencyContactMessage && <p style={{ fontSize: 13, color: emergencyContactMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>{emergencyContactMessage}</p>}
+                  <button onClick={saveEmergencyContact} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t("Save")}</button>
+                  <button onClick={() => setEditingEmergencyContact(false)} style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>{t("Cancel")}</button>
+                  {emergencyContactMessage && <p style={{ fontSize: 13, color: emergencyContactMessage.startsWith(BAD) ? "#dc2626" : "#16a34a" }}>{emergencyContactMessage}</p>}
                 </div>
               </div>
             )}
@@ -2417,14 +2440,17 @@ export default function ResidentDashboard() {
               </div>
               <div id="marketplace" className="rp-links">
             <button onClick={() => router.push("/residents/marketplace")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
-              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🛍️ Marketplace</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>Buy and sell with your neighbors.</p>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🛍️ Marketplace")}</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Buy and sell with your neighbors.")}</p>
             </button>
               </div>
-              <div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <button onClick={logout} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
-                  Sign Out
+                  {t("Sign Out")}
                 </button>
+                {/* Oct 29: language switch also in the menu (Profile & more) */}
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{t("Language")}:</span>
+                <PortalLangSwitcher residentId={residentId} compact />
               </div>
             </>)}
 
@@ -2445,23 +2471,23 @@ export default function ResidentDashboard() {
                   onClick={() => setShowPayChoice(false)}
                   disabled={startingPayment}
                   style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--gray)" }}
-                  aria-label="Close"
+                  aria-label={t("Close")}
                 >
                   ✕
                 </button>
-                <h2 id="pay-choice-title" style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>How would you like to pay?</h2>
-                <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 14 }}>{payScope === "ahead" ? "Paying ahead" : "Balance"}: <strong>{money(payAmount)}</strong></p>
+                <h2 id="pay-choice-title" style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>{t("How would you like to pay?")}</h2>
+                <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 14 }}>{payScope === "ahead" ? t("Paying ahead") : t("Balance")}: <strong>{money(payAmount)}</strong></p>
                 {/* Oct 28 (per Mely): bank is listed first, recommended and preselected; the resident
                     picks one and continues. */}
-                <div role="radiogroup" aria-label="Payment method" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div role="radiogroup" aria-label={t("Payment method")} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {([
                     {
                       v: "ach" as const,
-                      title: "Pay by bank (ACH)",
-                      sub: `${achFee > 0 ? `fee ${money(achFee)}` : "no fee"}${cardFee > achFee ? ` — ${money(cardFee - achFee)} less than card` : ""} · clears in 3–5 business days`,
-                      badge: cardFee > achFee ? "Recommended · lowest fee" : "Recommended",
+                      title: t("Pay by bank (ACH)"),
+                      sub: `${achFee > 0 ? t("fee {amount}", { amount: money(achFee) }) : t("no fee")}${cardFee > achFee ? t(" — {amount} less than card", { amount: money(cardFee - achFee) }) : ""}${t(" · clears in 3–5 business days")}`,
+                      badge: cardFee > achFee ? t("Recommended · lowest fee") : t("Recommended"),
                     },
-                    { v: "card" as const, title: "Pay by card", sub: `${cardFee > 0 ? `fee ${money(cardFee)}` : "no fee"} · paid instantly`, badge: "" },
+                    { v: "card" as const, title: t("Pay by card"), sub: `${cardFee > 0 ? t("fee {amount}", { amount: money(cardFee) }) : t("no fee")}${t(" · paid instantly")}`, badge: "" },
                   ]).map((o) => (
                     <label
                       key={o.v}
@@ -2490,9 +2516,9 @@ export default function ResidentDashboard() {
                   disabled={startingPayment}
                   style={{ marginTop: 12, width: "100%", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, padding: 14, fontWeight: 800, cursor: startingPayment ? "default" : "pointer", opacity: startingPayment ? 0.6 : 1 }}
                 >
-                  {payMethodChoice === "ach" ? "Continue to pay by bank" : "Continue to pay by card"}
+                  {payMethodChoice === "ach" ? t("Continue to pay by bank") : t("Continue to pay by card")}
                 </button>
-                {startingPayment && <p style={{ fontSize: 13, marginTop: 8, color: "var(--gray)" }}>Opening secure payment…</p>}
+                {startingPayment && <p style={{ fontSize: 13, marginTop: 8, color: "var(--gray)" }}>{t("Opening secure payment…")}</p>}
               </div>
             </div>
           )}
@@ -2523,47 +2549,47 @@ export default function ResidentDashboard() {
                 <button
                   onClick={() => setShowMoveOutModal(false)}
                   style={{ position: "absolute", top: 12, right: 12, background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "var(--gray)" }}
-                  aria-label="Close"
+                  aria-label={t("Close")}
                 >
                   ✕
                 </button>
-                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🚪 Moving Out?</h2>
+                <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🚪 Moving Out?")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 8 }}>
-                Please give us at least <strong>{moveOutThresholdDays} days</strong> notice.
+                {t("Please give us at least {n} days notice.", { n: moveOutThresholdDays })}
               </p>
               <p style={{ color: "#b45309", fontSize: 13, marginBottom: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
-                Before moving out, your outstanding balance must be $0.
+                {t("Before moving out, your outstanding balance must be $0.")}
               </p>
               {activeLease.requested_move_out_date ? (
                 <>
                   <p style={{ fontSize: 14, marginBottom: 12, color: "var(--black)" }}>
-                    Requested move-out date: <strong>{activeLease.requested_move_out_date}</strong>
-                    {" "}<span style={{ color: "#16a34a", fontWeight: 700 }}>Submitted ✓</span>
+                    {t("Requested move-out date:")} <strong>{date(activeLease.requested_move_out_date)}</strong>
+                    {" "}<span style={{ color: "#16a34a", fontWeight: 700 }}>{t("Submitted ✓")}</span>
                   </p>
                   <p style={{ color: "#b45309", fontSize: 13, marginBottom: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
-                    Please check your email — the office will confirm your move-out date there once approved.
+                    {t("Please check your email — the office will confirm your move-out date there once approved.")}
                   </p>
                   <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 12 }}>
-                    Changed your mind, or need a different date? Cancel below, then submit a new one.
+                    {t("Changed your mind, or need a different date? Cancel below, then submit a new one.")}
                   </p>
                   <button
                     onClick={handleCancelMoveOut}
                     disabled={moveOutSubmitting}
                     style={{ background: "#fff", color: "#dc2626", border: "1.5px solid #dc2626", borderRadius: 6, padding: "10px 16px", fontWeight: 700, cursor: "pointer", opacity: moveOutSubmitting ? 0.6 : 1 }}
                   >
-                    {moveOutSubmitting ? "Cancelling..." : "Cancel Request"}
+                    {moveOutSubmitting ? t("Cancelling...") : t("Cancel Request")}
                   </button>
                 </>
               ) : (
                 <>
-                  <label style={label}>Move-Out Date</label>
+                  <label style={label}>{t("Move-Out Date")}</label>
                   <input
                     type="date"
                     value={moveOutDate}
                     onChange={(e) => setMoveOutDate(e.target.value)}
                     style={{ width: "100%", padding: 10, border: "1.5px solid var(--border)", borderRadius: 6, marginBottom: 10 }}
                   />
-                  <label style={label}>Notes (optional)</label>
+                  <label style={label}>{t("Notes (optional)")}</label>
                   <textarea
                     value={moveOutNote}
                     onChange={(e) => setMoveOutNote(e.target.value)}
@@ -2575,13 +2601,13 @@ export default function ResidentDashboard() {
                     disabled={moveOutSubmitting}
                     style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 16px", fontWeight: 700, cursor: "pointer", opacity: moveOutSubmitting ? 0.6 : 1 }}
                   >
-                    {moveOutSubmitting ? "Sending..." : "Submit Move-Out Date"}
+                    {moveOutSubmitting ? t("Sending...") : t("Submit Move-Out Date")}
                   </button>
                 </>
               )}
               {moveOutMessage && (
-                <p style={{ fontSize: 13, marginTop: 8, color: moveOutMessage === "Submitted ✓" ? "#16a34a" : "var(--black)", fontWeight: moveOutMessage === "Submitted ✓" ? 700 : 400 }}>
-                  {moveOutMessage}
+                <p style={{ fontSize: 13, marginTop: 8, color: moveOutMessage === SUBMITTED ? "#16a34a" : "var(--black)", fontWeight: moveOutMessage === SUBMITTED ? 700 : 400 }}>
+                  {moveOutMessage === SUBMITTED ? t(SUBMITTED) : moveOutMessage}
                 </p>
               )}
               </div>
@@ -2590,13 +2616,13 @@ export default function ResidentDashboard() {
           </div>
         </div>
 
-        <nav className="rp-tabbar" aria-label="Resident portal">
+        <nav className="rp-tabbar" aria-label={t("Resident Portal")}>
           {MOBILE_TABS.map((id) => {
             const x = SECTIONS.find((s) => s.id === id)!;
             const on = section === id || (id === "more" && UNDER_MORE.includes(section));
             return (
               <button key={id} type="button" className={on ? "on" : ""} onClick={() => openSection(id)} aria-current={on ? "page" : undefined}>
-                <NavIcon d={x.icon} /><span>{x.short}</span><Badge n={id === "more" ? moreTabBadge : badge[id]} />
+                <NavIcon d={x.icon} /><span>{t(x.short)}</span><Badge n={id === "more" ? moreTabBadge : badge[id]} />
               </button>
             );
           })}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePortalLang } from "@/lib/portalI18n";
 
 // Oct 9 (per Mely): "Turn on alerts" for the installed Resident Portal app.
 // Needs a tap (iPhone/iPad require a user gesture); on iPhone/iPad the app
@@ -15,6 +16,7 @@ export default function ResidentPushAlerts({ residentId }: { residentId: string 
   const [state, setState] = useState<"checking" | "unsupported" | "off" | "on" | "blocked" | "ios-install">("checking");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const { t, err } = usePortalLang();
 
   useEffect(() => {
     (async () => {
@@ -45,7 +47,7 @@ export default function ResidentPushAlerts({ residentId }: { residentId: string 
       }
       const reg = (await navigator.serviceWorker.getRegistration("/residents")) || (await navigator.serviceWorker.ready);
       const { publicKey } = await (await fetch("/api/portal/push-key")).json();
-      if (!publicKey) throw new Error("Alerts are not ready yet.");
+      if (!publicKey) throw new Error(t("Alerts are not ready yet."));
       let sub = await reg.pushManager.getSubscription();
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
       const res = await fetch("/api/portal/push-subscribe", {
@@ -53,11 +55,11 @@ export default function ResidentPushAlerts({ residentId }: { residentId: string 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ residentId, subscription: sub.toJSON() }),
       });
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Could not save.");
+      if (!res.ok) throw new Error(err((await res.json().catch(() => ({}))).error) || t("Could not save."));
       setState("on");
-      setMsg("Alerts are on for this device.");
+      setMsg(t("Alerts are on for this device."));
     } catch (e: any) {
-      setMsg(e?.message || "Could not turn on alerts.");
+      setMsg(e?.message || t("Could not turn on alerts."));
     } finally {
       setBusy(false);
     }
@@ -86,15 +88,15 @@ export default function ResidentPushAlerts({ residentId }: { residentId: string 
   if (state === "checking" || state === "unsupported") return null;
   const txt: React.CSSProperties = { fontSize: 12, color: "#000", marginTop: 8 };
   if (state === "ios-install")
-    return <p style={txt}>📲 To get alerts on iPhone/iPad: tap Share → "Add to Home Screen", then open the app from your Home Screen.</p>;
+    return <p style={txt}>{t("📲 To get alerts on iPhone/iPad: tap Share → \"Add to Home Screen\", then open the app from your Home Screen.")}</p>;
   if (state === "blocked")
-    return <p style={txt}>🔕 Alerts are blocked for this app. Turn them on in your device or browser settings.</p>;
+    return <p style={txt}>{t("🔕 Alerts are blocked for this app. Turn them on in your device or browser settings.")}</p>;
 
   return (
     <div style={txt}>
       {state === "on" ? (
         <button onClick={disable} disabled={busy} style={{ background: "none", border: "none", color: "#374151", textDecoration: "underline", cursor: "pointer", fontSize: 12, padding: 0 }}>
-          🔔 Alerts on — turn off on this device
+          {t("🔔 Alerts on — turn off on this device")}
         </button>
       ) : (
         <button
@@ -102,7 +104,7 @@ export default function ResidentPushAlerts({ residentId }: { residentId: string 
           disabled={busy || !residentId}
           style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}
         >
-          {busy ? "Turning on…" : "🔔 Turn on alerts on this device"}
+          {busy ? t("Turning on…") : t("🔔 Turn on alerts on this device")}
         </button>
       )}
       {msg && <p style={{ marginTop: 6 }}>{msg}</p>}

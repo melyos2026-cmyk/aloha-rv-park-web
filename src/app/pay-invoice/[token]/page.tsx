@@ -3,6 +3,10 @@
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { isInvoicePayableNow, invoicePayableFrom, isPayAheadInvoice } from "@/lib/invoicePayable";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
+
+const PARK_NAME = "Aloha RV Park";
 
 type InvoiceInfo = {
   lotName: string | null;
@@ -26,6 +30,7 @@ function PayInvoiceContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [paying, setPaying] = useState(false);
+  const { t, money, dateLabel, err } = usePortalLang();
 
   useEffect(() => {
     if (!token) return;
@@ -33,12 +38,12 @@ function PayInvoiceContent() {
       .then((res) => res.json())
       .then((data) => {
         if (data.error) {
-          setError(data.error);
+          setError(err(data.error));
         } else {
           setInfo(data);
         }
       })
-      .catch(() => setError("Could not load this payment link."))
+      .catch(() => setError(t("Could not load this payment link.")))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -53,13 +58,13 @@ function PayInvoiceContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Could not start payment.");
+        setError(err(data.error) || t("Could not start payment."));
         setPaying(false);
         return;
       }
       window.location.href = data.url;
     } catch {
-      setError("Could not start payment. Please try again.");
+      setError(t("Could not start payment. Please try again."));
       setPaying(false);
     }
   }
@@ -76,22 +81,23 @@ function PayInvoiceContent() {
             border: "1px solid #e5e7eb",
           }}
         >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}><PortalLangSwitcher compact /></div>
           <h1 style={{ fontSize: 24, fontWeight: 800, color: "#000", marginBottom: 8 }}>
-            Aloha RV Park — Pay Invoice
+            {t("{park} — Pay Invoice", { park: PARK_NAME })}
           </h1>
 
           {paidStatus === "success" && (
             <p style={{ background: "#dcfce7", color: "#166534", padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
-              ✅ Payment received — thank you!
+              {t("✅ Payment received — thank you!")}
             </p>
           )}
           {paidStatus === "cancelled" && (
             <p style={{ background: "#fef9c3", color: "#854d0e", padding: 12, borderRadius: 8, marginBottom: 16, fontSize: 14 }}>
-              Payment was cancelled. You can try again below.
+              {t("Payment was cancelled. You can try again below.")}
             </p>
           )}
 
-          {loading && <p style={{ color: "#555" }}>Loading...</p>}
+          {loading && <p style={{ color: "#555" }}>{t("Loading...")}</p>}
 
           {!loading && error && (
             <p style={{ color: "#dc2626", fontSize: 14 }}>{error}</p>
@@ -99,21 +105,21 @@ function PayInvoiceContent() {
 
           {!loading && info && info.status === "Processing" && (
             <p style={{ background: "#dbeafe", color: "#1e40af", padding: 12, borderRadius: 8, fontSize: 14 }}>
-              A bank payment for this invoice is processing (3–5 business days) — nothing to pay right now.
+              {t("A bank payment for this invoice is processing (3–5 business days) — nothing to pay right now.")}
             </p>
           )}
 
           {!loading && info && info.status !== "Paid" && info.status !== "Processing" && !isInvoicePayableNow(info.invoiceMonth) && (
             <p style={{ background: "#f3f4f6", color: "#374151", padding: 12, borderRadius: 8, fontSize: 14 }}>
-              Upcoming — the {info.invoiceMonth} invoice is available to pay on {info.preparingUntil || invoicePayableFrom(info.invoiceMonth, undefined, info.invoiceGenerateDay || undefined)}.
+              {t("Upcoming — the {month} invoice is available to pay on {date}.", { month: dateLabel(info.invoiceMonth), date: dateLabel(info.preparingUntil || invoicePayableFrom(info.invoiceMonth, undefined, info.invoiceGenerateDay || undefined)) })}
             </p>
           )}
 
           {!loading && info && info.status !== "Paid" && info.status !== "Processing" && isInvoicePayableNow(info.invoiceMonth) && info.preparingUntil && (
             <p style={{ background: "#f3f4f6", color: "#374151", padding: 12, borderRadius: 8, fontSize: 14 }}>
               {info.preparingMessage && info.preparingMessage.startsWith("Your electric reading")
-                ? info.preparingMessage
-                : <>Being prepared — the {info.invoiceMonth} invoice is available to pay on {info.preparingUntil}.</>}
+                ? err(info.preparingMessage)
+                : t("Being prepared — the {month} invoice is available to pay on {date}.", { month: dateLabel(info.invoiceMonth), date: dateLabel(info.preparingUntil) })}
             </p>
           )}
 
@@ -122,28 +128,27 @@ function PayInvoiceContent() {
               {/* Oct 29 (review B1): next month's invoice — paying it now is optional. */}
               {isPayAheadInvoice({ invoice_month: info.invoiceMonth, due_date: info.dueDate, is_move_in: info.isMoveIn }) && (
                 <p style={{ background: "#f0fdf4", color: "#166534", padding: 12, borderRadius: 8, fontSize: 14, marginBottom: 12 }}>
-                  This is next month&apos;s invoice (due {info.dueDate}). Paying it now is optional — you are paying ahead.
+                  {t("This is next month's invoice (due {date}). Paying it now is optional — you are paying ahead.", { date: dateLabel(info.dueDate) })}
                 </p>
               )}
               <p style={{ color: "#555", fontSize: 14, marginBottom: 20 }}>
-                You're paying an outstanding balance for a resident at Aloha RV Park.
-                For their privacy, this page only shows the amount due — not their name or full account.
+                {t("You're paying an outstanding balance for a resident at {park}. For their privacy, this page only shows the amount due — not their name or full account.", { park: PARK_NAME })}
               </p>
 
               <div style={{ background: "#f9fafb", borderRadius: 8, padding: 16, marginBottom: 20 }}>
                 {info.lotName && (
                   <p style={{ margin: "2px 0", fontSize: 14, color: "#111" }}>
-                    <strong>Lot:</strong> {info.lotName}
+                    <strong>{t("Lot:")}</strong> {info.lotName}
                   </p>
                 )}
                 <p style={{ margin: "2px 0", fontSize: 14, color: "#111" }}>
-                  <strong>Invoice:</strong> {info.invoiceMonth}
+                  <strong>{t("Invoice:")}</strong> {dateLabel(info.invoiceMonth)}
                 </p>
                 <p style={{ margin: "2px 0", fontSize: 14, color: "#111" }}>
-                  <strong>Due Date:</strong> {info.dueDate}
+                  <strong>{t("Due Date:")}</strong> {dateLabel(info.dueDate)}
                 </p>
                 <p style={{ margin: "10px 0 0", fontSize: 22, fontWeight: 800, color: "#000" }}>
-                  ${info.amountDue.toFixed(2)}
+                  {money(info.amountDue)}
                 </p>
               </div>
 
@@ -162,24 +167,29 @@ function PayInvoiceContent() {
                   cursor: paying ? "default" : "pointer",
                 }}
               >
-                {paying ? "Redirecting to payment..." : `Pay $${info.amountDue.toFixed(2)}`}
+                {paying ? t("Redirecting to payment...") : t("Pay {amount}", { amount: money(info.amountDue) })}
               </button>
             </>
           )}
 
           {!loading && info && info.status === "Paid" && (
             <p style={{ background: "#dcfce7", color: "#166534", padding: 12, borderRadius: 8, fontSize: 14 }}>
-              ✅ This invoice has already been paid — nothing due.
+              {t("✅ This invoice has already been paid — nothing due.")}
             </p>
           )}
         </div>
 
         <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 11, marginTop: 16 }}>
-          Powered by MelyOS.io
+          {t("Powered by MelyOS.io")}
         </p>
       </div>
     </main>
   );
+}
+
+function LoadingText() {
+  const { t } = usePortalLang();
+  return <>{t("Loading...")}</>;
 }
 
 export default function PayInvoicePage() {
@@ -188,7 +198,7 @@ export default function PayInvoicePage() {
       fallback={
         <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
           <div style={{ maxWidth: 480, margin: "0 auto" }}>
-            <p style={{ color: "#555" }}>Loading...</p>
+            <p style={{ color: "#555" }}><LoadingText /></p>
           </div>
         </main>
       }

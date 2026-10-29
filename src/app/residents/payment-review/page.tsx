@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 type Payment = {
   id: string;
@@ -27,9 +29,7 @@ type ConfirmationData = {
   remainingBalance: number;
 };
 
-function formatMoney(value: number | null) {
-  return `$${Number(value || 0).toFixed(2)}`;
-}
+
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -55,6 +55,8 @@ function PaymentReviewContent() {
   const [confirmationError, setConfirmationError] = useState("");
 
   const [loading, setLoading] = useState(true);
+  const { t, money, dateTime, err } = usePortalLang();
+  const fmtMoney = (value: number | null) => money(Number(value || 0));
 
   useEffect(() => {
     if (sessionId) {
@@ -71,7 +73,7 @@ function PaymentReviewContent() {
       const data = await response.json();
 
       if (!response.ok) {
-        setConfirmationError(data.error || "Could not verify payment.");
+        setConfirmationError(err(data.error) || t("Could not verify payment."));
         setLoading(false);
         return;
       }
@@ -81,7 +83,7 @@ function PaymentReviewContent() {
       setLoading(false);
     } catch (err) {
       console.error("VERIFY PAYMENT ERROR:", err);
-      setConfirmationError("Could not verify payment.");
+      setConfirmationError(t("Could not verify payment."));
       setLoading(false);
     }
   }
@@ -90,7 +92,7 @@ function PaymentReviewContent() {
     const savedIds = localStorage.getItem("selected_payment_ids");
 
     if (!savedIds) {
-      setMessage("No charges selected.");
+      setMessage(t("No charges selected."));
       setLoading(false);
       return;
     }
@@ -102,7 +104,7 @@ function PaymentReviewContent() {
 
     if (!res.ok) {
       console.error("PAYMENT REVIEW ERROR:", result.error);
-      setMessage("Could not load selected charges.");
+      setMessage(t("Could not load selected charges."));
       setLoading(false);
       return;
     }
@@ -119,7 +121,7 @@ function PaymentReviewContent() {
     if (payment.charge_type === "Custom" && payment.custom_charge) {
       return payment.custom_charge;
     }
-    return payment.charge_type || "Charge";
+    return t(payment.charge_type || "Charge");
   }
 
   const cardStyle: React.CSSProperties = {
@@ -134,11 +136,15 @@ function PaymentReviewContent() {
     return (
       <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", ...cardStyle }}>
-          <p style={{ color: "#111827" }}>Loading payment review...</p>
+          <p style={{ color: "#111827" }}>{t("Loading payment review...")}</p>
         </div>
       </main>
     );
   }
+
+  const langRow = (
+    <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}><PortalLangSwitcher compact /></div>
+  );
 
   // ================= MODO CONFIRMACION (viene de Stripe) =================
   if (sessionId) {
@@ -146,15 +152,16 @@ function PaymentReviewContent() {
       return (
         <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
           <div style={{ maxWidth: 720, margin: "0 auto" }}>
+            {langRow}
             <div style={{ ...cardStyle, border: "1px solid #dc2626", marginBottom: 24 }}>
-              <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>Payment Verification Failed</h1>
+              <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>{t("Payment Verification Failed")}</h1>
               <p style={{ marginTop: 8, color: "#111827" }}>{confirmationError}</p>
             </div>
             <button
               onClick={() => (window.location.href = "/residents/dashboard")}
               style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
             >
-              Back to Dashboard
+              {t("Back to Dashboard")}
             </button>
           </div>
         </main>
@@ -174,16 +181,17 @@ function PaymentReviewContent() {
       return (
         <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
           <div style={{ maxWidth: 720, margin: "0 auto" }}>
+            {langRow}
             <div style={{ ...cardStyle, textAlign: "center" }}>
               <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>
-                {confirmation.paymentStatus === "paid" ? "Payment Received" : bankProcessing ? "Bank Payment Received" : "Payment Status"}
+                {confirmation.paymentStatus === "paid" ? t("Payment Received") : bankProcessing ? t("Bank Payment Received") : t("Payment Status")}
               </h1>
               <p style={{ marginTop: 8, fontSize: 14, color: "#111827" }}>
                 {confirmation.paymentStatus === "paid" || bankProcessing
-                  ? "Thank you. Sign in to your resident portal to see the receipt and your balance."
-                  : "This payment hasn't been completed. Sign in to your resident portal to check your balance."}
+                  ? t("Thank you. Sign in to your resident portal to see the receipt and your balance.")
+                  : t("This payment hasn't been completed. Sign in to your resident portal to check your balance.")}
               </p>
-              <a href="/login" style={{ display: "inline-block", marginTop: 16, color: "#0f766e", fontWeight: 600 }}>Sign in</a>
+              <a href="/login" style={{ display: "inline-block", marginTop: 16, color: "#0f766e", fontWeight: 600 }}>{t("Sign in")}</a>
             </div>
           </div>
         </main>
@@ -193,6 +201,7 @@ function PaymentReviewContent() {
     return (
       <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
         <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          {langRow}
           <div style={{ ...cardStyle, marginBottom: 24 }}>
             <div style={{ textAlign: "center", paddingBottom: 24, borderBottom: "1px solid #e5e7eb" }}>
               <div
@@ -210,52 +219,52 @@ function PaymentReviewContent() {
                 <span style={{ fontSize: 24, color: "#16a34a" }}>✓</span>
               </div>
               <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>
-                {bankProcessing ? "Bank Payment Received" : "Payment Successful"}
+                {bankProcessing ? t("Bank Payment Received") : t("Payment Successful")}
               </h1>
               <p style={{ marginTop: 4, fontSize: 14, color: "#111827" }}>
                 {bankProcessing
-                  ? "Your bank payment is processing and clears in 3–5 business days. Your invoices show \"Processing (bank)\" until then — there is nothing more to pay. You'll get a receipt by email once it clears."
-                  : "Your payment has been processed successfully."}
+                  ? t("Your bank payment is processing and clears in 3–5 business days. Your invoices show \"Processing (bank)\" until then — there is nothing more to pay. You'll get a receipt by email once it clears.")
+                  : t("Your payment has been processed successfully.")}
               </p>
             </div>
 
             <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: "1px solid #e5e7eb" }}>
-              <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 6 }}>{bankProcessing ? "Amount (processing)" : "Amount Paid"}</div>
+              <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 6 }}>{bankProcessing ? t("Amount (processing)") : t("Amount Paid")}</div>
               <div style={{ fontSize: 28, fontWeight: 700, color: bankProcessing ? "#1e40af" : "#16a34a" }}>
-                {formatMoney(confirmation.amountPaid)}
+                {fmtMoney(confirmation.amountPaid)}
               </div>
             </div>
 
             {confirmation.chargesPaid.length > 0 && (
               <div style={{ paddingTop: 20, paddingBottom: 20, borderBottom: "1px solid #e5e7eb" }}>
-                <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 10 }}>Charges Paid</div>
+                <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 10 }}>{t("Charges Paid")}</div>
                 {confirmation.chargesPaid.map((c, idx) => (
                   <div key={idx} style={{ color: "#111827", fontWeight: 600, marginBottom: 4 }}>
-                    {c.label} {formatMoney(c.amount)}
+                    {t(c.label)} {fmtMoney(c.amount)}
                   </div>
                 ))}
               </div>
             )}
 
-            <InfoRow label="Receipt #" value={confirmation.receiptNumber} />
-            <InfoRow label="Transaction ID" value={confirmation.transactionId} />
+            <InfoRow label={t("Receipt #")} value={confirmation.receiptNumber} />
+            <InfoRow label={t("Transaction ID")} value={confirmation.transactionId} />
             <InfoRow
-              label="Payment Date"
-              value={new Date(confirmation.paymentDate).toLocaleString("en-US", {
+              label={t("Payment Date")}
+              value={dateTime(confirmation.paymentDate, {
                 timeZone: "America/New_York",
                 dateStyle: "short",
                 timeStyle: "short",
               })}
             />
             <InfoRow
-              label="Payment Method"
+              label={t("Payment method")}
               value={confirmation.paymentMethodLast4 ? `${confirmation.paymentMethodBrand.toUpperCase()} •••• ${confirmation.paymentMethodLast4}` : confirmation.paymentMethodBrand.toUpperCase()}
             />
 
             <div style={{ paddingTop: 20 }}>
-              <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 6 }}>Remaining Balance</div>
+              <div style={{ fontWeight: 700, color: "#374151", fontSize: 14, marginBottom: 6 }}>{t("Remaining Balance")}</div>
               <div style={{ fontSize: 28, fontWeight: 700, color: "#111827" }}>
-                {formatMoney(confirmation.remainingBalance)}
+                {fmtMoney(confirmation.remainingBalance)}
               </div>
             </div>
           </div>
@@ -264,7 +273,7 @@ function PaymentReviewContent() {
             onClick={() => (window.location.href = "/residents/dashboard")}
             style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
           >
-            Back to Dashboard
+            {t("Back to Dashboard")}
           </button>
         </div>
       </main>
@@ -275,11 +284,12 @@ function PaymentReviewContent() {
   return (
     <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        {langRow}
         <div style={{ ...cardStyle, marginBottom: 24 }}>
           <div style={{ paddingBottom: 24, borderBottom: "1px solid #e5e7eb" }}>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>Payment Review</h1>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>{t("Payment Review")}</h1>
             <p style={{ marginTop: 4, fontSize: 14, color: "#111827" }}>
-              Review your selected charges before payment.
+              {t("Review your selected charges before payment.")}
             </p>
           </div>
 
@@ -290,10 +300,10 @@ function PaymentReviewContent() {
           )}
 
           <div style={{ paddingTop: 24 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 600, color: "#111827", marginBottom: 16 }}>Selected Charges</h2>
+            <h2 style={{ fontSize: 20, fontWeight: 600, color: "#111827", marginBottom: 16 }}>{t("Selected Charges")}</h2>
 
             {payments.length === 0 ? (
-              <p style={{ color: "#111827" }}>No selected charges found.</p>
+              <p style={{ color: "#111827" }}>{t("No selected charges found.")}</p>
             ) : (
               <div>
                 {payments.map((payment) => (
@@ -316,7 +326,7 @@ function PaymentReviewContent() {
                       )}
                     </div>
                     <p style={{ fontWeight: 700, color: "#111827" }}>
-                      {formatMoney(Number(payment.total_due || payment.amount || 0))}
+                      {fmtMoney(Number(payment.total_due || payment.amount || 0))}
                     </p>
                   </div>
                 ))}
@@ -325,8 +335,8 @@ function PaymentReviewContent() {
 
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid #e5e7eb" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                <p style={{ fontSize: 18, fontWeight: 600, color: "#111827" }}>Total Due</p>
-                <p style={{ fontSize: 28, fontWeight: 700, color: "#111827" }}>{formatMoney(total)}</p>
+                <p style={{ fontSize: 18, fontWeight: 600, color: "#111827" }}>{t("Total Due")}</p>
+                <p style={{ fontSize: 28, fontWeight: 700, color: "#111827" }}>{fmtMoney(total)}</p>
               </div>
 
               <button
@@ -342,7 +352,7 @@ function PaymentReviewContent() {
                   cursor: "pointer",
                 }}
               >
-                Go to Dashboard to Pay
+                {t("Go to Dashboard to Pay")}
               </button>
             </div>
           </div>
@@ -352,11 +362,16 @@ function PaymentReviewContent() {
           onClick={() => (window.location.href = "/residents/dashboard")}
           style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
         >
-          Back to Dashboard
+          {t("Back to Dashboard")}
         </button>
       </div>
     </main>
   );
+}
+
+function LoadingText() {
+  const { t } = usePortalLang();
+  return <>{t("Loading payment review...")}</>;
 }
 
 export default function PaymentReviewPage() {
@@ -365,7 +380,7 @@ export default function PaymentReviewPage() {
       fallback={
         <main style={{ minHeight: "100vh", padding: 24, backgroundColor: "#e1f8f7" }}>
           <div style={{ maxWidth: 720, margin: "0 auto", backgroundColor: "#ffffff", borderRadius: 12, padding: 32, border: "1px solid #16a34a" }}>
-            <p style={{ color: "#111827" }}>Loading payment review...</p>
+            <p style={{ color: "#111827" }}><LoadingText /></p>
           </div>
         </main>
       }

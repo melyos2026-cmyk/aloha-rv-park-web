@@ -6,6 +6,7 @@
 // doesn't generate CSS in production on this site).
 
 import { useState } from "react";
+import { usePortalLang, type PortalI18n } from "@/lib/portalI18n";
 
 type GolfCart = {
   make: string;
@@ -28,13 +29,13 @@ const card: React.CSSProperties = { background: "var(--white)", border: "1.5px s
 const input: React.CSSProperties = { border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, width: "100%" };
 const lbl: React.CSSProperties = { fontSize: 12, color: "var(--gray)" };
 
-function expiryStatus(date: string): { text: string; color: string } | null {
+function expiryStatus(date: string, t: PortalI18n["t"]): { text: string; color: string } | null {
   if (!date) return null;
   const d = new Date(`${date}T00:00:00`);
   if (isNaN(d.getTime())) return null;
   const days = Math.floor((d.getTime() - Date.now()) / 86400000);
-  if (days < 0) return { text: "Insurance expired — please upload your renewal", color: "#b91c1c" };
-  if (days <= 30) return { text: `Insurance expires in ${days + 1} day(s)`, color: "#b45309" };
+  if (days < 0) return { text: t("Insurance expired — please upload your renewal"), color: "#b91c1c" };
+  if (days <= 30) return { text: t("Insurance expires in {n} day(s)", { n: days + 1 }), color: "#b45309" };
   return null;
 }
 
@@ -55,6 +56,7 @@ export default function GolfCartCard({
   const [message, setMessage] = useState("");
   const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const { t, err, date } = usePortalLang();
 
   if (maxCarts <= 0 && saved.length === 0) return null;
 
@@ -68,7 +70,7 @@ export default function GolfCartCard({
   async function upload(i: number, file: File) {
     setMessage("");
     if (!(file.type.startsWith("image/") || file.type === "application/pdf")) {
-      setMessage("Please upload a photo or a PDF.");
+      setMessage(t("Please upload a photo or a PDF."));
       return;
     }
     setUploadingIdx(i);
@@ -92,12 +94,12 @@ export default function GolfCartCard({
       });
       const result = await res.json();
       if (!res.ok || !result.path) {
-        setMessage("Could not upload the insurance copy: " + (result?.error || res.status));
+        setMessage(t("Could not upload the insurance copy: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
       setCarts((prev) => prev.map((g, j) => (j === i ? { ...g, insurance_doc_path: result.path } : g)));
     } catch (e: any) {
-      setMessage("Could not upload the insurance copy: " + (e?.message || e));
+      setMessage(t("Could not upload the insurance copy: {detail}", { detail: e?.message || String(e) }));
     } finally {
       setUploadingIdx(null);
     }
@@ -114,13 +116,13 @@ export default function GolfCartCard({
       });
       const result = await res.json();
       if (!res.ok) {
-        setMessage("Could not save: " + (result?.error || res.status));
+        setMessage(t("Could not save: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
       setEditing(false);
       onSaved();
     } catch (e: any) {
-      setMessage("Could not save: " + (e?.message || e));
+      setMessage(t("Could not save: {detail}", { detail: e?.message || String(e) }));
     } finally {
       setSaving(false);
     }
@@ -130,28 +132,28 @@ export default function GolfCartCard({
     return (
       <div style={{ ...card, marginTop: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ fontWeight: 900, fontSize: 18 }}>🛺 Golf Cart</h2>
+          <h2 style={{ fontWeight: 900, fontSize: 18 }}>{t("🛺 Golf Cart")}</h2>
           <button
             onClick={startEdit}
             style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
           >
-            {saved.length ? "Edit" : "+ Add"}
+            {saved.length ? t("Edit") : t("+ Add")}
           </button>
         </div>
         {saved.length === 0 ? (
-          <p style={{ color: "var(--gray)" }}>No golf cart on file.</p>
+          <p style={{ color: "var(--gray)" }}>{t("No golf cart on file.")}</p>
         ) : (
           saved.map((g, i) => {
-            const st = expiryStatus(g.insurance_expiration);
+            const st = expiryStatus(g.insurance_expiration, t);
             return (
               <div key={i} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 12, marginBottom: 8, fontSize: 14 }}>
                 <p style={{ fontWeight: 700 }}>{[g.year, g.make, g.model].filter(Boolean).join(" ")}{g.color ? ` — ${g.color}` : ""}</p>
-                {g.serial_or_tag && <p style={{ fontSize: 13 }}>Serial/Tag: {g.serial_or_tag}</p>}
+                {g.serial_or_tag && <p style={{ fontSize: 13 }}>{t("Serial/Tag: {value}", { value: g.serial_or_tag })}</p>}
                 <p style={{ fontSize: 13 }}>
-                  Insurance: {g.insurance_company} · Policy {g.policy_number} · Expires {g.insurance_expiration}
+                  {t("Insurance: {company} · Policy {policy} · Expires {date}", { company: g.insurance_company, policy: g.policy_number, date: date(g.insurance_expiration) })}
                 </p>
                 <p style={{ fontSize: 12, color: g.insurance_doc_path ? "#16a34a" : "#b45309" }}>
-                  {g.insurance_doc_path ? "Insurance copy on file" : "Insurance copy not uploaded"}
+                  {g.insurance_doc_path ? t("Insurance copy on file") : t("Insurance copy not uploaded")}
                 </p>
                 {st && <p style={{ fontSize: 12, color: st.color, fontWeight: 700 }}>{st.text}</p>}
               </div>
@@ -159,7 +161,7 @@ export default function GolfCartCard({
           })
         )}
         <p style={{ color: "var(--gray)", fontSize: 12, marginTop: 8 }}>
-          Golf carts must be insured and driven only by a person with a valid driver&apos;s license.
+          {t("Golf carts must be insured and driven only by a person with a valid driver's license.")}
         </p>
       </div>
     );
@@ -167,42 +169,42 @@ export default function GolfCartCard({
 
   return (
     <div style={{ ...card, marginTop: 16 }}>
-      <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Golf Cart</h2>
+      <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Edit Golf Cart")}</h2>
       <p style={{ fontSize: 12, color: "var(--gray)", marginBottom: 12 }}>
-        Golf carts must be insured and driven only by a person with a valid driver&apos;s license.
-        {maxCarts > 0 ? ` Up to ${maxCarts} golf cart(s).` : ""}
+        {t("Golf carts must be insured and driven only by a person with a valid driver's license.")}
+        {maxCarts > 0 ? t(" Up to {n} golf cart(s).", { n: maxCarts }) : ""}
       </p>
       {carts.map((g, i) => {
         const update = (patch: Partial<GolfCart>) => setCarts((prev) => prev.map((c, j) => (j === i ? { ...c, ...patch } : c)));
         return (
           <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <strong style={{ fontSize: 13 }}>Golf Cart {i + 1}</strong>
+              <strong style={{ fontSize: 13 }}>{t("Golf Cart {n}", { n: i + 1 })}</strong>
               <button
                 onClick={() => setCarts((prev) => prev.filter((_, j) => j !== i))}
                 style={{ background: "none", border: "none", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
               >
-                Remove
+                {t("Remove")}
               </button>
             </div>
-            <div><label style={lbl}>Make</label><input style={input} placeholder="e.g. Club Car" value={g.make} onChange={(e) => update({ make: e.target.value })} /></div>
-            <div><label style={lbl}>Model</label><input style={input} value={g.model} onChange={(e) => update({ model: e.target.value })} /></div>
-            <div><label style={lbl}>Year</label><input style={input} inputMode="numeric" value={g.year} onChange={(e) => update({ year: e.target.value })} /></div>
-            <div><label style={lbl}>Color</label><input style={input} value={g.color} onChange={(e) => update({ color: e.target.value })} /></div>
-            <div><label style={lbl}>Serial # or tag # (optional)</label><input style={input} value={g.serial_or_tag} onChange={(e) => update({ serial_or_tag: e.target.value })} /></div>
-            <div><label style={lbl}>Insurance company</label><input style={input} value={g.insurance_company} onChange={(e) => update({ insurance_company: e.target.value })} /></div>
-            <div><label style={lbl}>Policy #</label><input style={input} value={g.policy_number} onChange={(e) => update({ policy_number: e.target.value })} /></div>
-            <div><label style={lbl}>Insurance expiration date</label><input type="date" style={input} value={g.insurance_expiration} onChange={(e) => update({ insurance_expiration: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Make")}</label><input style={input} placeholder={t("e.g. Club Car")} value={g.make} onChange={(e) => update({ make: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Model")}</label><input style={input} value={g.model} onChange={(e) => update({ model: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Year")}</label><input style={input} inputMode="numeric" value={g.year} onChange={(e) => update({ year: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Color")}</label><input style={input} value={g.color} onChange={(e) => update({ color: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Serial # or tag # (optional)")}</label><input style={input} value={g.serial_or_tag} onChange={(e) => update({ serial_or_tag: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Insurance company")}</label><input style={input} value={g.insurance_company} onChange={(e) => update({ insurance_company: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Policy #")}</label><input style={input} value={g.policy_number} onChange={(e) => update({ policy_number: e.target.value })} /></div>
+            <div><label style={lbl}>{t("Insurance expiration date")}</label><input type="date" style={input} value={g.insurance_expiration} onChange={(e) => update({ insurance_expiration: e.target.value })} /></div>
             <div>
-              <label style={lbl}>Copy of insurance (photo or PDF){insuranceRequired ? "" : " — optional"}</label>
+              <label style={lbl}>{t("Copy of insurance (photo or PDF)")}{insuranceRequired ? "" : t(" — optional")}</label>
               {g.insurance_doc_path ? (
                 <div style={{ fontSize: 13, color: "#16a34a" }}>
-                  ✓ On file{" "}
+                  {t("✓ On file")}{" "}
                   <button
                     onClick={() => update({ insurance_doc_path: "" })}
                     style={{ marginLeft: 8, fontSize: 12, color: "#dc2626", background: "none", border: "none", cursor: "pointer" }}
                   >
-                    Replace
+                    {t("Replace")}
                   </button>
                 </div>
               ) : (
@@ -217,7 +219,7 @@ export default function GolfCartCard({
                   }}
                 />
               )}
-              {uploadingIdx === i && <span style={{ fontSize: 12, color: "var(--gray)" }}>Uploading...</span>}
+              {uploadingIdx === i && <span style={{ fontSize: 12, color: "var(--gray)" }}>{t("Uploading...")}</span>}
             </div>
           </div>
         );
@@ -227,23 +229,23 @@ export default function GolfCartCard({
           onClick={() => setCarts((prev) => [...prev, { ...empty }])}
           style={{ background: "transparent", border: "1.5px dashed var(--border)", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}
         >
-          + Add a golf cart
+          {t("+ Add a golf cart")}
         </button>
       )}
-      <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 4 }}>The park office is notified whenever you update this information.</p>
+      <p style={{ fontSize: 11, color: "var(--gray)", marginTop: 4 }}>{t("The park office is notified whenever you update this information.")}</p>
       <div style={{ display: "flex", gap: 10, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
         <button
           onClick={save}
           disabled={saving || uploadingIdx !== null}
           style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer", opacity: saving ? 0.6 : 1 }}
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? t("Saving...") : t("Save")}
         </button>
         <button
           onClick={() => { setEditing(false); setMessage(""); }}
           style={{ background: "transparent", border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}
         >
-          Cancel
+          {t("Cancel")}
         </button>
         {message && <p style={{ fontSize: 13, color: "#dc2626" }}>{message}</p>}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePortalLang } from "@/lib/portalI18n";
 
 // Oct 29 (per Mely — "View as resident"): fixed banner on every /residents page while a park
 // manager is viewing the portal as a resident (read only — the server refuses every write; see
@@ -8,6 +9,7 @@ import { useEffect, useState } from "react";
 export default function ViewAsBanner() {
   const [name, setName] = useState<string | null>(null);
   const [exiting, setExiting] = useState(false);
+  const { t } = usePortalLang();
 
   useEffect(() => {
     let alive = true;
@@ -49,7 +51,7 @@ export default function ViewAsBanner() {
       className="fixed top-0 inset-x-0 z-[9999] min-h-[48px] bg-amber-400 text-amber-950 shadow-md px-3 py-2 flex items-center justify-center gap-3 text-sm font-semibold"
     >
       <span className="text-center">
-        Viewing as {name} — read only. Nothing can be paid, signed or changed.
+        {t("Viewing as {name} — read only. Nothing can be paid, signed or changed.", { name })}
       </span>
       <button
         type="button"
@@ -57,7 +59,7 @@ export default function ViewAsBanner() {
         disabled={exiting}
         className="shrink-0 rounded-md bg-amber-950 text-white px-3 py-1 text-xs font-bold hover:bg-black disabled:opacity-60"
       >
-        {exiting ? "Exiting…" : "Exit"}
+        {exiting ? t("Exiting…") : t("Exit")}
       </button>
     </div>
   );

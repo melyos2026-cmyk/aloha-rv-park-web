@@ -1,14 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { returnedFeeSentence } from "@/lib/autopayTerms";
+import { usePortalLang } from "@/lib/portalI18n";
 
 // Oct 28 (per Mely): one-time announcement on the resident portal home — "pay by bank" is new and
 // cheaper than a card. Shown only when the park has bank payments ON (the dashboard checks
 // achEnabled, which /api/portal/fee-settings returns only for ach_enabled === true). Dismissing it is
 // remembered in this browser (localStorage; if storage is blocked it simply shows again next time).
 // Nothing is emailed or texted.
-const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
 
 export default function BankPayBanner({
   companyId,
@@ -34,6 +33,7 @@ export default function BankPayBanner({
   const key = `bank_pay_banner_dismissed_v1:${companyId || "park"}`;
   // Hidden until we know it wasn't dismissed (no flash for residents who closed it).
   const [visible, setVisible] = useState(false);
+  const { t, money, returnedFeeSentence } = usePortalLang();
   useEffect(() => {
     let dismissed = false;
     try { dismissed = window.localStorage.getItem(key) === "1"; } catch { /* storage blocked */ }
@@ -55,36 +55,36 @@ export default function BankPayBanner({
   return (
     <div
       role="region"
-      aria-label="New: pay by bank"
+      aria-label={t("New: pay by bank")}
       style={{ position: "relative", background: "#f0fdf4", border: "1.5px solid #86efac", borderRadius: 10, padding: "14px 44px 14px 16px", margin: "12px 0" }}
     >
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Dismiss"
+        aria-label={t("Dismiss")}
         style={{ position: "absolute", top: 8, right: 8, width: 32, height: 32, background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#166534" }}
       >
         ✕
       </button>
-      <div style={{ fontWeight: 900, fontSize: 16, color: "#14532d", marginBottom: 4 }}>🏦 New: pay by bank — lower fee than card</div>
+      <div style={{ fontWeight: 900, fontSize: 16, color: "#14532d", marginBottom: 4 }}>{t("🏦 New: pay by bank — lower fee than card")}</div>
       <p style={{ fontSize: 13.5, color: "#166534", lineHeight: 1.5, margin: "0 0 10px" }}>
-        You can now pay straight from your checking or savings account.{" "}
+        {t("You can now pay straight from your checking or savings account.")}{" "}
         {showSaving
-          ? `On ${money(amount)} the fee is ${money(achFee)} by bank instead of ${money(cardFee)} by card.`
+          ? t("On {amount} the fee is {ach} by bank instead of {card} by card.", { amount: money(amount), ach: money(achFee), card: money(cardFee) })
           : passFee
-            ? `The bank fee is ${Math.round(fees.achPercent * 1000) / 10}% (at most ${money(fees.achMaximum)}), the card fee ${Math.round(fees.cardPercent * 1000) / 10}%.`
-            : "No fee either way."}{" "}
-        Bank payments take 3–5 business days to clear. {returnedFeeSentence(fees.returnFeePhrase)}
+            ? t("The bank fee is {achPct}% (at most {achMax}), the card fee {cardPct}%.", { achPct: Math.round(fees.achPercent * 1000) / 10, achMax: money(fees.achMaximum), cardPct: Math.round(fees.cardPercent * 1000) / 10 })
+            : t("No fee either way.")}{" "}
+        {t("Bank payments take 3–5 business days to clear.")} {returnedFeeSentence(fees.returnFeePhrase)}
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {canPayNow && (
           <button type="button" onClick={onPay} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 800, cursor: "pointer" }}>
-            Pay by bank
+            {t("Pay by bank")}
           </button>
         )}
         {canSetUpAutopay && (
           <button type="button" onClick={onAutopay} style={{ background: canPayNow ? "#fff" : "#16a34a", color: canPayNow ? "#166534" : "#fff", border: "2px solid #16a34a", borderRadius: 6, padding: "7px 14px", fontWeight: 800, cursor: "pointer" }}>
-            Set up bank autopay
+            {t("Set up bank autopay")}
           </button>
         )}
       </div>

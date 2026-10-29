@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "forgotPassword">("login");
@@ -11,6 +13,9 @@ export default function LoginPage() {
   const [payUrl, setPayUrl] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState("");
   const router = useRouter();
+  // Oct 29 (per the owner): login in English / Spanish / Portuguese — the choice carries into the portal.
+  const { t, err } = usePortalLang();
+  const [resetOk, setResetOk] = useState(false);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -25,7 +30,7 @@ export default function LoginPage() {
     const data = await res.json();
 
     if (!res.ok) {
-      setError(data.error || "Invalid email or password. Please try again.");
+      setError(err(data.error) || t("Invalid email or password. Please try again."));
       // Aug 26 (per Mely): login blocked because the move-in "due now"
       // invoice isn't paid yet — the portal-login route sends back a
       // no-login-required /pay-invoice link (same mechanism as the
@@ -45,7 +50,8 @@ export default function LoginPage() {
   };
 
   const handleRequestReset = async () => {
-    setResetMessage("Sending...");
+    setResetOk(false);
+    setResetMessage(t("Sending..."));
     const res = await fetch("/api/request-password-reset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -53,20 +59,23 @@ export default function LoginPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setResetMessage(data.error || "Something went wrong.");
+      setResetMessage(err(data.error) || t("Something went wrong."));
       return;
     }
-    setResetMessage("If an account exists for that email, a reset link has been sent.");
+    setResetOk(true);
+    setResetMessage(t("If an account exists for that email, a reset link has been sent."));
   };
 
   return (
     <>
       <section style={{ background: "#e1f8f7", color: "var(--black)", padding: "60px 24px", textAlign: "center" }}>
-        <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#000000", fontWeight: 600, marginBottom: 12 }}>Resident Portal</div>
-        <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16, color: "var(--black)" }}>Resident Login</h1>
+        <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#000000", fontWeight: 600, marginBottom: 12 }}>{t("Resident Portal")}</div>
+        <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16, color: "var(--black)" }}>{t("Resident Login")}</h1>
         <p style={{ fontSize: 16, color: "#374151", maxWidth: 400, margin: "0 auto" }}>
-          Access your account to view invoices and make payments.
+          {t("Access your account to view invoices and make payments.")}
         </p>
+        {/* EN / ES / PT — remembered on this device and used inside the portal */}
+        <div style={{ marginTop: 18 }}><PortalLangSwitcher /></div>
       </section>
 
       <section style={{ padding: "60px 24px", background: "#f6f5f5", minHeight: 500, borderTop: "6px solid var(--white)" }}>
@@ -74,7 +83,7 @@ export default function LoginPage() {
           <div style={{ background: "var(--white)", border: "2px solid var(--red)", borderRadius: 8, padding: 36 }}>
             {mode === "login" ? (
               <>
-                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 24 }}>Sign In</h2>
+                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 24 }}>{t("Sign In")}</h2>
 
                 {error && (
                   <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: 12, marginBottom: 20, fontSize: 13, color: "var(--red)" }}>
@@ -94,7 +103,7 @@ export default function LoginPage() {
                             fontSize: 13,
                           }}
                         >
-                          Pay Invoice Now
+                          {t("Pay Invoice Now")}
                         </a>
                       </div>
                     )}
@@ -102,18 +111,18 @@ export default function LoginPage() {
                 )}
 
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Email</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{t("Email")}</label>
                   <input
                     type="text"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder={t("you@example.com")}
                     style={{ width: "100%", border: "1.5px solid var(--border)", borderRadius: 6, padding: "12px 14px", fontSize: 14, fontFamily: "DM Sans, sans-serif", outline: "none" }}
                   />
                 </div>
 
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Password</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{t("Password")}</label>
                   <input
                     type="password"
                     value={password}
@@ -130,7 +139,7 @@ export default function LoginPage() {
                     onClick={() => { setMode("forgotPassword"); setError(""); setResetMessage(""); }}
                     style={{ background: "none", border: "none", color: "var(--black)", fontSize: 13, textDecoration: "underline", cursor: "pointer", padding: 0 }}
                   >
-                    Forgot password?
+                    {t("Forgot password?")}
                   </button>
                 </div>
 
@@ -143,33 +152,33 @@ export default function LoginPage() {
                     fontSize: 15, letterSpacing: "0.05em",
                     opacity: (loading || !email || !password) ? 0.5 : 1
                   }}>
-                  {loading ? "Signing in..." : "Sign In →"}
+                  {loading ? t("Signing in...") : t("Sign In →")}
                 </button>
 
                 <p style={{ fontSize: 12, color: "var(--gray)", textAlign: "center", marginTop: 16 }}>
-                  Don't have an account? Contact the office at <a href="tel:6892520567" style={{ color: "var(--black)", fontWeight: 600 }}>(689) 252-0567</a>
+                  {t("Don't have an account? Contact the office at")} <a href="tel:6892520567" style={{ color: "var(--black)", fontWeight: 600 }}>(689) 252-0567</a>
                 </p>
               </>
             ) : (
               <>
-                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>Reset Password</h2>
+                <h2 style={{ fontSize: 24, fontWeight: 900, marginBottom: 8 }}>{t("Reset Password")}</h2>
                 <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 24 }}>
-                  Enter your email and we'll send you a secure link to set a new password.
+                  {t("Enter your email and we'll send you a secure link to set a new password.")}
                 </p>
 
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Email</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{t("Email")}</label>
                   <input
                     type="text"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder={t("you@example.com")}
                     style={{ width: "100%", border: "1.5px solid var(--border)", borderRadius: 6, padding: "12px 14px", fontSize: 14, fontFamily: "DM Sans, sans-serif", outline: "none" }}
                   />
                 </div>
 
                 {resetMessage && (
-                  <p style={{ fontSize: 13, marginBottom: 16, color: resetMessage.startsWith("If an account") ? "#166534" : "var(--red)" }}>
+                  <p style={{ fontSize: 13, marginBottom: 16, color: resetOk ? "#166534" : "var(--red)" }}>
                     {resetMessage}
                   </p>
                 )}
@@ -183,7 +192,7 @@ export default function LoginPage() {
                     border: "2px solid #16a34a", borderRadius: 6, padding: 16, fontWeight: 700,
                     fontSize: 15, letterSpacing: "0.05em", opacity: !email ? 0.5 : 1
                   }}>
-                  Send Reset Link
+                  {t("Send Reset Link")}
                 </button>
 
                 <button
@@ -191,7 +200,7 @@ export default function LoginPage() {
                   onClick={() => { setMode("login"); setError(""); setResetMessage(""); }}
                   style={{ background: "none", border: "none", color: "var(--black)", fontSize: 13, textDecoration: "underline", cursor: "pointer", padding: 0, marginTop: 16, display: "block" }}
                 >
-                  ← Back to Sign In
+                  {t("← Back to Sign In")}
                 </button>
               </>
             )}

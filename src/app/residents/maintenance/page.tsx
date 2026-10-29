@@ -2,6 +2,8 @@
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 export default function MaintenancePage() {
   const [requests, setRequests] = useState<any[]>([]);
@@ -16,6 +18,7 @@ export default function MaintenancePage() {
   // (admin Maintenance Requests module). Off by default. null = still loading.
   // When off, residents can still see / cancel requests they already sent.
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const { t, st, dateTime, err } = usePortalLang();
 
   useEffect(() => {
     loadRequests();
@@ -43,7 +46,7 @@ export default function MaintenancePage() {
 
   async function cancelRequest(requestId: string) {
     const confirmed = await portalConfirm(
-      "Are you sure you want to cancel this maintenance request?"
+      t("Are you sure you want to cancel this maintenance request?")
     );
 
     if (!confirmed) return;
@@ -59,11 +62,11 @@ export default function MaintenancePage() {
     const result = await res.json();
 
     if (!res.ok) {
-      setMessage(result.error || "Could not cancel request.");
+      setMessage(err(result.error) || t("Could not cancel request."));
       return;
     }
 
-    setMessage("Maintenance request cancelled.");
+    setMessage(t("Maintenance request cancelled."));
     loadRequests();
   }
 
@@ -78,7 +81,7 @@ export default function MaintenancePage() {
     }
 
     if (!subject.trim()) {
-      setMessage("Please enter a subject.");
+      setMessage(t("Please enter a subject."));
       return;
     }
 
@@ -90,7 +93,7 @@ export default function MaintenancePage() {
     const result = await res.json();
 
     if (!res.ok) {
-      setMessage(result.error || "Could not create request.");
+      setMessage(err(result.error) || t("Could not create request."));
       return;
     }
 
@@ -116,7 +119,7 @@ export default function MaintenancePage() {
       const up = await fetch("/api/portal/maintenance-add-photo", { method: "POST", body: fd });
       if (!up.ok) {
         const j = await up.json().catch(() => ({}));
-        setMessage(j.error || "Your request was sent, but the photo could not be uploaded.");
+        setMessage(err(j.error) || t("Your request was sent, but the photo could not be uploaded."));
         loadRequests();
         return;
       }
@@ -127,7 +130,7 @@ export default function MaintenancePage() {
     setPriority("Normal");
     setPhotoFile(null);
     setShowForm(false);
-    setMessage("Maintenance request submitted.");
+    setMessage(t("Maintenance request submitted."));
     loadRequests();
   }
 
@@ -142,6 +145,7 @@ export default function MaintenancePage() {
   return (
     <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => (window.location.href = "/residents/dashboard")}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
@@ -164,17 +168,19 @@ export default function MaintenancePage() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          Back to Dashboard
+          {t("Back to Dashboard")}
         </button>
+        <PortalLangSwitcher compact />
+        </div>
 
         <div style={cardStyle}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
             <div>
-              <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Maintenance Requests</h1>
+              <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>{t("Maintenance Requests")}</h1>
               <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
                 {enabled === false
-                  ? "Maintenance requests are handled by the office — please call or message us."
-                  : "Report issues and track maintenance progress."}
+                  ? t("Maintenance requests are handled by the office — please call or message us.")
+                  : t("Report issues and track maintenance progress.")}
               </p>
             </div>
             {enabled === true && (
@@ -192,7 +198,7 @@ export default function MaintenancePage() {
                 whiteSpace: "nowrap",
               }}
             >
-              + New Request
+              {t("+ New Request")}
             </button>
             )}
           </div>
@@ -207,7 +213,7 @@ export default function MaintenancePage() {
         {showForm && enabled === true && (
           <div style={cardStyle}>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 20 }}>
-              New Maintenance Request
+              {t("New Maintenance Request")}
             </h2>
 
             <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 20 }}>
@@ -215,7 +221,7 @@ export default function MaintenancePage() {
               <input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="Subject"
+                placeholder={t("Subject")}
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
@@ -234,7 +240,7 @@ export default function MaintenancePage() {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe the issue..."
+                placeholder={t("Describe the issue...")}
                 style={{
                   width: "100%",
                   boxSizing: "border-box",
@@ -255,7 +261,7 @@ export default function MaintenancePage() {
             <div style={{ display: "flex", alignItems: "flex-end", gap: "16px" }}>
               <div style={{ width: "110px" }}>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 8 }}>
-                  Priority
+                  {t("Priority")}
                 </label>
 
                 <select
@@ -271,13 +277,13 @@ export default function MaintenancePage() {
                     border: "1.5px solid #d1d5db",
                   }}
                 >
-                  <option>Low</option>
-                  <option>Normal</option>
-                  <option>High</option>
+                  <option value="Low">{t("Low")}</option>
+                  <option value="Normal">{t("Normal")}</option>
+                  <option value="High">{t("High")}</option>
                 </select>
               </div>
 
-              <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", color: "#5f6368" }} title={photoFile ? photoFile.name : "Attach photo"}>
+              <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", color: "#5f6368" }} title={photoFile ? photoFile.name : t("Attach photo")}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
@@ -292,7 +298,7 @@ export default function MaintenancePage() {
                 />
               </label>
 
-              <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", color: "#5f6368" }} title="Take photo">
+              <label style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", color: "#5f6368" }} title={t("Take photo")}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
                   <circle cx="12" cy="13" r="4" />
@@ -337,7 +343,7 @@ export default function MaintenancePage() {
       cursor: "pointer",
     }}
   >
-    Submit Request
+    {t("Submit Request")}
   </button>
 
   <button
@@ -360,7 +366,7 @@ export default function MaintenancePage() {
       cursor: "pointer",
     }}
   >
-    Cancel
+    {t("Cancel")}
   </button>
 </div>
           </div>
@@ -368,7 +374,7 @@ export default function MaintenancePage() {
 
         {requests.length === 0 ? (
           enabled === false ? null : <div style={cardStyle}>
-            <p style={{ color: "#000" }}>No maintenance requests found.</p>
+            <p style={{ color: "#000" }}>{t("No maintenance requests found.")}</p>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -390,8 +396,8 @@ export default function MaintenancePage() {
                     marginBottom: "18px",
                   }}
                 >
-                  Submitted:{" "}
-                  {new Date(request.created_at).toLocaleString("en-US", {
+                  {t("Submitted:")}{" "}
+                  {dateTime(request.created_at, {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
@@ -409,7 +415,7 @@ export default function MaintenancePage() {
                     fontSize: "15px",
                   }}
                 >
-                  {request.description || "No description provided."}
+                  {request.description || t("No description provided.")}
                 </p>
 
                 <div
@@ -423,19 +429,19 @@ export default function MaintenancePage() {
                   }}
                 >
                   <div style={{ fontWeight: 700, color: "#374151" }}>
-                    Status:
+                    {t("Status:")}
                   </div>
 
                   <div style={{ color: "#111827", fontWeight: 600 }}>
-                    {request.status}
+                    {st(request.status)}
                   </div>
 
                   <div style={{ fontWeight: 700, color: "#374151" }}>
-                    Priority:
+                    {t("Priority:")}
                   </div>
 
                   <div style={{ color: "#111827" }}>
-                    {request.priority}
+                    {st(request.priority)}
                   </div>
                 </div>
 
@@ -454,7 +460,7 @@ export default function MaintenancePage() {
                       cursor: "pointer",
                     }}
                   >
-                    Cancel Request
+                    {t("Cancel Request")}
                   </button>
                 )}
 
@@ -469,7 +475,7 @@ export default function MaintenancePage() {
                       >
                         <img
                           src={photo.file_url}
-                          alt="Maintenance Photo"
+                          alt={t("Maintenance Photo")}
                           className="w-32 h-32 object-cover rounded-lg border"
                         />
                       </a>
@@ -480,7 +486,7 @@ export default function MaintenancePage() {
                 {request.maintenance_request_notes?.length > 0 && (
                   <div style={{ marginTop: "24px" }}>
                     <div style={{ fontWeight: 700, color: "#374151", marginBottom: "8px" }}>
-                      Updates from the office:
+                      {t("Updates from the office:")}
                     </div>
                     {[...request.maintenance_request_notes]
                       .sort(
@@ -500,7 +506,7 @@ export default function MaintenancePage() {
                         >
                           <p style={{ margin: 0, color: "#374151", fontSize: 14 }}>{note.note}</p>
                           <p style={{ margin: "4px 0 0", color: "#9ca3af", fontSize: 12 }}>
-                            {new Date(note.created_at).toLocaleString("en-US", {
+                            {dateTime(note.created_at, {
                               month: "short",
                               day: "numeric",
                               hour: "numeric",

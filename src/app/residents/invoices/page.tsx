@@ -3,6 +3,8 @@ import { portalConfirm, portalAlert } from "@/components/portalDialog";
 
 import { useEffect, useState } from "react";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 type InvoiceItem = {
   id: string;
@@ -35,6 +37,7 @@ export default function InvoicesPage() {
   // hover:/active: classes were too subtle/unreliable to notice, so this
   // drives the hover effect directly instead, guaranteed to show.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { lang, t, st, money, date, dateLabel, err } = usePortalLang();
 
   useEffect(() => {
     loadInvoices();
@@ -47,7 +50,7 @@ export default function InvoicesPage() {
     const residentId = localStorage.getItem("resident_id");
 
     if (!residentId) {
-      setMessage("Please log in again.");
+      setMessage(t("Please log in again."));
       setLoading(false);
       return;
     }
@@ -56,14 +59,14 @@ export default function InvoicesPage() {
       const res = await fetch(`/api/portal/invoices?residentId=${residentId}`);
       const result = await res.json();
       if (!res.ok) {
-        setMessage("Could not load invoices: " + (result?.error || res.status));
+        setMessage(t("Could not load invoices: {detail}", { detail: err(result?.error) || res.status }));
         setLoading(false);
         return;
       }
       setInvoices(result.invoices || []);
       if (Number(result.invoiceGenerateDay) > 0) setGenerateDay(Number(result.invoiceGenerateDay));
-    } catch (err: any) {
-      setMessage("Could not load invoices (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setMessage(t("Could not load invoices (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
     setLoading(false);
   }
@@ -91,7 +94,7 @@ export default function InvoicesPage() {
       const res = await fetch(`/api/portal/invoice-pdf?invoiceId=${invoiceId}&residentId=${residentId}`);
       if (!res.ok) {
         const result = await res.json().catch(() => ({}));
-        void portalAlert("Could not download invoice: " + (result?.error || res.status));
+        void portalAlert(t("Could not download invoice: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
       const blob = await res.blob();
@@ -103,20 +106,19 @@ export default function InvoicesPage() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      void portalAlert("Could not download invoice (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      void portalAlert(t("Could not download invoice (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
     setDownloadingId(null);
   }
 
   function formatMoney(value: number | null) {
-    const n = Number(value || 0);
-    return n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
+    return money(Number(value || 0));
   }
 
   function formatDate(value: string | null) {
-    if (!value) return "No due date";
-    return new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    if (!value) return t("No due date");
+    return date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Date(value), { year: "numeric", month: "short", day: "numeric" });
   }
 
   function statusColor(status: string | null) {
@@ -139,7 +141,9 @@ export default function InvoicesPage() {
   const filteredInvoices = invoices.filter((inv) => {
     const month = (inv.invoice_month || "").toLowerCase();
     if (isSearching) {
-      return month.includes(search.trim().toLowerCase());
+      // Also matches the month in the resident's language ("agosto" finds "August 2026").
+      const q = search.trim().toLowerCase();
+      return month.includes(q) || (lang !== "en" && dateLabel(inv.invoice_month || "").toLowerCase().includes(q));
     }
     return month.includes(currentYear);
   });
@@ -148,7 +152,7 @@ export default function InvoicesPage() {
     return (
       <main className="min-h-screen p-6" style={{ backgroundColor: "#f5f6f8" }}>
         <div className="mx-auto max-w-xl rounded-xl bg-white p-6 shadow" style={{ border: "1px solid #e5e7eb" }}>
-          <p className="text-black">Loading invoices...</p>
+          <p className="text-black">{t("Loading invoices...")}</p>
         </div>
       </main>
     );
@@ -157,6 +161,7 @@ export default function InvoicesPage() {
   return (
     <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
       <div style={{ maxWidth: 576, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => (window.location.href = "/residents/dashboard")}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
@@ -179,13 +184,16 @@ export default function InvoicesPage() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          Back to Dashboard
+          {t("Back to Dashboard")}
         </button>
+        <PortalLangSwitcher compact />
+        </div>
         <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Invoices</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>{t("Invoices")}</h1>
           <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
-            View your monthly invoices and charge breakdown, or download a printable PDF.
+            {t("View your monthly invoices and charge breakdown, or download a printable PDF.")}
           </p>
+          {lang !== "en" && <p style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>{t("Invoice PDFs are in English.")}</p>}
         </div>
 
         {message && (
@@ -197,13 +205,13 @@ export default function InvoicesPage() {
         {/* Search */}
         <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
           <label style={{ fontSize: 13, fontWeight: 700, color: "#000", display: "block", marginBottom: 10 }}>
-            Search by month or year
+            {t("Search by month or year")}
           </label>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="e.g. August, or 2026"
+            placeholder={t("e.g. August, or 2026")}
             style={{
               width: "100%",
               border: "1.5px solid #d1d5db",
@@ -214,7 +222,7 @@ export default function InvoicesPage() {
           />
           {!isSearching && (
             <p style={{ fontSize: 13, color: "#6b7280", marginTop: 10 }}>
-              Showing invoices for {currentYear}. Search above to find invoices from a different month or year.
+              {t("Showing invoices for {year}. Search above to find invoices from a different month or year.", { year: currentYear })}
             </p>
           )}
         </div>
@@ -225,10 +233,10 @@ export default function InvoicesPage() {
             <div style={{ borderRadius: 12, background: "#fff", padding: 32, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", border: "1px solid #e5e7eb" }}>
               <p className="text-black">
                 {invoices.length === 0
-                  ? "No invoices found yet."
+                  ? t("No invoices found yet.")
                   : isSearching
-                  ? "No invoices match your search."
-                  : `No invoices for ${currentYear} yet.`}
+                  ? t("No invoices match your search.")
+                  : t("No invoices for {year} yet.", { year: currentYear })}
               </p>
             </div>
           ) : (
@@ -270,9 +278,9 @@ export default function InvoicesPage() {
                   >
                     <div>
                       <p style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 10 }}>
-                        {invoice.invoice_month || "Invoice"}
+                        {invoice.invoice_month ? dateLabel(invoice.invoice_month) : t("Invoice")}
                       </p>
-                      <p style={{ fontSize: 14, color: "#4b5563" }}>Due: {formatDate(invoice.due_date)}</p>
+                      <p style={{ fontSize: 14, color: "#4b5563" }}>{t("Due: {date}", { date: formatDate(invoice.due_date) })}</p>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                       <span
@@ -286,14 +294,14 @@ export default function InvoicesPage() {
                         }}
                       >
                         {invoice.status === "Processing"
-                          ? "Processing (bank)"
+                          ? t("Processing (bank)")
                           : (invoice.status || "Pending") === "Pending" && (invoice as any).preparing_reason === "electric"
-                          ? (invoice as any).preparing_message
+                          ? err((invoice as any).preparing_message)
                           : (invoice.status || "Pending") === "Pending" && (invoice as any).preparing_until
-                          ? `Being prepared — available ${(invoice as any).preparing_until}`
+                          ? t("Being prepared — available {date}", { date: dateLabel((invoice as any).preparing_until) })
                           : (invoice.status || "Pending") === "Pending" && !isInvoicePayableNow(invoice.invoice_month)
-                          ? `Upcoming — available to pay on ${invoicePayableFrom(invoice.invoice_month, undefined, generateDay)}`
-                          : invoice.status || "Pending"}
+                          ? t("Upcoming — available to pay on {date}", { date: dateLabel(invoicePayableFrom(invoice.invoice_month, undefined, generateDay)) })
+                          : st(invoice.status || "Pending")}
                       </span>
                       <span style={{ fontSize: 22, fontWeight: 800, color: "#000" }}>
                         {formatMoney(invoice.total_amount)}
@@ -315,7 +323,7 @@ export default function InvoicesPage() {
                             borderBottom: "1px solid #f3f4f6",
                           }}
                         >
-                          <span>{item.description || item.charge_type || "Charge"}</span>
+                          <span>{t(item.description || item.charge_type || "Charge")}</span>
                           <span style={{ fontWeight: 600, color: Number(item.amount || 0) < 0 ? "#16a34a" : "#000" }}>
                             {formatMoney(item.amount)}
                           </span>
@@ -337,7 +345,7 @@ export default function InvoicesPage() {
                           opacity: downloadingId === invoice.id ? 0.7 : 1,
                         }}
                       >
-                        {downloadingId === invoice.id ? "Preparing..." : "⬇ Download PDF"}
+                        {downloadingId === invoice.id ? t("Preparing...") : t("⬇ Download PDF")}
                       </button>
                     </div>
                   )}

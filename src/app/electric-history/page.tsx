@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 import {
   ResponsiveContainer,
   BarChart,
@@ -21,6 +23,8 @@ export default function ElectricHistoryPage() {
   const [searchMonth, setSearchMonth] = useState("");
   const [message, setMessage] = useState("Loading...");
   const router = useRouter();
+  // Oct 29 (per the owner): part of the resident portal — English / Spanish / Portuguese.
+  const { lang, locale, t, money, dateLabel, err } = usePortalLang();
 
   useEffect(() => {
     loadElectricHistory();
@@ -37,7 +41,7 @@ export default function ElectricHistoryPage() {
     const result = await res.json();
 
     if (!res.ok) {
-      setMessage(result.error || "Could not load electric history.");
+      setMessage(err(result.error) || t("Could not load electric history."));
       return;
     }
     setReadings(result.readings || []);
@@ -56,17 +60,18 @@ export default function ElectricHistoryPage() {
   const filteredReadings = readings.filter(r => {
     const month = (r.billing_month || "").toLowerCase();
     if (isSearching) {
-      return month.includes(searchMonth.trim().toLowerCase());
+      const q = searchMonth.trim().toLowerCase();
+      return month.includes(q) || (lang !== "en" && dateLabel(r.billing_month || "").toLowerCase().includes(q));
     }
     return month.includes(currentYear);
   });
 
   const currentMonthName = new Date().toLocaleString("en-US", { month: "long" });
 
-  const chartData = monthNames.map(monthName => {
+  const chartData = monthNames.map((monthName, mi) => {
     const reading = filteredReadings.find(item => item.billing_month?.startsWith(monthName));
     return {
-      month: monthName.slice(0, 3),
+      month: lang === "en" ? monthName.slice(0, 3) : new Date(Date.UTC(2000, mi, 1)).toLocaleDateString(locale, { month: "short", timeZone: "UTC" }).replace(".", ""),
       usage: Number(reading?.usage_kwh || 0),
       charge: Number(reading?.charge_amount || 0),
       isCurrent: monthName === currentMonthName,
@@ -81,38 +86,41 @@ export default function ElectricHistoryPage() {
 
         <div style={{ ...card, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 4 }}>📊 Electric Usage History</h1>
-            <p style={{ color: "var(--gray)", fontSize: 14 }}>Search and view your monthly electric readings.</p>
+            <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 4 }}>{t("📊 Electric Usage History")}</h1>
+            <p style={{ color: "var(--gray)", fontSize: 14 }}>{t("Search and view your monthly electric readings.")}</p>
           </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <PortalLangSwitcher compact />
           <button
             onClick={() => router.push("/residents/dashboard")}
             style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
-            Back
+            {t("Back")}
           </button>
+          </div>
         </div>
 
         <div style={card}>
           <input
-            placeholder="Search by month or year, example: June 2026"
+            placeholder={t("Search by month or year, example: June 2026")}
             value={searchMonth}
             onChange={e => setSearchMonth(e.target.value)}
             style={{ width: "100%", border: "1.5px solid var(--border)", borderRadius: 6, padding: "12px 14px", fontSize: 14, outline: "none" }}
           />
           {!isSearching && (
             <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 10 }}>
-              Showing readings for {currentYear}. Search above to find a different month or year.
+              {t("Showing readings for {year}. Search above to find a different month or year.", { year: currentYear })}
             </p>
           )}
         </div>
 
         <div style={card}>
-          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>📊 Monthly Electric Usage</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>{t("📊 Monthly Electric Usage")}</h2>
           <div style={{ width: "100%", height: 200 }}>
             <ResponsiveContainer>
               <BarChart data={chartData}>
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip />
+                <Tooltip formatter={(v) => [`${v} kWh`, t("Used")]} />
                 <Bar dataKey="usage" radius={[6, 6, 0, 0]} maxBarSize={35}>
                   {chartData.map((entry, index) => (
                     <Cell key={index} fill={entry.isCurrent ? "#d3f8e2" : "#eeeeee"} />
@@ -123,16 +131,16 @@ export default function ElectricHistoryPage() {
           </div>
         </div>
 
-        {message && <p>{message}</p>}
+        {message && <p>{t(message)}</p>}
 
         <div style={card}>
           {filteredReadings.length === 0 ? (
             <p style={{ color: "var(--gray)", fontSize: 14 }}>
               {readings.length === 0
-                ? "No electric history found."
+                ? t("No electric history found.")
                 : isSearching
-                ? "No readings match your search."
-                : `No electric readings for ${currentYear} yet.`}
+                ? t("No readings match your search.")
+                : t("No electric readings for {year} yet.", { year: currentYear })}
             </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -140,12 +148,12 @@ export default function ElectricHistoryPage() {
                 <details key={reading.id} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: "10px 16px" }}>
                   <summary style={{ cursor: "pointer", listStyle: "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <p style={{ fontWeight: 700, fontSize: 14 }}>{reading.billing_month || "Billing Month"}</p>
+                      <p style={{ fontWeight: 700, fontSize: 14 }}>{reading.billing_month ? dateLabel(reading.billing_month) : t("Billing Month")}</p>
                       <p style={{ color: "var(--gray)", fontSize: 12 }}>{reading.usage_kwh || 0} kWh</p>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <p style={{ fontWeight: 900, color: "#b91c1c", fontSize: 14 }}>${Number(reading.charge_amount || 0).toFixed(2)}</p>
-                      <p style={{ color: "var(--gray)", fontSize: 12 }}>View details</p>
+                      <p style={{ fontWeight: 900, color: "#b91c1c", fontSize: 14 }}>{money(reading.charge_amount)}</p>
+                      <p style={{ color: "var(--gray)", fontSize: 12 }}>{t("View details")}</p>
                     </div>
                   </summary>
 
@@ -169,7 +177,7 @@ export default function ElectricHistoryPage() {
                       // Only when the difference matches the usage (not a 9999 → 0000 rollover).
                       if (Math.abs(hi - lo - used) < 0.01) meterPair = `${lo} → ${hi}`;
                     }
-                    const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+                    const fmt = (n: number) => n.toLocaleString(locale, { maximumFractionDigits: 2 });
                     const cell = (label: string, value: string) => (
                       <div>
                         <p style={{ color: "var(--gray)" }}>{label}</p>
@@ -179,12 +187,12 @@ export default function ElectricHistoryPage() {
                     return (
                       <div style={{ marginTop: 8, borderTop: "1.5px solid var(--border)", paddingTop: 8, fontSize: 12 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
-                          {meterPair && cell("Meter reading", meterPair)}
-                          {cell("Used", `${fmt(used)} kWh`)}
-                          {cell("Included", `${fmt(included)} kWh`)}
-                          {cell("Billable", `${fmt(billable)} kWh`)}
-                          {cell("Rate", `$${rate.toFixed(2)} per kWh`)}
-                          {reading.meter_number ? cell("Meter #", reading.meter_number) : null}
+                          {meterPair && cell(t("Meter reading"), meterPair)}
+                          {cell(t("Used"), `${fmt(used)} kWh`)}
+                          {cell(t("Included"), `${fmt(included)} kWh`)}
+                          {cell(t("Billable"), `${fmt(billable)} kWh`)}
+                          {cell(t("Rate"), t("{amount} per kWh", { amount: money(rate) }))}
+                          {reading.meter_number ? cell(t("Meter #"), reading.meter_number) : null}
                         </div>
                         <p style={{ marginTop: 10, color: "#374151" }}>
                           {(() => {
@@ -192,11 +200,11 @@ export default function ElectricHistoryPage() {
                             const exact = Math.round(billable * rate * 100) / 100;
                             const total =
                               Math.abs(exact - charge) >= 0.01
-                                ? `$${exact.toFixed(2)}, rounded to $${charge.toFixed(2)}`
-                                : `$${charge.toFixed(2)}`;
+                                ? t("{exact}, rounded to {charge}", { exact: money(exact), charge: money(charge) })
+                                : money(charge);
                             return included > 0
-                              ? `${fmt(used)} kWh used − ${fmt(included)} kWh included = ${fmt(billable)} kWh × $${rate.toFixed(2)} = ${total}`
-                              : `${fmt(billable)} kWh × $${rate.toFixed(2)} = ${total}`;
+                              ? t("{used} kWh used − {included} kWh included = {billable} kWh × {rate} = {total}", { used: fmt(used), included: fmt(included), billable: fmt(billable), rate: money(rate), total })
+                              : `${fmt(billable)} kWh × ${money(rate)} = ${total}`;
                           })()}
                         </p>
                       </div>

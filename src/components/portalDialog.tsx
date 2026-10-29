@@ -11,6 +11,15 @@
 
 import React, { useEffect, useRef } from "react";
 import { createRoot, Root } from "react-dom/client";
+import { translate, getPortalLang } from "@/lib/portalI18n";
+
+// Oct 29 (i18n): default title/buttons follow the resident portal language only on portal pages —
+// the public pages that also use these dialogs (lease application, inquiries) stay in English.
+const PORTAL_PATHS = /^\/(residents|login|portal|pay-invoice|electric-history)(\/|$)/;
+function ptr(key: string) {
+  const onPortal = typeof window !== "undefined" && PORTAL_PATHS.test(window.location.pathname);
+  return translate(onPortal ? getPortalLang() : "en", key);
+}
 
 type Opts = { title?: string; confirmText?: string; cancelText?: string; danger?: boolean };
 
@@ -67,7 +76,7 @@ function Dialog({
         }}
       >
         <h3 style={{ fontWeight: 900, fontSize: 18, margin: "0 0 8px" }}>
-          {opts.title || (showCancel ? "Please confirm" : "Notice")}
+          {opts.title || ptr(showCancel ? "Please confirm" : "Notice")}
         </h3>
         <p style={{ fontSize: 14, lineHeight: 1.5, color: "#374151", margin: "0 0 18px", whiteSpace: "pre-wrap" }}>{message}</p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -79,7 +88,7 @@ function Dialog({
                 padding: "9px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer", color: "#111",
               }}
             >
-              {opts.cancelText || "Cancel"}
+              {opts.cancelText || ptr("Cancel")}
             </button>
           )}
           <button
@@ -90,7 +99,7 @@ function Dialog({
               padding: "9px 18px", fontWeight: 700, fontSize: 14, cursor: "pointer",
             }}
           >
-            {opts.confirmText || (showCancel ? "Yes" : "OK")}
+            {opts.confirmText || ptr(showCancel ? "Yes" : "OK")}
           </button>
         </div>
       </div>

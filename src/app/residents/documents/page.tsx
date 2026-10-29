@@ -4,6 +4,8 @@ import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang, type PortalI18n } from "@/lib/portalI18n";
 
 type Lease = {
   id: string;
@@ -23,13 +25,9 @@ type OtherDocument = {
   created_at?: string;
 };
 
-function formatDate(dateStr: string | null) {
+function formatDate(dateStr: string | null, date: PortalI18n["date"]) {
   if (!dateStr) return "—";
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return date(String(dateStr).slice(0, 10), { month: "long", day: "numeric", year: "numeric" });
 }
 
 const DOCUMENT_TYPE_LABELS: Record<string, string> = {
@@ -43,11 +41,10 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   lease_addendum: "Resident Agreement (signed online)",
 };
 
-function documentTypeLabel(documentType: string) {
-  return (
-    DOCUMENT_TYPE_LABELS[documentType] ||
-    documentType.charAt(0).toUpperCase() + documentType.slice(1)
-  );
+function documentTypeLabel(documentType: string, t: PortalI18n["t"]) {
+  return DOCUMENT_TYPE_LABELS[documentType]
+    ? t(DOCUMENT_TYPE_LABELS[documentType])
+    : documentType.charAt(0).toUpperCase() + documentType.slice(1);
 }
 
 function DocumentsContent() {
@@ -82,6 +79,9 @@ function DocumentsContent() {
   // /residents/background-checks to actually pay for and start the
   // check, since uploading the ID alone doesn't do that.
   const [pendingBgChecks, setPendingBgChecks] = useState<any[]>([]);
+  const { lang, t, st, money, date, err } = usePortalLang();
+  // Upload messages are translated when set; this marks the error ones (shown red).
+  const [uploadFailed, setUploadFailed] = useState(false);
 
   useEffect(() => {
     loadDocuments();
@@ -121,7 +121,7 @@ function DocumentsContent() {
     const residentId = localStorage.getItem("resident_id");
 
     if (!residentId) {
-      setMessage("Please log in again.");
+      setMessage(t("Please log in again."));
       setLoading(false);
       return;
     }
@@ -130,14 +130,14 @@ function DocumentsContent() {
       const res = await fetch(`/api/portal/documents?residentId=${residentId}`);
       const result = await res.json();
       if (!res.ok) {
-        setMessage("Could not load your documents: " + (result?.error || res.status));
+        setMessage(t("Could not load your documents: {detail}", { detail: err(result?.error) || res.status }));
         setLoading(false);
         return;
       }
       setLeases(result.leases || []);
       setOtherDocuments(result.otherDocuments || []);
-    } catch (err: any) {
-      setMessage("Could not load your documents (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setMessage(t("Could not load your documents (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
     setLoading(false);
   }
@@ -145,17 +145,20 @@ function DocumentsContent() {
   async function uploadDocument(fileArg?: File) {
     const file = fileArg || uploadFile;
     if (!file) {
-      setUploadMessage("Please choose a file first.");
+      setUploadFailed(true);
+      setUploadMessage(t("Please choose a file first."));
       return;
     }
 
     const residentId = localStorage.getItem("resident_id");
     if (!residentId) {
-      setUploadMessage("Please log in again.");
+      setUploadFailed(true);
+      setUploadMessage(t("Please log in again."));
       return;
     }
 
     setUploading(true);
+    setUploadFailed(false);
     setUploadMessage("");
 
     try {
@@ -176,7 +179,7 @@ function DocumentsContent() {
       const fileDataBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve((reader.result as string).split(",")[1]);
-        reader.onerror = () => reject(new Error("Could not read file."));
+        reader.onerror = () => reject(new Error(t("Could not read file.")));
         reader.readAsDataURL(file);
       });
 
@@ -194,17 +197,19 @@ function DocumentsContent() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setUploadMessage("Could not save document: " + (result?.error || res.status));
+        setUploadFailed(true);
+        setUploadMessage(t("Could not save document: {detail}", { detail: err(result?.error) || res.status }));
         setUploading(false);
         return;
       }
 
-      setUploadMessage("✅ Document uploaded.");
+      setUploadMessage(t("✅ Document uploaded."));
       setUploadFile(null);
       setUploadForOccupantId("");
       loadDocuments();
-    } catch (err: any) {
-      setUploadMessage("Could not upload document (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setUploadFailed(true);
+      setUploadMessage(t("Could not upload document (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
     setUploading(false);
   }
@@ -212,7 +217,7 @@ function DocumentsContent() {
   async function viewDocument(documentId: string) {
     const residentId = localStorage.getItem("resident_id");
     if (!residentId) {
-      setMessage("Please log in again.");
+      setMessage(t("Please log in again."));
       return;
     }
     try {
@@ -221,19 +226,19 @@ function DocumentsContent() {
       );
       const result = await res.json();
       if (!res.ok || !result.url) {
-        setMessage(result?.error || "Could not open this document.");
+        setMessage(err(result?.error) || t("Could not open this document."));
         return;
       }
       window.open(result.url, "_blank", "noopener,noreferrer");
-    } catch (err: any) {
-      setMessage("Could not open this document: " + (err?.message || err));
+    } catch (e: any) {
+      setMessage(t("Could not open this document: {detail}", { detail: e?.message || String(e) }));
     }
   }
 
   async function viewLeaseDocument(leaseId: string) {
     const residentId = localStorage.getItem("resident_id");
     if (!residentId) {
-      setMessage("Please log in again.");
+      setMessage(t("Please log in again."));
       return;
     }
     try {
@@ -242,21 +247,21 @@ function DocumentsContent() {
       );
       const result = await res.json();
       if (!res.ok || !result.url) {
-        setMessage(result?.error || "Could not open this document.");
+        setMessage(err(result?.error) || t("Could not open this document."));
         return;
       }
       window.open(result.url, "_blank", "noopener,noreferrer");
-    } catch (err: any) {
-      setMessage("Could not open this document: " + (err?.message || err));
+    } catch (e: any) {
+      setMessage(t("Could not open this document: {detail}", { detail: e?.message || String(e) }));
     }
   }
 
   async function deleteDocument(documentId: string) {
-    if (!(await portalConfirm("Remove this document?", { danger: true }))) return;
+    if (!(await portalConfirm(t("Remove this document?"), { danger: true }))) return;
 
     const residentId = localStorage.getItem("resident_id");
     if (!residentId) {
-      setMessage("Please log in again.");
+      setMessage(t("Please log in again."));
       return;
     }
 
@@ -268,12 +273,12 @@ function DocumentsContent() {
       });
       const result = await res.json();
       if (!res.ok) {
-        setMessage("Could not remove document: " + (result?.error || res.status));
+        setMessage(t("Could not remove document: {detail}", { detail: err(result?.error) || res.status }));
         return;
       }
       loadDocuments();
-    } catch (err: any) {
-      setMessage("Could not remove document (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setMessage(t("Could not remove document (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
   }
 
@@ -303,7 +308,7 @@ function DocumentsContent() {
     return (
       <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
         <div style={{ maxWidth: 640, margin: "0 auto", ...cardStyle }}>
-          <p style={{ color: "#000" }}>Loading your documents...</p>
+          <p style={{ color: "#000" }}>{t("Loading your documents...")}</p>
         </div>
       </main>
     );
@@ -312,6 +317,7 @@ function DocumentsContent() {
   return (
     <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => router.push("/residents/dashboard")}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
@@ -334,13 +340,17 @@ function DocumentsContent() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          Back to Dashboard
+          {t("Back to Dashboard")}
         </button>
+        <PortalLangSwitcher compact />
+        </div>
         <div style={cardStyle}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>My Documents</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>{t("My Documents")}</h1>
           <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
-            View and download your signed lease agreement(s) and other documents on file.
+            {t("View and download your signed lease agreement(s) and other documents on file.")}
           </p>
+          {/* Signed leases / agreements are kept exactly as signed (English). */}
+          {lang !== "en" && <p style={{ marginTop: 8, fontSize: 13, color: "#6b7280" }}>{t("These documents are in English; they are the versions you signed.")}</p>}
         </div>
 
         {message && (
@@ -350,9 +360,9 @@ function DocumentsContent() {
         )}
 
         <div style={cardStyle}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>LEASE AGREEMENT(S)</p>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>{t("LEASE AGREEMENT(S)")}</p>
           {leases.length === 0 ? (
-            <p style={{ color: "#000" }}>No lease documents on file yet.</p>
+            <p style={{ color: "#000" }}>{t("No lease documents on file yet.")}</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {leases.map((lease) => (
@@ -364,13 +374,13 @@ function DocumentsContent() {
                 >
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 17, color: "#000", marginBottom: 6 }}>
-                      Lease Agreement
+                      {t("Lease Agreement")}
                     </div>
                     <div style={{ fontSize: 14, color: "#6b7280" }}>
-                      {formatDate(lease.lease_start)} — {formatDate(lease.lease_end)}
+                      {formatDate(lease.lease_start, date)} — {formatDate(lease.lease_end, date)}
                     </div>
                     <div style={{ fontSize: 14, color: "#6b7280" }}>
-                      ${lease.monthly_rent}/mo · Deposit: ${lease.security_deposit || 0}
+                      {t("{rent}/mo · Deposit: {deposit}", { rent: money(lease.monthly_rent), deposit: money(lease.security_deposit || 0) })}
                     </div>
                     <span
                       style={{
@@ -384,7 +394,7 @@ function DocumentsContent() {
                         color: lease.status === "Active" ? "#166534" : "#6b7280",
                       }}
                     >
-                      {lease.status}
+                      {st(lease.status)}
                     </span>
                   </div>
 
@@ -402,10 +412,10 @@ function DocumentsContent() {
                         cursor: "pointer",
                       }}
                     >
-                      📄 View / Print PDF
+                      {t("📄 View / Print PDF")}
                     </button>
                   ) : (
-                    <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>PDF not available</span>
+                    <span style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic" }}>{t("PDF not available")}</span>
                   )}
                 </div>
               ))}
@@ -414,14 +424,14 @@ function DocumentsContent() {
         </div>
 
         <div style={cardStyle}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>OTHER DOCUMENTS</p>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#6b7280", marginBottom: 16 }}>{t("OTHER DOCUMENTS")}</p>
 
           <div style={{ borderRadius: 10, border: "1px dashed #d1d5db", padding: 20, marginBottom: 20 }}>
             <p style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 12 }}>
-              Upload a document (ID, insurance, registration, etc.)
+              {t("Upload a document (ID, insurance, registration, etc.)")}
             </p>
             <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>
-              Choose the type below, then choose a file — it uploads automatically, no extra button to click.
+              {t("Choose the type below, then choose a file — it uploads automatically, no extra button to click.")}
             </p>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               {occupants.length > 0 && (
@@ -430,10 +440,10 @@ function DocumentsContent() {
                   onChange={(e) => setUploadForOccupantId(e.target.value)}
                   style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "10px 12px", fontSize: 14 }}
                 >
-                  <option value="">This is for: Myself</option>
+                  <option value="">{t("This is for: Myself")}</option>
                   {occupants.map((o) => (
                     <option key={o.id} value={o.id}>
-                      This is for: {o.full_name}
+                      {t("This is for: {name}", { name: o.full_name })}
                     </option>
                   ))}
                 </select>
@@ -443,10 +453,10 @@ function DocumentsContent() {
                 onChange={(e) => setUploadType(e.target.value)}
                 style={{ border: "1.5px solid #d1d5db", borderRadius: 8, padding: "10px 12px", fontSize: 14 }}
               >
-                <option value="id">ID</option>
-                <option value="insurance">Insurance</option>
-                <option value="registration">Registration</option>
-                <option value="general">General</option>
+                <option value="id">{t("ID")}</option>
+                <option value="insurance">{t("Insurance")}</option>
+                <option value="registration">{t("Registration")}</option>
+                <option value="general">{t("General")}</option>
               </select>
               <input
                 type="file"
@@ -462,18 +472,18 @@ function DocumentsContent() {
                 style={{ fontSize: 14 }}
               />
               {uploading && (
-                <span style={{ fontSize: 13, color: "#6b7280" }}>Uploading...</span>
+                <span style={{ fontSize: 13, color: "#6b7280" }}>{t("Uploading...")}</span>
               )}
             </div>
             {uploadMessage && (
-              <p style={{ fontSize: 13, marginTop: 10, color: uploadMessage.startsWith("Could not") ? "#dc2626" : "#16a34a" }}>
+              <p style={{ fontSize: 13, marginTop: 10, color: uploadFailed ? "#dc2626" : "#16a34a" }}>
                 {uploadMessage}
               </p>
             )}
           </div>
 
           {otherDocuments.length === 0 ? (
-            <p style={{ color: "#6b7280", fontSize: 14 }}>No documents uploaded yet.</p>
+            <p style={{ color: "#6b7280", fontSize: 14 }}>{t("No documents uploaded yet.")}</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {otherDocuments.map((doc) => (
@@ -486,7 +496,7 @@ function DocumentsContent() {
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 15, color: "#000" }}>{doc.file_name}</div>
                     {doc.document_type && (
-                      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{documentTypeLabel(doc.document_type)}</div>
+                      <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{documentTypeLabel(doc.document_type, t)}</div>
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 10 }}>
@@ -503,7 +513,7 @@ function DocumentsContent() {
                         cursor: "pointer",
                       }}
                     >
-                      📄 View
+                      {t("📄 View")}
                     </button>
                     {/* Oct 28: a signed lease addendum is part of the lease record — it can't be removed */}
                     {doc.document_type !== "lease_addendum" && <button
@@ -519,7 +529,7 @@ function DocumentsContent() {
                         cursor: "pointer",
                       }}
                     >
-                      Delete
+                      {t("Delete")}
                     </button>}
                   </div>
                 </div>
@@ -532,17 +542,17 @@ function DocumentsContent() {
           <div style={{ borderRadius: 8, background: "#fff7ed", border: "2px solid #fb923c", padding: 20 }}>
             <p style={{ fontSize: 15, fontWeight: 700, color: "#9a3412", marginBottom: 8 }}>
               ⚠️ {pendingBgChecks.length === 1
-                ? "You still need to pay for and start 1 background check."
-                : `You still need to pay for and start ${pendingBgChecks.length} background checks.`}
+                ? t("You still need to pay for and start 1 background check.")
+                : t("You still need to pay for and start {n} background checks.", { n: pendingBgChecks.length })}
             </p>
             <p style={{ fontSize: 13, color: "#9a3412", marginBottom: 12 }}>
-              Uploading an ID here doesn't start the check by itself — head to Background Checks to finish it.
+              {t("Uploading an ID here doesn't start the check by itself — head to Background Checks to finish it.")}
             </p>
             <button
               onClick={() => router.push("/residents/background-checks")}
               style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "12px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
             >
-              Continue to Background Check(s)
+              {t("Continue to Background Check(s)")}
             </button>
           </div>
         )}
@@ -551,13 +561,18 @@ function DocumentsContent() {
   );
 }
 
+function LoadingText() {
+  const { t } = usePortalLang();
+  return <>{t("Loading...")}</>;
+}
+
 export default function DocumentsPage() {
   return (
     <Suspense
       fallback={
         <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
           <div style={{ maxWidth: 640, margin: "0 auto" }}>
-            <p style={{ color: "#000" }}>Loading...</p>
+            <p style={{ color: "#000" }}><LoadingText /></p>
           </div>
         </main>
       }

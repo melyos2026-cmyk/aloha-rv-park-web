@@ -3,6 +3,8 @@
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { validatePassword, PASSWORD_REQUIREMENTS_TEXT } from "@/lib/passwordRules";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 function ResetPasswordForm() {
   const params = useSearchParams();
@@ -14,23 +16,24 @@ function ResetPasswordForm() {
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const { t, err } = usePortalLang();
 
   async function resetPassword() {
     setMessage("");
 
     if (!token) {
-      setMessage("This reset link is invalid. Please request a new one.");
+      setMessage(t("This reset link is invalid. Please request a new one."));
       return;
     }
 
     const complexityError = validatePassword(password);
     if (complexityError) {
-      setMessage(complexityError);
+      setMessage(t(complexityError));
       return;
     }
 
     if (password !== confirmPassword) {
-      setMessage("Passwords do not match.");
+      setMessage(t("Passwords do not match."));
       return;
     }
 
@@ -44,20 +47,21 @@ function ResetPasswordForm() {
     setSubmitting(false);
 
     if (!res.ok) {
-      setMessage(data.error || "Unable to reset password.");
+      setMessage(err(data.error) || t("Unable to reset password."));
       return;
     }
 
     setSuccess(true);
-    setMessage("Password updated. You can now sign in with your new password.");
+    setMessage(t("Password updated. You can now sign in with your new password."));
     setTimeout(() => router.push("/login"), 2500);
   }
 
   return (
     <>
       <section style={{ background: "#e1f8f7", color: "var(--black)", padding: "60px 24px", textAlign: "center" }}>
-        <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#000000", fontWeight: 600, marginBottom: 12 }}>Resident Portal</div>
-        <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16, color: "var(--black)" }}>Reset Password</h1>
+        <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#000000", fontWeight: 600, marginBottom: 12 }}>{t("Resident Portal")}</div>
+        <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16, color: "var(--black)" }}>{t("Reset Password")}</h1>
+        <div style={{ marginTop: 6 }}><PortalLangSwitcher /></div>
       </section>
 
       <section style={{ padding: "60px 24px", background: "#f6f5f5", minHeight: 500, borderTop: "6px solid var(--white)" }}>
@@ -66,11 +70,11 @@ function ResetPasswordForm() {
             {!success ? (
               <>
                 <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
-                  {PASSWORD_REQUIREMENTS_TEXT}
+                  {t(PASSWORD_REQUIREMENTS_TEXT)}
                 </p>
 
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>New Password</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{t("New Password")}</label>
                   <input
                     type="password"
                     value={password}
@@ -81,7 +85,7 @@ function ResetPasswordForm() {
                 </div>
 
                 <div style={{ marginBottom: 20 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Confirm Password</label>
+                  <label style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{t("Confirm Password")}</label>
                   <input
                     type="password"
                     value={confirmPassword}
@@ -108,7 +112,7 @@ function ResetPasswordForm() {
                     fontSize: 15, letterSpacing: "0.05em",
                     opacity: (submitting || !password || !confirmPassword) ? 0.5 : 1
                   }}>
-                  {submitting ? "Updating..." : "Update Password"}
+                  {submitting ? t("Updating...") : t("Update Password")}
                 </button>
               </>
             ) : (

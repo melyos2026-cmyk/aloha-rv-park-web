@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePortalLang, translate, richText } from "@/lib/portalI18n";
 
 // Oct 26 (per Mely): "install the app" card for the boater account and the resident portal.
 // · Android / Chrome / Edge: one button (the browser's own install prompt).
@@ -36,9 +37,15 @@ export function AppBadge({ n }: { n: number }) {
   return null;
 }
 
-export default function InstallApp({ appName, accent = "#0f2540", compact = false }: { appName: string; accent?: string; compact?: boolean }) {
+// `portal`: the RV resident portal passes it so the card follows the portal language (EN/ES/PT);
+// the marina boater account (not translated yet) keeps English.
+export default function InstallApp({ appName, accent = "#0f2540", compact = false, portal = false }: { appName: string; accent?: string; compact?: boolean; portal?: boolean }) {
   const [mode, setMode] = useState<"none" | "button" | "ios">("none");
   const [hidden, setHidden] = useState(true);
+  const { lang: portalLang } = usePortalLang();
+  const lang = portal ? portalLang : "en";
+  const t = (k: string, v?: Record<string, string | number>) => translate(lang, k, v);
+  const rich = (k: string, v?: Record<string, string | number>, slots?: Record<string, React.ReactNode>) => richText(translate(lang, k, v), slots);
 
   useEffect(() => {
     if (isStandalone()) return;
@@ -72,20 +79,20 @@ export default function InstallApp({ appName, accent = "#0f2540", compact = fals
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2" width="10" height="20" rx="2" /><path d="M11 18h2" /></svg>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, color: "#0f2540" }}>Get the {appName} app</div>
+        <div style={{ fontWeight: 700, color: "#0f2540" }}>{t("Get the {name} app", { name: appName })}</div>
         {mode === "button" ? (
-          <div style={{ fontSize: 14, color: "#475569" }}>Open your account in one tap from your home screen, with alerts on the icon.</div>
+          <div style={{ fontSize: 14, color: "#475569" }}>{t("Open your account in one tap from your home screen, with alerts on the icon.")}</div>
         ) : (
           <div style={{ fontSize: 14, color: "#475569" }}>
-            In Safari, tap <b>Share</b>{" "}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: "-2px" }} aria-label="Share icon"><path d="M12 3v12M8 7l4-4 4 4M5 12v8h14v-8" /></svg>{" "}
-            then <b>Add to Home Screen</b>.
+            {rich("In Safari, tap <b>Share</b> {icon} then <b>Add to Home Screen</b>.", undefined, {
+              icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: "-2px" }} aria-label={t("Share icon")}><path d="M12 3v12M8 7l4-4 4 4M5 12v8h14v-8" /></svg>,
+            })}
           </div>
         )}
       </div>
       <div style={{ display: "flex", gap: 6, flex: "0 0 auto", alignItems: "center" }}>
-        {mode === "button" && <button type="button" onClick={install} style={{ background: accent, color: "#fff", border: 0, borderRadius: 8, padding: "9px 14px", fontWeight: 700, cursor: "pointer" }}>Install</button>}
-        {compact && <button type="button" onClick={dismiss} aria-label="Not now" style={{ background: "none", border: 0, color: "#94a3b8", fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 4 }}>×</button>}
+        {mode === "button" && <button type="button" onClick={install} style={{ background: accent, color: "#fff", border: 0, borderRadius: 8, padding: "9px 14px", fontWeight: 700, cursor: "pointer" }}>{t("Install")}</button>}
+        {compact && <button type="button" onClick={dismiss} aria-label={t("Not now")} style={{ background: "none", border: 0, color: "#94a3b8", fontSize: 22, lineHeight: 1, cursor: "pointer", padding: 4 }}>×</button>}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@
 // consent box (explicit opt-in); turning off works anytime (same as STOP).
 import { useEffect, useState } from "react";
 import SmsConsentCheckbox from "@/components/SmsConsentCheckbox";
+import { usePortalLang } from "@/lib/portalI18n";
 
 export default function SmsAlertsToggle({
   residentId,
@@ -18,7 +19,8 @@ export default function SmsAlertsToggle({
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
+  const { lang, t, err } = usePortalLang();
 
   useEffect(() => {
     if (!residentId) return;
@@ -29,7 +31,7 @@ export default function SmsAlertsToggle({
   }, [residentId, phone]);
 
   async function save(on: boolean) {
-    setMsg("");
+    setMsg(null);
     setBusy(true);
     try {
       const r = await fetch("/api/portal/sms-consent", {
@@ -39,12 +41,12 @@ export default function SmsAlertsToggle({
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) {
-        setMsg(d?.error || "Could not save.");
+        setMsg({ text: err(d?.error) || t("Could not save."), bad: true });
         return;
       }
       setEnabled(on);
       setAgree(false);
-      setMsg(on ? "Text message alerts are on." : "Text message alerts are off.");
+      setMsg({ text: t(on ? "Text message alerts are on." : "Text message alerts are off."), bad: false });
     } finally {
       setBusy(false);
     }
@@ -57,33 +59,35 @@ export default function SmsAlertsToggle({
   return (
     <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
       <p style={{ marginBottom: 6 }}>
-        <strong>Text message alerts:</strong>{" "}
-        {enabled === null ? "…" : enabled ? <span style={{ color: "#16a34a", fontWeight: 700 }}>On</span> : "Off"}
+        <strong>{t("Text message alerts:")}</strong>{" "}
+        {enabled === null ? "…" : enabled ? <span style={{ color: "#16a34a", fontWeight: 700 }}>{t("On")}</span> : t("Off")}
       </p>
       {enabled === true && (
         <button onClick={() => save(false)} disabled={busy} style={{ ...btn, background: "transparent" }}>
-          {busy ? "Saving..." : "Turn off"}
+          {busy ? t("Saving...") : t("Turn off")}
         </button>
       )}
       {enabled === false && (
         <>
           {!phone ? (
-            <p style={{ fontSize: 13, color: "var(--gray)" }}>Add your mobile number above to get text alerts.</p>
+            <p style={{ fontSize: 13, color: "var(--gray)" }}>{t("Add your mobile number above to get text alerts.")}</p>
           ) : (
             <>
-              <SmsConsentCheckbox parkName={parkName || "the park"} checked={agree} onChange={setAgree} id="sms-consent-portal" />
+              {/* The consent wording is recorded word for word (carrier rules) — it stays in English. */}
+              <div lang="en"><SmsConsentCheckbox parkName={parkName || "the park"} checked={agree} onChange={setAgree} id="sms-consent-portal" /></div>
+              {lang !== "en" && <p style={{ fontSize: 11.5, color: "#374151", fontStyle: "italic", margin: "4px 0 0 28px" }}>{t("This consent is in English; it is the version you agree to.")}</p>}
               <button
                 onClick={() => save(true)}
                 disabled={busy || !agree}
                 style={{ ...btn, marginTop: 10, background: "#000", color: "#fff", opacity: busy || !agree ? 0.5 : 1 }}
               >
-                {busy ? "Saving..." : "Turn on text alerts"}
+                {busy ? t("Saving...") : t("Turn on text alerts")}
               </button>
             </>
           )}
         </>
       )}
-      {msg && <p style={{ fontSize: 13, marginTop: 8, color: msg.startsWith("Could") || msg.startsWith("Add") ? "#dc2626" : "#16a34a" }}>{msg}</p>}
+      {msg && <p style={{ fontSize: 13, marginTop: 8, color: msg.bad ? "#dc2626" : "#16a34a" }}>{msg.text}</p>}
     </div>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 type Payment = {
   id: string;
@@ -31,6 +33,7 @@ export default function PaymentHistoryPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
   const [year, setYear] = useState(String(new Date().getFullYear()));
+  const { t, money, date, err } = usePortalLang();
 
   useEffect(() => {
     loadPaymentHistory();
@@ -44,7 +47,7 @@ export default function PaymentHistoryPage() {
     const residentId = localStorage.getItem("resident_id");
 
     if (!residentId) {
-      setMessage("Please log in again.");
+      setMessage(t("Please log in again."));
       setLoading(false);
       return;
     }
@@ -58,24 +61,24 @@ export default function PaymentHistoryPage() {
       const res = await fetch(`/api/portal/payment-history?${params.toString()}`);
       const result = await res.json();
       if (!res.ok) {
-        setMessage("Could not load payment history: " + (result?.error || res.status));
+        setMessage(t("Could not load payment history: {detail}", { detail: err(result?.error) || res.status }));
         setLoading(false);
         return;
       }
       setPayments(result.payments || []);
-    } catch (err: any) {
-      setMessage("Could not load payment history (unexpected error): " + (err?.message || err));
+    } catch (e: any) {
+      setMessage(t("Could not load payment history (unexpected error): {detail}", { detail: e?.message || String(e) }));
     }
     setLoading(false);
   }
 
   function formatMoney(value: number | null) {
-    return `$${Number(value || 0).toFixed(2)}`;
+    return money(Number(value || 0));
   }
 
   function formatDate(value: string | null) {
-    if (!value) return "No payment date";
-    return new Date(value).toLocaleDateString(undefined, {
+    if (!value) return t("No payment date");
+    return date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : new Date(value), {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -86,14 +89,14 @@ export default function PaymentHistoryPage() {
     if (payment.charge_type === "Custom" && payment.custom_charge) {
       return payment.custom_charge;
     }
-    return payment.charge_type || "Charge";
+    return t(payment.charge_type || "Charge");
   }
 
   function periodLabel() {
-    if (filterMode === "days") return `Last ${days} days`;
+    if (filterMode === "days") return t("Last {n} days", { n: days });
     if (filterMode === "month") {
       const [y, m] = month.split("-").map(Number);
-      return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+      return date(new Date(y, m - 1, 1), { month: "long", year: "numeric" });
     }
     return year;
   }
@@ -114,7 +117,7 @@ export default function PaymentHistoryPage() {
     return (
       <main style={{ minHeight: "100vh", padding: 32, backgroundColor: "#f5f6f8" }}>
         <div style={{ maxWidth: 640, margin: "0 auto", ...cardStyle }}>
-          <p style={{ color: "#000" }}>Loading payment history...</p>
+          <p style={{ color: "#000" }}>{t("Loading payment history...")}</p>
         </div>
       </main>
     );
@@ -133,6 +136,7 @@ export default function PaymentHistoryPage() {
       `}</style>
 
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
+        <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => (window.location.href = "/residents/dashboard")}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
@@ -156,12 +160,14 @@ export default function PaymentHistoryPage() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          Back to Dashboard
+          {t("Back to Dashboard")}
         </button>
+        <PortalLangSwitcher compact />
+        </div>
         <div className="no-print" style={cardStyle}>
-          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Payment History</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>{t("Payment History")}</h1>
           <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
-            View a statement of your completed payments.
+            {t("View a statement of your completed payments.")}
           </p>
         </div>
 
@@ -173,7 +179,7 @@ export default function PaymentHistoryPage() {
 
         {/* Filters — hidden when printing */}
         <div className="no-print" style={cardStyle}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 14 }}>Show transactions from:</p>
+          <p style={{ fontSize: 14, fontWeight: 700, color: "#000", marginBottom: 14 }}>{t("Show transactions from:")}</p>
           <select
             value={filterMode === "days" ? `days-${days}` : filterMode}
             onChange={(e) => {
@@ -196,12 +202,12 @@ export default function PaymentHistoryPage() {
               maxWidth: 260,
             }}
           >
-            <option value="days-30">Last 30 days</option>
-            <option value="days-60">Last 60 days</option>
-            <option value="days-90">Last 90 days</option>
-            <option value="days-180">Last 180 days</option>
-            <option value="month">Specific Month</option>
-            <option value="year">Specific Year</option>
+            <option value="days-30">{t("Last {n} days", { n: 30 })}</option>
+            <option value="days-60">{t("Last {n} days", { n: 60 })}</option>
+            <option value="days-90">{t("Last {n} days", { n: 90 })}</option>
+            <option value="days-180">{t("Last {n} days", { n: 180 })}</option>
+            <option value="month">{t("Specific Month")}</option>
+            <option value="year">{t("Specific Year")}</option>
           </select>
 
           {filterMode === "month" && (
@@ -227,7 +233,7 @@ export default function PaymentHistoryPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
             <div>
               <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>{periodLabel()}</p>
-              <p style={{ fontSize: 18, fontWeight: 800, color: "#000" }}>Total for this period</p>
+              <p style={{ fontSize: 18, fontWeight: 800, color: "#000" }}>{t("Total for this period")}</p>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <p style={{ fontSize: 28, fontWeight: 800, color: "#000" }}>{formatMoney(totalPaid)}</p>
@@ -245,14 +251,14 @@ export default function PaymentHistoryPage() {
                   cursor: "pointer",
                 }}
               >
-                🖨️ Print
+                {t("🖨️ Print")}
               </button>
             </div>
           </div>
           <div style={{ borderBottom: "1.5px solid #e5e7eb", marginTop: 20, marginBottom: 20 }} />
 
           {payments.length === 0 ? (
-            <p style={{ color: "#000" }}>No payments found for this period.</p>
+            <p style={{ color: "#000" }}>{t("No payments found for this period.")}</p>
           ) : (
             <div>
               {/* Bank-statement-style table: date | description | method | amount */}
@@ -268,10 +274,10 @@ export default function PaymentHistoryPage() {
                   color: "#6b7280",
                 }}
               >
-                <span>DATE</span>
-                <span>DESCRIPTION</span>
-                <span>METHOD</span>
-                <span style={{ textAlign: "right" }}>AMOUNT</span>
+                <span>{t("DATE")}</span>
+                <span>{t("DESCRIPTION")}</span>
+                <span>{t("METHOD")}</span>
+                <span style={{ textAlign: "right" }}>{t("AMOUNT")}</span>
               </div>
               {payments.map((payment) => (
                 <div
@@ -297,7 +303,7 @@ export default function PaymentHistoryPage() {
                         processor's name to the resident — "Stripe" is an
                         implementation detail, "Card" is what they actually
                         paid with. */}
-                    {payment.payment_method === "Stripe" ? "Card" : payment.payment_method || "—"}
+                    {payment.payment_method === "Stripe" ? t("Card") : payment.payment_method ? t(payment.payment_method) : "—"}
                   </span>
                   <span style={{ textAlign: "right", fontWeight: 700, color: "#000" }}>
                     {formatMoney(Number(payment.total_due || payment.amount || 0))}

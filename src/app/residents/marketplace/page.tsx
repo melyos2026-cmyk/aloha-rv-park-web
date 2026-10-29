@@ -4,6 +4,8 @@ import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/CompanyContext";
+import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { usePortalLang } from "@/lib/portalI18n";
 
 const CATEGORIES = ["Vehicles", "Womenswear", "Menswear", "Kidswear & Baby", "Antiques", "Books", "Movies & Music", "Classifieds", "Electronics", "Entertainment", "Free Stuff", "Garage Sale", "Patio & Garden", "Health & Beauty", "Hobbies", "Home & Kitchen", "Home Improvement", "Home Sales", "Jewelry & Watches", "Luggage & Bags", "Musical Instruments", "Office Supplies", "Pet Supplies", "RV Parts", "Sporting Goods", "Toys & Games", "Miscellaneous", "Other"];
 
@@ -49,6 +51,9 @@ export default function MarketplacePage() {
   const [activePhoto, setActivePhoto] = useState(0);
   const [lastVisit, setLastVisit] = useState<string | null>(null);
   const [shareConfirm, setShareConfirm] = useState<string | null>(null);
+  // Listing titles/descriptions are written by residents and stay as written; categories are stored
+  // in English (the value) and shown translated.
+  const { t, tp, st, money, err } = usePortalLang();
 
   function shareListing(e: React.MouseEvent, listingId: string) {
     e.stopPropagation();
@@ -158,7 +163,7 @@ export default function MarketplacePage() {
 
   async function saveListing() {
     if (!title.trim() || !residentId || !companyId) {
-      void portalAlert("Please enter a title.");
+      void portalAlert(t("Please enter a title."));
       return;
     }
     setSaving(true);
@@ -179,7 +184,7 @@ export default function MarketplacePage() {
 
     if (!res.ok) {
       // Oct 22: when Mely stops a listing, show her friendly reason by itself.
-      void portalAlert(result.rejected ? result.error : "Could not save listing: " + (result.error || ""));
+      void portalAlert(result.rejected ? result.error : t("Could not save listing: {detail}", { detail: err(result.error || "") }));
       setSaving(false);
       return;
     }
@@ -215,7 +220,7 @@ export default function MarketplacePage() {
   }
 
   async function deleteListing(listingId: string) {
-    if (!(await portalConfirm("Delete this listing?", { danger: true }))) return;
+    if (!(await portalConfirm(t("Delete this listing?"), { danger: true }))) return;
     if (!residentId) return;
     await fetch("/api/portal/marketplace-delete-listing", {
       method: "POST",
@@ -248,7 +253,7 @@ export default function MarketplacePage() {
     return (
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "40px 24px" }}>
         <button onClick={() => setSelectedListing(null)} style={{ background: "none", border: "none", fontSize: 14, color: "var(--gray)", cursor: "pointer", marginBottom: 20 }}>
-          ← Back to Marketplace
+          {t("← Back to Marketplace")}
         </button>
 
         {photos.length > 0 ? (
@@ -284,7 +289,7 @@ export default function MarketplacePage() {
           </div>
         ) : (
           <div style={{ height: 200, background: "var(--gray-light)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)", marginBottom: 20 }}>
-            No photos
+            {t("No photos")}
           </div>
         )}
 
@@ -294,41 +299,41 @@ export default function MarketplacePage() {
             onClick={(e) => shareListing(e, selectedListing.id)}
             style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
           >
-            {shareConfirm === selectedListing.id ? "✅ Copied" : "🔗 Share"}
+            {shareConfirm === selectedListing.id ? t("✅ Copied") : t("🔗 Share")}
           </button>
         </div>
         <p style={{ fontSize: 24, fontWeight: 900, color: "var(--red)", marginBottom: 12 }}>
-          {selectedListing.price != null ? `$${Number(selectedListing.price).toLocaleString()}` : "Free / Make an offer"}
+          {selectedListing.price != null ? money(selectedListing.price) : t("Free / Make an offer")}
         </p>
         {selectedListing.status === "sold" && (
-          <span style={{ display: "inline-block", background: "#f3f4f6", color: "#6b7280", fontWeight: 700, fontSize: 12, padding: "4px 12px", borderRadius: 999, marginBottom: 12 }}>SOLD</span>
+          <span style={{ display: "inline-block", background: "#f3f4f6", color: "#6b7280", fontWeight: 700, fontSize: 12, padding: "4px 12px", borderRadius: 999, marginBottom: 12 }}>{t("SOLD")}</span>
         )}
-        <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>Category: {selectedListing.category}</p>
+        <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 4 }}>{t("Category: {name}", { name: t(selectedListing.category) })}</p>
         {isMine && selectedListing.expires_at && (
           <p style={{ fontSize: 13, color: (daysLeft(selectedListing.expires_at) ?? 0) <= 5 ? "#dc2626" : "var(--gray)", marginBottom: 4 }}>
             {(daysLeft(selectedListing.expires_at) ?? 0) > 0
-              ? `Expires in ${daysLeft(selectedListing.expires_at)} day${daysLeft(selectedListing.expires_at) === 1 ? "" : "s"} — repost to keep it active`
-              : "This listing has expired"}
+              ? tp(daysLeft(selectedListing.expires_at) ?? 0, "Expires in {n} day — repost to keep it active", "Expires in {n} days — repost to keep it active")
+              : t("This listing has expired")}
           </p>
         )}
         <p style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{selectedListing.description}</p>
 
         <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16, marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 2 }}>Seller</p>
+          <p style={{ fontSize: 13, color: "var(--gray)", marginBottom: 2 }}>{t("Seller")}</p>
           <p style={{ fontWeight: 700 }}>
             {selectedListing.posted_by_admin
-              ? `Posted by ${company?.company_name || "the park"}`
+              ? t("Posted by {park}", { park: company?.company_name || t("the park") })
               : (
                 <>
                   {selectedListing.resident_accounts?.full_name}
-                  {selectedListing.resident_accounts?.rv_lots?.lot_name && ` — Lot ${selectedListing.resident_accounts.rv_lots.lot_name}`}
+                  {selectedListing.resident_accounts?.rv_lots?.lot_name && ` — ${t("Lot {name}", { name: selectedListing.resident_accounts.rv_lots.lot_name })}`}
                 </>
               )}
           </p>
           <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 6 }}>
             {selectedListing.posted_by_admin
-              ? "Contact the office for details."
-              : "Contact them in person at the park, or through the office."}
+              ? t("Contact the office for details.")
+              : t("Contact them in person at the park, or through the office.")}
           </p>
         </div>
 
@@ -337,7 +342,7 @@ export default function MarketplacePage() {
             onClick={() => toggleSaved(selectedListing.id)}
             style={{ background: "none", border: "1.5px solid var(--border)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}
           >
-            {savedIds.includes(selectedListing.id) ? "❤️ Saved" : "🤍 Save"}
+            {savedIds.includes(selectedListing.id) ? t("❤️ Saved") : t("🤍 Save")}
           </button>
         )}
 
@@ -345,17 +350,17 @@ export default function MarketplacePage() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {selectedListing.status === "active" && (
               <button onClick={() => markSold(selectedListing.id)} style={{ background: "var(--black)", color: "#fff", border: "1.5px solid var(--black)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                Mark as Sold
+                {t("Mark as Sold")}
               </button>
             )}
             <button onClick={() => repostListing(selectedListing.id)} style={{ background: "#fff", color: "var(--black)", border: "1.5px solid var(--black)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-              🔁 Repost
+              {t("🔁 Repost")}
             </button>
             <button onClick={() => { startEdit(selectedListing); setSelectedListing(null); }} style={{ background: "#fff", color: "var(--black)", border: "1.5px solid var(--black)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-              Edit
+              {t("Edit")}
             </button>
             <button onClick={() => deleteListing(selectedListing.id)} style={{ background: "none", border: "1.5px solid var(--border)", color: "var(--gray)", padding: "10px 20px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-              Delete
+              {t("Delete")}
             </button>
           </div>
         )}
@@ -373,7 +378,7 @@ export default function MarketplacePage() {
           <button
             onClick={(e) => shareListing(e, l.id)}
             style={{ background: "rgba(255,255,255,0.9)", border: "none", borderRadius: "50%", width: 28, height: 28, fontSize: 13, cursor: "pointer" }}
-            title="Share"
+            title={t("Share")}
           >
             {shareConfirm === l.id ? "✅" : "🔗"}
           </button>
@@ -390,20 +395,20 @@ export default function MarketplacePage() {
           <img src={cover.photo_url} alt={l.title} style={{ width: "100%", height: 150, objectFit: "cover" }} />
         ) : (
           <div style={{ width: "100%", height: 150, background: "var(--gray-light)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--gray)", fontSize: 12 }}>
-            No photo
+            {t("No photo")}
           </div>
         )}
         <div style={{ padding: 10 }}>
           <p style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{l.title}</p>
           <p style={{ fontWeight: 900, fontSize: 15, color: "var(--red)" }}>
-            {l.price != null ? `$${Number(l.price).toLocaleString()}` : "Free / OBO"}
+            {l.price != null ? money(l.price) : t("Free / OBO")}
           </p>
           {l.status === "sold" && (
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>SOLD</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>{t("SOLD")}</span>
           )}
           {mine && tab === "mine" && left != null && (
             <p style={{ fontSize: 11, color: left <= 5 ? "#dc2626" : "var(--gray)", marginTop: 2 }}>
-              {left > 0 ? `Expires in ${left}d` : "Expired"}
+              {left > 0 ? t("Expires in {n}d", { n: left }) : st("Expired")}
             </p>
           )}
         </div>
@@ -413,35 +418,38 @@ export default function MarketplacePage() {
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
-      <button onClick={() => router.push("/residents/dashboard")} style={{ background: "none", border: "none", fontSize: 14, color: "var(--gray)", cursor: "pointer", marginBottom: 20 }}>
-        ← Back to Dashboard
-      </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+        <button onClick={() => router.push("/residents/dashboard")} style={{ background: "none", border: "none", fontSize: 14, color: "var(--gray)", cursor: "pointer" }}>
+          ← {t("Back to Dashboard")}
+        </button>
+        <PortalLangSwitcher compact />
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 900 }}>🛍️ Marketplace</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 900 }}>{t("🛍️ Marketplace")}</h1>
         <button
           onClick={() => { resetForm(); setShowForm(true); }}
           style={{ background: "var(--red)", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}
         >
-          + Post a Listing
+          {t("+ Post a Listing")}
         </button>
       </div>
 
       {showForm && (
         <div style={{ border: "2px solid var(--black)", borderRadius: 8, padding: 20, marginBottom: 24 }}>
-          <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{editingId ? "Edit Listing" : "New Listing"}</h2>
+          <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{editingId ? t("Edit Listing") : t("New Listing")}</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input placeholder="Title (e.g. Patio Chairs, Bike Rack...)" value={title} onChange={(e) => setTitle(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
-            <textarea placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+            <input placeholder={t("Title (e.g. Patio Chairs, Bike Rack...)")} value={title} onChange={(e) => setTitle(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+            <textarea placeholder={t("Description")} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <input type="number" placeholder="Price ($, leave blank for free/OBO)" value={price} onChange={(e) => setPrice(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
+              <input type="number" placeholder={t("Price ($, leave blank for free/OBO)")} value={price} onChange={(e) => setPrice(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }} />
               <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
-                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: 13, color: "var(--gray)", display: "block", marginBottom: 6 }}>
-                Photos (up to 10)
+                {t("Photos (up to 10)")}
               </label>
               <input
                 type="file"
@@ -450,7 +458,7 @@ export default function MarketplacePage() {
                 onChange={(e) => {
                   const files = Array.from(e.target.files || []);
                   if (files.length > 10) {
-                    void portalAlert("You can upload up to 10 photos. Only the first 10 will be used.");
+                    void portalAlert(t("You can upload up to 10 photos. Only the first 10 will be used."));
                   }
                   setPhotoFiles(files.slice(0, 10));
                 }}
@@ -461,7 +469,7 @@ export default function MarketplacePage() {
                     <div key={i} style={{ position: "relative", aspectRatio: "1 / 1", borderRadius: 6, overflow: "hidden", border: "1px solid var(--border)" }}>
                       <img
                         src={URL.createObjectURL(file)}
-                        alt={`Preview ${i + 1}`}
+                        alt={t("Preview {n}", { n: i + 1 })}
                         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                       />
                       <button
@@ -479,32 +487,32 @@ export default function MarketplacePage() {
           </div>
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
             <button onClick={saveListing} disabled={saving} style={{ background: "#000", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 6, fontWeight: 700, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}>
-              {saving ? "Saving..." : editingId ? "Update Listing" : "Post Listing"}
+              {saving ? t("Saving...") : editingId ? t("Update Listing") : t("Post Listing")}
             </button>
-            <button onClick={resetForm} style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer" }}>Cancel</button>
+            <button onClick={resetForm} style={{ background: "none", border: "none", color: "var(--gray)", cursor: "pointer" }}>{t("Cancel")}</button>
           </div>
         </div>
       )}
 
       <div style={{ display: "flex", gap: 20, marginBottom: 16, borderBottom: "1.5px solid var(--border)" }}>
-        <button onClick={() => setTab("browse")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "browse" ? "2px solid var(--red)" : "none", color: tab === "browse" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>Browse</button>
-        <button onClick={() => setTab("mine")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "mine" ? "2px solid var(--red)" : "none", color: tab === "mine" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>My Listings</button>
-        <button onClick={() => setTab("saved")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "saved" ? "2px solid var(--red)" : "none", color: tab === "saved" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>Saved</button>
+        <button onClick={() => setTab("browse")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "browse" ? "2px solid var(--red)" : "none", color: tab === "browse" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>{t("Browse")}</button>
+        <button onClick={() => setTab("mine")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "mine" ? "2px solid var(--red)" : "none", color: tab === "mine" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>{t("My Listings")}</button>
+        <button onClick={() => setTab("saved")} style={{ background: "none", border: "none", padding: "10px 0", fontWeight: 700, borderBottom: tab === "saved" ? "2px solid var(--red)" : "none", color: tab === "saved" ? "var(--black)" : "var(--gray)", cursor: "pointer" }}>{t("Saved")}</button>
       </div>
 
       {tab === "browse" && (
         <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
-          <input placeholder="Search listings..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, flex: 1, minWidth: 180 }} />
+          <input placeholder={t("Search listings...")} value={search} onChange={(e) => setSearch(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10, flex: 1, minWidth: 180 }} />
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={{ border: "1.5px solid var(--border)", borderRadius: 6, padding: 10 }}>
-            <option value="All">All Categories</option>
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            <option value="All">{t("All Categories")}</option>
+            {CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
           </select>
         </div>
       )}
 
       {tab === "browse" && newForYou.length > 0 && (
         <div style={{ marginBottom: 28 }}>
-          <h2 style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>🆕 New For You</h2>
+          <h2 style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>{t("🆕 New For You")}</h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
             {newForYou.map((l) => renderListingCard(l))}
           </div>
@@ -512,9 +520,9 @@ export default function MarketplacePage() {
       )}
 
       {loading ? (
-        <p style={{ color: "var(--gray)" }}>Loading...</p>
+        <p style={{ color: "var(--gray)" }}>{t("Loading...")}</p>
       ) : visibleListings.length === 0 ? (
-        <p style={{ color: "var(--gray)" }}>{tab === "mine" ? "You haven't posted anything yet." : "No listings yet."}</p>
+        <p style={{ color: "var(--gray)" }}>{tab === "mine" ? t("You haven't posted anything yet.") : t("No listings yet.")}</p>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
           {visibleListings.map((l) => renderListingCard(l))}
