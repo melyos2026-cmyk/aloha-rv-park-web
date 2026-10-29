@@ -39,7 +39,7 @@ export type NotifyEvent = {
 
 export const NOTIFY_CATEGORIES: { key: NotifyCategory; title: string; description: string }[] = [
   { key: "payments", title: "Payments", description: "Money coming in from residents and guests." },
-  { key: "park_money", title: "Chargebacks & payouts", description: "Card disputes (chargebacks) and instant payouts to your bank." },
+  { key: "park_money", title: "Chargebacks, payouts & collections", description: "Card disputes (chargebacks), instant payouts to your bank and accounts sent to collections." },
   { key: "applications", title: "Applications", description: "Lease applications and background checks." },
   { key: "residents", title: "Residents", description: "Requests and documents from residents." },
   { key: "bookings", title: "Bookings & sales", description: "Reservations, waitlist, propane and listings." },
@@ -67,6 +67,11 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     types: ["payment_dispute"] },
   { key: "instant_payout", category: "park_money", label: "Instant payout sent", channels: ALL, defaults: BELL_PHONE,
     types: ["instant_payout_sent"] },
+  // Oct 29 (Send to Collections with MMS / American Rent Bureau)
+  { key: "collections_placed", category: "park_money", label: "Account sent to collections", channels: ALL, defaults: BELL_PHONE,
+    types: ["collections_placed"] },
+  { key: "collections_status", category: "park_money", label: "Collections status, recovery or recall", channels: ALL, defaults: BELL_PHONE,
+    types: ["collections_status"] },
   // Applications
   { key: "application_fee_paid", category: "applications", label: "Application fee paid", description: "Includes lot conflicts on a paid application", channels: ALL, defaults: BELL_PHONE,
     types: ["application_fee_paid", "occupant_background_check_paid", "application_lot_conflict"] },

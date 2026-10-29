@@ -342,6 +342,27 @@ async function handleWebhook(req: Request) {
       bellMonthsPaid = (paidInvoices || []).map((inv) => inv.invoice_month);
       allInvoicesAlreadyPaid =
         (paidInvoices || []).length > 0 && invoiceIds.every((id) => alreadyPaidIds.has(id));
+      // Oct 29 (Send to Collections, agreement with MMS §8): an invoice already placed with the
+      // collections agency is NOT marked Paid here — the agency must be told about a direct payment.
+      // The money stays received; the office is alerted (System Health + bell) to tell the agency or
+      // refund. Read separately so this works before collections_mms.sql adds the column. Checked FIRST: no tax/fee
+      // lines and no total changes on a placed invoice either.
+      const placedIds = new Set<string>();
+      let placementColumn = false;
+      {
+        const { data: placedRows, error: placedErr } = await supabase
+          .from("resident_invoices").select("id, invoice_month").in("id", invoiceIds).not("collection_placement_id", "is", null);
+        placementColumn = !placedErr;
+        if (!placedErr) for (const r of placedRows || []) placedIds.add(String(r.id));
+        if (placedIds.size > 0 && !allInvoicesAlreadyPaid) {
+          const companyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+          if (companyId) {
+            const msg = `DIRECT PAYMENT ON AN ACCOUNT WITH THE COLLECTIONS AGENCY: an online payment of $${((session.amount_total || 0) / 100).toFixed(2)} arrived for ${placedIds.size} invoice(s) that are with the collections agency (${(placedRows || []).map((r: any) => r.invoice_month || r.id).join(", ")}). They were NOT marked Paid. Tell the agency about this payment (or refund it in Stripe), then record it in Finance → Collections. Stripe session ${session.id}.`;
+            await logSystemHealthIssue({ companyId, residentId: residentId || null, issueType: "collections_direct_payment", source: "stripe_webhook", message: msg });
+            await supabase.from("resident_update_notifications").insert({ company_id: companyId, resident_name: "Collections", update_type: "collections_status", message: msg }).then(() => null, () => null);
+          }
+        }
+      }
       // Oct 28 (review): invoices "Processing" = another bank payment (bank autopay, or a different
       // bank checkout) is in flight for them. This payment still settles them, but it may be a
       // duplicate — flagged below like alreadyPaidIds. Not when this event IS that bank payment
@@ -430,7 +451,7 @@ async function handleWebhook(req: Request) {
       // the fee/tax lines are added) + tax + fee. A charge added to an invoice after checkout started
       // would otherwise be marked Paid without having been collected. Checked once, on the first
       // delivery that pays the primary invoice.
-      if (primaryInvoiceId && !alreadyPaidIds.has(primaryInvoiceId) && !linesAlreadyAdded) {
+      if (primaryInvoiceId && !alreadyPaidIds.has(primaryInvoiceId) && !placedIds.has(String(primaryInvoiceId)) && !linesAlreadyAdded) {
         const invoicesTotal = (paidInvoices || []).reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
         const expectedCents = Math.round((invoicesTotal + taxCharged + processingFeeCharged) * 100);
         const collectedCents = Number(session.amount_total || 0);
@@ -453,6 +474,7 @@ async function handleWebhook(req: Request) {
       if (
         primaryInvoiceId &&
         !alreadyPaidIds.has(primaryInvoiceId) &&
+        !placedIds.has(String(primaryInvoiceId)) && // Oct 29: never on an invoice that is with the collections agency
         (processingFeeCharged > 0 || taxCharged > 0)
       ) {
         if (taxCharged > 0 && !taxLineThere) {
@@ -489,11 +511,14 @@ async function handleWebhook(req: Request) {
       // Oct 28 (review): never silently overwrite an invoice that is already Paid. Pending and
       // Processing (bank clearing) invoices are flipped — and, as before, other unpaid statuses
       // (e.g. Written Off / Sent to Collections paid through the guest link), since the money arrived.
-      const { error: invoiceUpdateError } = await supabase
+      const toMarkPaid = invoiceIds.filter((id) => !placedIds.has(String(id)));
+      let paidUpdate = supabase
         .from("resident_invoices")
         .update({ status: "Paid" })
-        .in("id", invoiceIds)
+        .in("id", toMarkPaid)
         .neq("status", "Paid");
+      if (placementColumn) paidUpdate = paidUpdate.is("collection_placement_id", null); // placed meanwhile → left alone
+      const { error: invoiceUpdateError } = toMarkPaid.length === 0 ? { error: null } : await paidUpdate;
 
       // Any invoice that was already Paid before this payment arrived → possibly paid twice.
       if (alreadyPaidIds.size > 0) {

@@ -41,6 +41,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This invoice has already been paid." }, { status: 400 });
     }
     // Oct 28: a bank (ACH) payment for this invoice is still clearing — it must not be paid twice.
+    // Oct 29 (Send to Collections): an invoice placed with the collections agency is paid to the agency,
+    // never through this link.
+    if ((invoice as any).collection_placement_id) {
+      return NextResponse.json({ error: "This balance was referred to a collections agency. Please contact the park office." }, { status: 400 });
+    }
     if (invoice.status === "Processing") {
       return NextResponse.json({ error: "A bank payment for this invoice is already processing (3–5 business days). Nothing to pay right now." }, { status: 400 });
     }
