@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
   }
   if (b.action !== "sign") return NextResponse.json({ error: "Unknown action." }, { status: 400 });
 
-  if (a.status === "signed") return NextResponse.json({ error: "You already signed this addendum." }, { status: 400 });
-  if (a.status !== "pending") return NextResponse.json({ error: "The office withdrew this addendum." }, { status: 400 });
+  if (a.status === "signed") return NextResponse.json({ error: "You already signed this agreement." }, { status: 400 });
+  if (a.status !== "pending") return NextResponse.json({ error: "The office withdrew this agreement." }, { status: 400 });
   // The text must be exactly what was frozen when sent, AND exactly what this resident was shown.
   if (sha(String(a.body)) !== a.body_sha256 || String(b.bodySha256 || "") !== a.body_sha256) {
     return NextResponse.json({ error: "This addendum was updated by the office. Please close it, open it again, and read the current text before signing." }, { status: 409 });
@@ -142,8 +142,8 @@ export async function POST(req: NextRequest) {
       sentAt: a.sent_at, sentByName: a.sent_by_name, sentBySignature: a.sent_by_signature || null, sentByTitle: a.sent_by_title || null,
       viewedAt: a.viewed_at || signedAt.toISOString(),
       labels: {
-        signer: "TENANT", company: "LANDLORD", docRef: "Addendum No.", idLabel: "Addendum ID",
-        method: `Signer was signed in to their resident portal at ${c.domain || "the park's website"} with their own login, opened the addendum, checked "I have read and agree to this Lease Addendum, and I adopt this signature and agree to sign electronically", and typed their full name${sig ? `; signature image ${sigStyle || "captured"}` : ""}.`,
+        signer: "RESIDENT", company: "PARK", docRef: "Agreement No.", idLabel: "Agreement ID",
+        method: `Signer was signed in to their resident portal at ${c.domain || "the park's website"} with their own login, opened the agreement, checked "I have read and agree to this Resident Agreement, and I adopt this signature and agree to sign electronically", and typed their full name${sig ? `; signature image ${sigStyle || "captured"}` : ""}.`,
         legal: `Under the federal Electronic Signatures in Global and National Commerce Act (15 U.S.C. § 7001 et seq.)${florida ? " and the Florida Uniform Electronic Transaction Act (§ 668.50, Fla. Stat.)" : " and applicable state law"}, this electronic signature has the same legal effect as a handwritten signature. The document fingerprint above is computed from the exact addendum text; any change to a single character produces a different fingerprint.`,
       },
     });
@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
     if (up.error) throw up.error;
     const { data: doc } = await supabase.from("resident_documents").insert({
       company_id: r.company_id, resident_id: r.id,
-      file_name: `${String(a.title).replace(/[^\w\s.—-]+/g, "").trim() || "Lease Addendum"} (signed ${day})`,
+      file_name: `${String(a.title).replace(/[^\w\s.—-]+/g, "").trim() || "Resident Agreement"} (signed ${day})`,
       file_url: path, document_type: "lease_addendum", uploaded_at: signedAt.toISOString(),
     }).select("id").maybeSingle();
     await supabase.from("resident_lease_addenda").update({ pdf_path: path, document_id: doc?.id || null }).eq("id", a.id);

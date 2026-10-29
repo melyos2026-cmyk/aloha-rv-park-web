@@ -105,7 +105,7 @@ export default function LeaseAddendaCard({ residentId, fullName, parkName, landl
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "#b45309" }}>Action needed</div>
             <h2 style={{ fontWeight: 900, fontSize: 19, margin: "4px 0 6px" }}>Please review and sign: {a.title}</h2>
             <p style={{ color: "#4b5563", fontSize: 14, margin: 0 }}>
-              {parkName} sent you a short addendum to your current rental agreement{a.lot_name ? ` for Lot ${a.lot_name}` : ""}. Everything else in your agreement stays the same. Sent {day(a.last_sent_at || a.sent_at)}.
+              {parkName} sent you a short agreement that puts in writing the park's rule for returned payments{a.lot_name ? ` for Lot ${a.lot_name}` : ""}. Everything else about your rental stays the same. Sent {day(a.last_sent_at || a.sent_at)}.
             </p>
           </div>
           <button type="button" style={btn} onClick={() => show(a)}>Review and sign</button>
@@ -121,12 +121,12 @@ export default function LeaseAddendaCard({ residentId, fullName, parkName, landl
             </div>
             <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "20px 22px", background: "#fff" }}>
               <ContractText body={open.body} owner={fullName} marina={landlord || parkName} sentBy={open.sent_by_name} sentAt={open.sent_at}
-                sentBySignature={open.sent_by_signature} sentByTitle={open.sent_by_title} labels={{ owner: "TENANT", company: "LANDLORD" }} />
+                sentBySignature={open.sent_by_signature} sentByTitle={open.sent_by_title} labels={{ owner: "RESIDENT", company: "PARK" }} />
             </div>
             <div style={{ display: "grid", gap: 10 }}>
               <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 14 }}>
                 <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18 }} />
-                <span><b>I have read and agree</b> to this Lease Addendum, and I adopt the signature below and agree to sign electronically.</span>
+                <span><b>I have read and agree</b> to this Resident Agreement, and I adopt the signature below and agree to sign electronically.</span>
               </label>
               <label style={{ fontSize: 14, fontWeight: 600 }}>Type your full name to sign
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={fullName} autoComplete="name"
@@ -138,12 +138,12 @@ export default function LeaseAddendaCard({ residentId, fullName, parkName, landl
                 <span style={{ fontFamily: `"${FONT.font}", cursive`, fontSize: 40, color: "#0f2540", whiteSpace: "nowrap" }}>{name.trim() || fullName}</span>
               </div>
               <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#6b7280", margin: 0 }}>
-                By checking the box and pressing <b>Sign addendum</b>, I agree that the signature shown above, together with my typed name, is my electronic signature on this addendum, the same as a pen-and-paper signature. I consent to receive this addendum and related notices electronically, and I understand I can download a signed copy from Documents. My name, the date and time, my IP address and device are recorded with my signature.
+                By checking the box and pressing <b>Sign agreement</b>, I agree that the signature shown above, together with my typed name, is my electronic signature on this agreement, the same as a pen-and-paper signature. I consent to receive this agreement and related notices electronically, and I understand I can download a signed copy from Documents. My name, the date and time, my IP address and device are recorded with my signature.
               </p>
               {err && <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", borderRadius: 8, padding: "10px 12px", fontSize: 14 }}>{err}</div>}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button type="button" style={ghost} onClick={close}>Not now</button>
-                <button type="button" style={{ ...btn, opacity: busy || !agree || !name.trim() ? 0.5 : 1, cursor: busy || !agree || !name.trim() ? "not-allowed" : "pointer" }} disabled={busy || !agree || !name.trim()} onClick={sign}>{busy ? "Signing…" : "Sign addendum"}</button>
+                <button type="button" style={{ ...btn, opacity: busy || !agree || !name.trim() ? 0.5 : 1, cursor: busy || !agree || !name.trim() ? "not-allowed" : "pointer" }} disabled={busy || !agree || !name.trim()} onClick={sign}>{busy ? "Signing…" : "Sign agreement"}</button>
               </div>
             </div>
           </div>

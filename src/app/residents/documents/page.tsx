@@ -40,7 +40,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   registration: "Registration",
   move_out_statement: "Move-Out / Cancellation Statement",
   bill_of_sale: "Bill of Sale",
-  lease_addendum: "Lease Addendum (signed online)",
+  lease_addendum: "Resident Agreement (signed online)",
 };
 
 function documentTypeLabel(documentType: string) {

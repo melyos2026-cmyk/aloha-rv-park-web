@@ -1798,7 +1798,7 @@ export default function ResidentDashboard() {
               <div className="rp-links">
             <button onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement and any signed addenda.</p>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement and any signed resident agreements.</p>
             </button>
             {activeLease && (
               <button
