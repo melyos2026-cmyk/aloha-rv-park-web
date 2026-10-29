@@ -12,9 +12,20 @@ export default function MaintenancePage() {
   const [priority, setPriority] = useState("Normal");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [message, setMessage] = useState("");
+  // Oct 28 (per Mely): the park's switch "Residents can send maintenance requests from their portal"
+  // (admin Maintenance Requests module). Off by default. null = still loading.
+  // When off, residents can still see / cancel requests they already sent.
+  const [enabled, setEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
     loadRequests();
+    const residentId = localStorage.getItem("resident_id");
+    if (residentId) {
+      fetch(`/api/portal/fee-settings?residentId=${residentId}`)
+        .then((r) => r.json())
+        .then((d) => setEnabled(d?.maintenanceRequestsEnabled === true))
+        .catch(() => setEnabled(false));
+    }
   }, []);
 
   async function loadRequests() {
@@ -161,9 +172,12 @@ export default function MaintenancePage() {
             <div>
               <h1 style={{ fontSize: 30, fontWeight: 800, color: "#000" }}>Maintenance Requests</h1>
               <p style={{ marginTop: 14, fontSize: 16, color: "#000" }}>
-                Report issues and track maintenance progress.
+                {enabled === false
+                  ? "Maintenance requests are handled by the office — please call or message us."
+                  : "Report issues and track maintenance progress."}
               </p>
             </div>
+            {enabled === true && (
             <button
               onClick={() => setShowForm(true)}
               style={{
@@ -180,6 +194,7 @@ export default function MaintenancePage() {
             >
               + New Request
             </button>
+            )}
           </div>
         </div>
 
@@ -189,7 +204,7 @@ export default function MaintenancePage() {
           </div>
         )}
 
-        {showForm && (
+        {showForm && enabled === true && (
           <div style={cardStyle}>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#000", marginBottom: 20 }}>
               New Maintenance Request
@@ -352,7 +367,7 @@ export default function MaintenancePage() {
         )}
 
         {requests.length === 0 ? (
-          <div style={cardStyle}>
+          enabled === false ? null : <div style={cardStyle}>
             <p style={{ color: "#000" }}>No maintenance requests found.</p>
           </div>
         ) : (

@@ -255,6 +255,9 @@ export default function ResidentDashboard() {
   // Oct 19 (per Mely): golf cart settings from Lease Defaults
   const [golfCartsMax, setGolfCartsMax] = useState(2);
   const [golfCartInsuranceRequired, setGolfCartInsuranceRequired] = useState(true);
+  // Oct 28 (per Mely): park switch "Residents can send maintenance requests from their portal"
+  // (admin Maintenance Requests module) — OFF by default. Off = no maintenance card/list/lines.
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
   const [petsMessage, setPetsMessage] = useState("");
 
   // Aug 4: resident_payments (the legacy billing table) was fully unified
@@ -367,6 +370,7 @@ export default function ResidentDashboard() {
     setPetRestrictions(feeSettingsData?.petRestrictions || "");
     setGolfCartsMax(typeof feeSettingsData?.golfCartsMax === "number" ? feeSettingsData.golfCartsMax : 2);
     setGolfCartInsuranceRequired(feeSettingsData?.golfCartInsuranceRequired !== false);
+    setMaintenanceEnabled(feeSettingsData?.maintenanceRequestsEnabled === true);
     setAchEnabled(!!feeSettingsData?.achEnabled);
     setAchMinAmount(typeof feeSettingsData?.achMinAmount === "number" ? feeSettingsData.achMinAmount : 100);
     setPassProcessingFee(feeSettingsData?.passProcessingFeeToResident !== false);
@@ -1037,7 +1041,7 @@ export default function ResidentDashboard() {
     ? resident.pet_details.filter((p: any) => p?.shots_provided === "no")
     : [];
   const propaneReady = propaneOrders.filter((o: any) => !o.redeemed);
-  const openMaintenance = (maintenanceRequests || []).filter((r: any) => !/complete|closed|resolved|done|cancel/i.test(String(r.status || "")));
+  const openMaintenance = !maintenanceEnabled ? [] : (maintenanceRequests || []).filter((r: any) => !/complete|closed|resolved|done|cancel/i.test(String(r.status || "")));
 
   type AttnItem = { key: string; text: string; sub?: string; tone: "bad" | "warn" | "info"; go: SectionId; href?: string; anchor?: string };
   const attention: AttnItem[] = [];
@@ -1073,6 +1077,10 @@ export default function ResidentDashboard() {
   const moreTabBadge = (badge.household || 0) + (badge.requests || 0) + (badge.more || 0);
   const Badge = ({ n }: { n?: number }) => (n ? <span className="rp-nav-badge">{n}</span> : null);
   const sectionTitle = SECTIONS.find((x) => x.id === section)?.label || "";
+  // Oct 28 (per Mely): Requests holds maintenance (if the park turned it on) and propane orders.
+  // Nothing to show there → hide the Requests nav item too.
+  const requestsVisible = maintenanceEnabled || propaneOrders.length > 0;
+  const navSections = SECTIONS.filter((x) => x.id !== "requests" || requestsVisible);
   function goTo(item: { go: SectionId; anchor?: string }) {
     if (item.anchor) { window.location.hash = item.anchor; return; }
     openSection(item.go);
@@ -1201,7 +1209,7 @@ export default function ResidentDashboard() {
       <section className="rp-wrap">
         <div className="rp-portal">
           <nav className="rp-nav" aria-label="Resident portal">
-            {SECTIONS.map((x) => (
+            {navSections.map((x) => (
               <button key={x.id} type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined}>
                 <NavIcon d={x.id === "more" ? "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" : x.icon} /><span>{x.label}</span><Badge n={badge[x.id]} />
               </button>
@@ -2093,10 +2101,15 @@ export default function ResidentDashboard() {
 
             {section === "requests" && (<>
               <div id="maintenance" className="rp-anchor">
+          {maintenanceEnabled && (
           <div onClick={() => router.push("/residents/maintenance")} style={{ ...card, cursor: "pointer" }}>
             <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Maintenance Requests</h2>
             <p style={{ color: "var(--gray)", fontSize: 13 }}>Report issues and track maintenance progress.</p>
           </div>
+          )}
+          {!requestsVisible && (
+            <div style={card}><p style={{ color: "var(--gray)", fontSize: 13 }}>Maintenance requests are handled by the office — please call or message us.</p></div>
+          )}
               </div>
               {openMaintenance.length > 0 && (
                 <div style={card}>
@@ -2202,7 +2215,7 @@ export default function ResidentDashboard() {
             {section === "more" && (<>
               <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" />
               <div className="rp-more-list">
-                {(["household", "requests"] as SectionId[]).map((id) => {
+                {(["household", "requests"] as SectionId[]).filter((id) => id !== "requests" || requestsVisible).map((id) => {
                   const x = SECTIONS.find((s) => s.id === id)!;
                   return <button key={id} type="button" onClick={() => openSection(id)}><NavIcon d={x.icon} /><span>{x.label}</span><Badge n={badge[id]} /><span className="rp-attn-go">→</span></button>;
                 })}

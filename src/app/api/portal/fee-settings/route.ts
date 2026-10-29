@@ -69,6 +69,9 @@ export async function GET(req: NextRequest) {
       return v === undefined || v === "" || v === null ? 2 : Number(v) || 0;
     })(),
     golfCartInsuranceRequired: (parkSettings as any)?.lease_defaults?.golf_cart_insurance_required !== false,
+    // Oct 28 (per Mely): "Residents can send maintenance requests from their portal" — the park's
+    // switch in the admin Maintenance Requests module. DEFAULT OFF (missing = off).
+    maintenanceRequestsEnabled: (parkSettings as any)?.lease_defaults?.portal_maintenance_requests === true,
     // Oct 28 (per Mely): bank (ACH) payments in the portal — same rule and fee constants the
     // checkout route uses (src/lib/platformFee.ts), so the portal shows the exact fee for each choice.
     // Oct 28 (per Mely): bank options (pay by bank, bank autopay, the "pay by bank" banner) only when

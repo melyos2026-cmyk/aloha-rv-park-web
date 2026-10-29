@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
 import { sniff } from "@/lib/marina/fileType";
+import { portalMaintenanceEnabled, MAINTENANCE_OFF_MESSAGE } from "@/lib/portalMaintenanceFlag";
 
 // POST /api/portal/maintenance-add-photo  (multipart: residentId, requestId, file)
 // Oct 24 (security run): the photo is uploaded here by the server — never from the browser — to
@@ -26,6 +27,10 @@ export async function POST(req: NextRequest) {
     .eq("resident_id", residentId)
     .maybeSingle();
   if (!request) return NextResponse.json({ error: "Request not found." }, { status: 404 });
+  // Oct 28 (per Mely): the park's switch — off by default.
+  if (!(await portalMaintenanceEnabled(request.company_id))) {
+    return NextResponse.json({ error: MAINTENANCE_OFF_MESSAGE, maintenanceRequestsDisabled: true }, { status: 403 });
+  }
 
   const { count } = await supabase.from("maintenance_request_photos").select("id", { count: "exact", head: true }).eq("request_id", requestId);
   if ((count || 0) >= 10) return NextResponse.json({ error: "Up to 10 photos per request." }, { status: 400 });

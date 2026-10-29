@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { portalMaintenanceEnabled, MAINTENANCE_OFF_MESSAGE } from "@/lib/portalMaintenanceFlag";
 
 // POST /api/portal/create-maintenance-request
 // Body: { residentId, subject, description, priority }
@@ -26,6 +27,11 @@ export async function POST(req: NextRequest) {
 
   if (residentError || !resident) {
     return NextResponse.json({ error: "Resident not found." }, { status: 404 });
+  }
+
+  // Oct 28 (per Mely): the park's switch — off by default.
+  if (!(await portalMaintenanceEnabled(resident.company_id))) {
+    return NextResponse.json({ error: MAINTENANCE_OFF_MESSAGE, maintenanceRequestsDisabled: true }, { status: 403 });
   }
 
   const { data: request, error } = await supabase

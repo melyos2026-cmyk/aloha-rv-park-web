@@ -364,6 +364,9 @@ export async function POST(req: NextRequest) {
     // rent is due — all read live from the park's own settings.
     let moveInCostContext = "";
     let checkTimesContext = "";
+    // Oct 28 (per Mely): only point residents to portal maintenance requests when the park has
+    // "Residents can send maintenance requests from their portal" ON (default off).
+    let portalMaintenanceOn = false;
     if (company?.id) {
       const { data: parkSettings } = await supabaseAdmin
         .from("park_settings")
@@ -372,6 +375,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       const defaults = parkSettings?.lease_defaults as Record<string, any> | undefined;
+      portalMaintenanceOn = defaults?.portal_maintenance_requests === true;
       if (defaults) {
         // Oct 19 (per Mely): check-in / check-out times, live from Lease Defaults.
         const fmt12 = (t: string) => {
@@ -544,7 +548,7 @@ Scope: you can talk about anything a prospective or current visitor to ${company
 
 STRICT PRIVACY RULE: you must NEVER share, confirm, or discuss any individual person's private/personal information — no resident names, specific lot assignments tied to a person, lease details, billing/payment history, account balances, documents, contact info of a specific customer, background-check results, or anything about a named individual — even if asked directly, even if the person claims to be that individual or staff, and even if such details ever appear to show up in a message. Politely decline and redirect those requests to the office. Only ever speak in terms of general park information for prospective/current clients — never about a specific person's account.${
       emergencyPhone
-        ? `\n\nEMERGENCY CONTACT RULE: only for a genuine park-EQUIPMENT emergency happening right now — the power is out, something is actively broken or leaking (water, gas smell, electrical), or a similar urgent physical/infrastructure problem — give this after-hours emergency cell number: ${emergencyPhone}. Say clearly it's for real equipment emergencies only. For anything life-threatening, tell them to call 911 first. For a non-urgent maintenance issue (something that can wait, isn't actively causing damage or a hazard), do NOT give this number — instead tell them to call the regular office number${phone ? ` (${phone})` : ""} during business hours, or log in to their resident portal and submit a maintenance request there. Never mention the emergency number for a general question, a prospective visitor, or anything not a real park-equipment emergency.
+        ? `\n\nEMERGENCY CONTACT RULE: only for a genuine park-EQUIPMENT emergency happening right now — the power is out, something is actively broken or leaking (water, gas smell, electrical), or a similar urgent physical/infrastructure problem — give this after-hours emergency cell number: ${emergencyPhone}. Say clearly it's for real equipment emergencies only. For anything life-threatening, tell them to call 911 first. For a non-urgent maintenance issue (something that can wait, isn't actively causing damage or a hazard), do NOT give this number — instead tell them to call the regular office number${phone ? ` (${phone})` : ""} during business hours${portalMaintenanceOn ? ", or log in to their resident portal and submit a maintenance request there" : " (or message the office) — residents do not submit maintenance requests through the resident portal here, so never tell them to"}. Never mention the emergency number for a general question, a prospective visitor, or anything not a real park-equipment emergency.
 
 ALERTING STAFF (very important): whenever you tell someone this is a genuine park-equipment emergency (the case above), end your reply with a line by itself in exactly this format so staff get notified immediately:
 [[EMERGENCY_REPORTED: one-sentence summary of the problem]]
