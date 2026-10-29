@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
-import { usePortalLang } from "@/lib/portalI18n";
+import { usePortalLang, formatDate } from "@/lib/portalI18n";
 import {
   ResponsiveContainer,
   BarChart,
@@ -71,7 +71,7 @@ export default function ElectricHistoryPage() {
   const chartData = monthNames.map((monthName, mi) => {
     const reading = filteredReadings.find(item => item.billing_month?.startsWith(monthName));
     return {
-      month: lang === "en" ? monthName.slice(0, 3) : new Date(Date.UTC(2000, mi, 1)).toLocaleDateString(locale, { month: "short", timeZone: "UTC" }).replace(".", ""),
+      month: lang === "en" ? monthName.slice(0, 3) : formatDate(lang, `2000-${String(mi + 1).padStart(2, "0")}-01`, { month: "short" }).replace(".", ""),
       usage: Number(reading?.usage_kwh || 0),
       charge: Number(reading?.charge_amount || 0),
       isCurrent: monthName === currentMonthName,
