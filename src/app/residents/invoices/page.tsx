@@ -22,6 +22,7 @@ type Invoice = {
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [generateDay, setGenerateDay] = useState<number | undefined>(undefined); // company invoice day (Oct 29)
   const [itemsByInvoice, setItemsByInvoice] = useState<Record<string, InvoiceItem[]>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +61,7 @@ export default function InvoicesPage() {
         return;
       }
       setInvoices(result.invoices || []);
+      if (Number(result.invoiceGenerateDay) > 0) setGenerateDay(Number(result.invoiceGenerateDay));
     } catch (err: any) {
       setMessage("Could not load invoices (unexpected error): " + (err?.message || err));
     }
@@ -285,10 +287,12 @@ export default function InvoicesPage() {
                       >
                         {invoice.status === "Processing"
                           ? "Processing (bank)"
+                          : (invoice.status || "Pending") === "Pending" && (invoice as any).preparing_reason === "electric"
+                          ? (invoice as any).preparing_message
                           : (invoice.status || "Pending") === "Pending" && (invoice as any).preparing_until
                           ? `Being prepared — available ${(invoice as any).preparing_until}`
                           : (invoice.status || "Pending") === "Pending" && !isInvoicePayableNow(invoice.invoice_month)
-                          ? `Upcoming — available to pay on ${invoicePayableFrom(invoice.invoice_month)}`
+                          ? `Upcoming — available to pay on ${invoicePayableFrom(invoice.invoice_month, undefined, generateDay)}`
                           : invoice.status || "Pending"}
                       </span>
                       <span style={{ fontSize: 22, fontWeight: 800, color: "#000" }}>

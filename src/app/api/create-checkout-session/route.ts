@@ -4,8 +4,8 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError, returnedFeeRuleToDisclose } from "@/lib/platformFee";
 import { achAllowed } from "@/lib/marina/checkout";
-import { isInvoicePayableNow } from "@/lib/invoicePayable";
-import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
+import { isInvoicePayableNow, isPayAheadInvoice } from "@/lib/invoicePayable";
+import { invoicesPreparing, moveInInvoiceIds } from "@/lib/invoiceRentReady";
 import { requireMatchingSession } from "@/lib/portalSession";
 import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { closeOtherInvoiceCheckouts } from "@/lib/invoiceCheckoutSessions";
@@ -20,6 +20,9 @@ export async function POST(req: Request) {
     const { residentId } = body;
     // Oct 28 (per Mely): residents may pay by bank (ACH) — far cheaper for them. Default is card.
     const ach = body?.method === "ach";
+    // Oct 29 (review B1): paying ahead is optional. "due" (default) = only what is owed now (this month,
+    // past months, anything whose due date arrived); "ahead" = only next month's not-yet-due invoice.
+    const scope: "due" | "ahead" = body?.scope === "ahead" ? "ahead" : "due";
 
     if (!residentId) {
       return NextResponse.json({ error: "Missing resident ID" }, { status: 400 });
@@ -49,12 +52,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: invoicesError.message }, { status: 400 });
     }
 
-    // Oct 28 (review): a future month's invoice (e.g. next month's electric-only invoice) is not
-    // payable until that month starts — see src/lib/invoicePayable.ts.
-    const monthPayable = (pendingRows || []).filter((inv) => isInvoicePayableNow(inv.invoice_month));
-    // Oct 28 (review): this month's invoice isn't payable until the rent is on it (src/lib/invoiceRentReady.ts).
-    const awaitingRent = await invoicesAwaitingRent(residentId, monthPayable);
-    const invoices = monthPayable.filter((inv) => !awaitingRent.has(inv.id));
+    // Oct 29 (per Mely): this month and earlier, plus NEXT month's invoice (created in advance on the
+    // invoice generation day, default the 27th) — two or more months ahead never (src/lib/invoicePayable.ts).
+    // Oct 29 (review): the move-in invoice is always part of Pay Now ("due"), never "Pay ahead".
+    const moveInIds = await moveInInvoiceIds(residentId, pendingRows || []);
+    const monthPayable = (pendingRows || [])
+      .filter((inv) => isInvoicePayableNow(inv.invoice_month))
+      .map((inv) => (moveInIds.has(inv.id) ? { ...inv, is_move_in: true } : inv));
+    // Oct 28 (review) / Oct 29: not while an invoice waits for its rent, and next month's not before the
+    // generation day (src/lib/invoiceRentReady.ts).
+    const awaitingRent = await invoicesPreparing(residentId, monthPayable);
+    const invoices = monthPayable.filter((inv) => !awaitingRent.has(inv.id) && (scope === "ahead" ? isPayAheadInvoice(inv) : !isPayAheadInvoice(inv)));
 
     const totalAmount = (invoices || []).reduce(
       (sum, invoice) => sum + Number(invoice.total_amount || 0),
@@ -62,11 +70,12 @@ export async function POST(req: Request) {
     );
 
     if (totalAmount <= 0) {
-      if (awaitingRent.size > 0) {
-        const when = Array.from(awaitingRent.values())[0];
-        return NextResponse.json({ error: `Your invoice is being prepared — it will be available to pay after rent is added on ${when}.` }, { status: 400 });
+      const scoped = monthPayable.filter((inv) => awaitingRent.has(inv.id) && (scope === "ahead" ? isPayAheadInvoice(inv) : !isPayAheadInvoice(inv)));
+      if (scoped.length > 0) {
+        const first = awaitingRent.get(scoped[0].id)!;
+        return NextResponse.json({ error: first.reason === "electric" ? first.message : `Your invoice is being prepared — it will be available to pay on ${first.until}.` }, { status: 400 });
       }
-      return NextResponse.json({ error: "No pending balance found." }, { status: 400 });
+      return NextResponse.json({ error: scope === "ahead" ? "There is no invoice to pay ahead right now." : "No pending balance found." }, { status: 400 });
     }
 
     const invoiceIds = (invoices || []).map((invoice) => invoice.id);
@@ -223,6 +232,7 @@ export async function POST(req: Request) {
         // Oct 28: the webhook marks the invoices "Processing" until the bank confirms.
         payment_method: ach ? "ach" : "card",
         source: "portal",
+        pay_scope: scope,
         // Oct 28 (review): the returned-payment fee rule shown to the payer now (used if the bank returns it).
         ...(ach ? { returned_fee_rule: await returnedFeeRuleToDisclose("rv", resident?.company_id || null) } : {}),
       },

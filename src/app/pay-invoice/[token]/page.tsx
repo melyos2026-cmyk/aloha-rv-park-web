@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
+import { isInvoicePayableNow, invoicePayableFrom, isPayAheadInvoice } from "@/lib/invoicePayable";
 
 type InvoiceInfo = {
   lotName: string | null;
@@ -11,6 +11,9 @@ type InvoiceInfo = {
   dueDate: string;
   status: string;
   preparingUntil?: string | null;
+  preparingMessage?: string | null;
+  invoiceGenerateDay?: number;
+  isMoveIn?: boolean;
 };
 
 function PayInvoiceContent() {
@@ -102,18 +105,26 @@ function PayInvoiceContent() {
 
           {!loading && info && info.status !== "Paid" && info.status !== "Processing" && !isInvoicePayableNow(info.invoiceMonth) && (
             <p style={{ background: "#f3f4f6", color: "#374151", padding: 12, borderRadius: 8, fontSize: 14 }}>
-              Upcoming — the {info.invoiceMonth} invoice is available to pay on {invoicePayableFrom(info.invoiceMonth)}.
+              Upcoming — the {info.invoiceMonth} invoice is available to pay on {info.preparingUntil || invoicePayableFrom(info.invoiceMonth, undefined, info.invoiceGenerateDay || undefined)}.
             </p>
           )}
 
           {!loading && info && info.status !== "Paid" && info.status !== "Processing" && isInvoicePayableNow(info.invoiceMonth) && info.preparingUntil && (
             <p style={{ background: "#f3f4f6", color: "#374151", padding: 12, borderRadius: 8, fontSize: 14 }}>
-              Being prepared — the {info.invoiceMonth} invoice is available to pay on {info.preparingUntil}, once rent is added.
+              {info.preparingMessage && info.preparingMessage.startsWith("Your electric reading")
+                ? info.preparingMessage
+                : <>Being prepared — the {info.invoiceMonth} invoice is available to pay on {info.preparingUntil}.</>}
             </p>
           )}
 
           {!loading && info && info.status !== "Paid" && info.status !== "Processing" && isInvoicePayableNow(info.invoiceMonth) && !info.preparingUntil && (
             <>
+              {/* Oct 29 (review B1): next month's invoice — paying it now is optional. */}
+              {isPayAheadInvoice({ invoice_month: info.invoiceMonth, due_date: info.dueDate, is_move_in: info.isMoveIn }) && (
+                <p style={{ background: "#f0fdf4", color: "#166534", padding: 12, borderRadius: 8, fontSize: 14, marginBottom: 12 }}>
+                  This is next month&apos;s invoice (due {info.dueDate}). Paying it now is optional — you are paying ahead.
+                </p>
+              )}
               <p style={{ color: "#555", fontSize: 14, marginBottom: 20 }}>
                 You're paying an outstanding balance for a resident at Aloha RV Park.
                 For their privacy, this page only shows the amount due — not their name or full account.

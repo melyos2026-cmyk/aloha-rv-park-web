@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
-import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
+import { invoicesPreparing, invoiceGenerateDayForResident, moveInInvoiceIds } from "@/lib/invoiceRentReady";
 
 // GET /api/portal/invoices?residentId=...
 // SECURITY (Aug 3, found while building #17): this page previously read
@@ -28,8 +28,16 @@ export async function GET(req: NextRequest) {
 
   // Oct 28 (review): this month's invoice that is still waiting for rent ("being prepared") carries
   // the day it becomes payable, so the portal shows it without a Pay button.
-  const awaitingRent = await invoicesAwaitingRent(residentId, data || []);
+  // Oct 29: preparing_message says why (e.g. next month's electric reading isn't on it yet).
+  const preparing = await invoicesPreparing(residentId, data || []);
+  // Oct 29 (review): the move-in invoice is owed now — the portal never shows it as "Pay ahead".
+  const moveIn = await moveInInvoiceIds(residentId, (data || []).filter((i) => i.status === "Pending"));
   return NextResponse.json({
-    invoices: (data || []).map((inv) => (awaitingRent.has(inv.id) ? { ...inv, preparing_until: awaitingRent.get(inv.id) } : inv)),
+    invoiceGenerateDay: await invoiceGenerateDayForResident(residentId),
+    invoices: (data || []).map((inv) => {
+      const p = preparing.get(inv.id);
+      const row = moveIn.has(inv.id) ? { ...inv, is_move_in: true } : inv;
+      return p ? { ...row, preparing_until: p.until, preparing_reason: p.reason, preparing_message: p.message } : row;
+    }),
   });
 }

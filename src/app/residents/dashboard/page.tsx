@@ -11,7 +11,7 @@ import BankPayBanner from "@/components/BankPayBanner";
 import { returnedFeeSentence } from "@/lib/autopayTerms";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
-import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
+import { isInvoicePayableNow, invoicePayableFrom, isPayAheadInvoice } from "@/lib/invoicePayable";
 import LeaseAddendaCard, { fetchLeaseAddenda, type PortalAddendum } from "@/components/LeaseAddendaCard";
 import { ParkInfoSection, ParkInfoHomeCard, fetchParkInfo, type ParkInfoData } from "@/components/ParkInfo";
 
@@ -100,6 +100,13 @@ function NavIcon({ d }: { d: string }) {
 }
 
 
+// "Nov 1, 2026" from "2026-11-01" (no time-zone shift).
+function formatShortDate(iso: string): string {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return String(iso);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
 export default function ResidentDashboard() {
   const [resident, setResident] = useState<any>(null);
   const [occupants, setOccupants] = useState<any[]>([]);
@@ -185,6 +192,12 @@ export default function ResidentDashboard() {
   // Oct 28 (review): Pending invoices for a future month (e.g. next month's electric) — shown as
   // "Upcoming", not owed and not payable until that month starts.
   const [upcomingInvoices, setUpcomingInvoices] = useState<any[]>([]);
+  // Oct 29 (review B1): next month's invoice, payable early but OPTIONAL — its own "Pay ahead" button,
+  // never part of Outstanding / Pay Now.
+  const [payAheadInvoices, setPayAheadInvoices] = useState<any[]>([]);
+  // Which payment the "How would you like to pay?" dialog is for.
+  const [payScope, setPayScope] = useState<"due" | "ahead">("due");
+  const [invoiceGenDay, setInvoiceGenDay] = useState<number | undefined>(undefined); // company invoice day
   const [autopayAvailable, setAutopayAvailable] = useState(false);
   const [moveOutThresholdDays, setMoveOutThresholdDays] = useState(15);
   const [autopayEnabled, setAutopayEnabled] = useState(false);
@@ -442,26 +455,30 @@ export default function ResidentDashboard() {
     setOccupants(occVehData?.occupants || []);
     setVehicles(occVehData?.vehicles || []);
 
-    const { invoices: allInvoices } = await fetch(`/api/portal/invoices?residentId=${residentId}`)
+    const { invoices: allInvoices, invoiceGenerateDay } = await fetch(`/api/portal/invoices?residentId=${residentId}`)
       .then((res) => res.json())
       .catch(() => ({ invoices: [] }));
+    if (Number(invoiceGenerateDay) > 0) setInvoiceGenDay(Number(invoiceGenerateDay));
     const pendingAll = (allInvoices || [])
       .filter((inv: any) => inv.status === "Pending")
       .sort((a: any, b: any) => (a.due_date || "").localeCompare(b.due_date || ""));
     // Oct 28 (review): "being prepared" (preparing_until, from the server) = this month's invoice still
     // waiting for rent — shown under Upcoming too, without Pay.
     const payableNow = (inv: any) => isInvoicePayableNow(inv.invoice_month) && !inv.preparing_until;
-    const invs = pendingAll.filter(payableNow);
+    const payableAll = pendingAll.filter(payableNow);
+    const invs = payableAll.filter((inv: any) => !isPayAheadInvoice(inv));
+    const ahead = payableAll.filter((inv: any) => isPayAheadInvoice(inv));
     setPendingInvoices(invs || []);
+    setPayAheadInvoices(ahead);
     setUpcomingInvoices(pendingAll.filter((inv: any) => !payableNow(inv)));
     setProcessingInvoices((allInvoices || []).filter((inv: any) => inv.status === "Processing"));
 
     // Fetch each pending invoice's itemized line items (Rent, Wifi,
     // Electric, Maintenance, etc.) via the same route the Invoices page
     // uses, so Outstanding Charges can show the real breakdown per charge.
-    if (invs && invs.length > 0) {
+    if (payableAll.length > 0) {
       const itemsEntries = await Promise.all(
-        invs.map(async (inv: any) => {
+        payableAll.map(async (inv: any) => {
           const res = await fetch(
             `/api/portal/invoice-items?invoiceId=${inv.id}&residentId=${residentId}`
           )
@@ -485,10 +502,14 @@ export default function ResidentDashboard() {
 
   // Oct 28 (per Mely): when the park offers bank (ACH) payments and the balance is at or above its
   // minimum, "Pay Now" first asks bank or card, showing the exact fee of each.
-  const achEligible = achEnabled && !!feeRates && outstandingBalance > 0 && outstandingBalance >= achMinAmount;
-  const cardFee = !passProcessingFee || !feeRates ? 0 : Math.max(outstandingBalance * feeRates.cardPercent, feeRates.cardMinimum);
+  const payAheadTotal = payAheadInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
+  const achEligibleFor = (amount: number) => achEnabled && !!feeRates && amount > 0 && amount >= achMinAmount;
+  const achEligible = achEligibleFor(outstandingBalance);
+  // The dialog's amount: what is owed now, or (Pay ahead) next month's invoice.
+  const payAmount = payScope === "ahead" ? payAheadTotal : outstandingBalance;
+  const cardFee = !passProcessingFee || !feeRates ? 0 : Math.max(payAmount * feeRates.cardPercent, feeRates.cardMinimum);
   const achFee = !passProcessingFee || !feeRates ? 0
-    : Math.round(Math.min(Math.max(outstandingBalance * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100;
+    : Math.round(Math.min(Math.max(payAmount * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100;
   const processingTotal = processingInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
 
   // Oct 28 (per Mely): fees for the monthly rent, to show bank autopay's real saving.
@@ -505,15 +526,27 @@ export default function ResidentDashboard() {
   } : null;
 
   async function handlePayNow() {
+    setPayScope("due");
     if (achEligible) {
       setPayMethodChoice("ach");
       setShowPayChoice(true);
       return;
     }
-    await startPayment("card");
+    await startPayment("card", "due");
   }
 
-  async function startPayment(method: "card" | "ach") {
+  // Oct 29 (review B1): optional early payment of next month's invoice (same fees and checks).
+  async function handlePayAhead() {
+    setPayScope("ahead");
+    if (achEligibleFor(payAheadTotal)) {
+      setPayMethodChoice("ach");
+      setShowPayChoice(true);
+      return;
+    }
+    await startPayment("card", "ahead");
+  }
+
+  async function startPayment(method: "card" | "ach", scope: "due" | "ahead" = payScope) {
     const residentId = localStorage.getItem("resident_id");
 
     if (!residentId) {
@@ -527,7 +560,7 @@ export default function ResidentDashboard() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ residentId, method }),
+      body: JSON.stringify({ residentId, method, scope }),
     });
 
     const data = await response.json().catch(() => ({}));
@@ -1306,6 +1339,9 @@ export default function ResidentDashboard() {
                   {processingTotal > 0 && (
                     <div style={{ color: "#1e40af", fontWeight: 700, fontSize: 13 }}>{money(processingTotal)} bank payment processing · clears in 3–5 business days</div>
                   )}
+                  {payAheadTotal > 0 && (
+                    <div style={{ color: "#166534", fontSize: 13 }}>Next month&apos;s invoice is ready ({money(payAheadTotal)}) — <button type="button" className="rp-link-btn" onClick={() => openSection("pay")}>pay ahead (optional)</button></div>
+                  )}
                 </div>
                 <div className="rp-balance-btns">
                   {acceptOnlinePayments && outstandingBalance > 0 && (
@@ -1470,10 +1506,43 @@ export default function ResidentDashboard() {
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Upcoming</h2>
               {upcomingInvoices.map((inv) => (
                 <div key={inv.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                  <span>Invoice — {inv.invoice_month} <span style={{ color: "var(--gray)", fontSize: 13 }}>· {inv.preparing_until ? `Being prepared — available ${inv.preparing_until}` : `available to pay on ${invoicePayableFrom(inv.invoice_month)}`}</span></span>
+                  <span>Invoice — {inv.invoice_month} <span style={{ color: "var(--gray)", fontSize: 13 }}>· {inv.preparing_reason === "electric" ? inv.preparing_message : inv.preparing_until ? `Being prepared — available ${inv.preparing_until}` : `available to pay on ${invoicePayableFrom(inv.invoice_month, undefined, invoiceGenDay)}`}</span></span>
                   <span style={{ fontWeight: 700 }}>{money(Number(inv.total_amount || 0))}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {payAheadInvoices.length > 0 && (
+            <div style={{ ...card, background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
+              <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>Pay ahead (optional)</h2>
+              <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 10 }}>
+                Next month&apos;s invoice is ready. You can pay it now if you like, or any time until its due date{autopayEnabled ? " — autopay pays it on the due date" : ""}.
+              </p>
+              {payAheadInvoices.map((inv) => {
+                const items = invoiceItemsByInvoice[inv.id] || [];
+                return (
+                  <div key={inv.id} style={{ borderTop: "1px solid #bbf7d0", padding: "8px 0" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 14, fontWeight: 700 }}>
+                      <span>Invoice — {inv.invoice_month}{inv.due_date ? ` · due ${formatShortDate(inv.due_date)}` : ""}</span>
+                      <span>{money(Number(inv.total_amount || 0))}</span>
+                    </div>
+                    {items.map((item: any) => (
+                      <div key={item.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
+                        <span>{item.description || item.charge_type || "Charge"}</span>
+                        <span>${Number(item.amount || 0).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              {acceptOnlinePayments && (
+                <button
+                  onClick={handlePayAhead}
+                  style={{ marginTop: 12, width: "100%", background: "#fff", border: "2px solid #16a34a", borderRadius: 6, padding: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Pay ahead {money(payAheadTotal)}
+                </button>
+              )}
             </div>
           )}
           {pendingInvoices.length > 0 && (
@@ -2381,7 +2450,7 @@ export default function ResidentDashboard() {
                   ✕
                 </button>
                 <h2 id="pay-choice-title" style={{ fontWeight: 900, fontSize: 18, marginBottom: 4 }}>How would you like to pay?</h2>
-                <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 14 }}>Balance: <strong>{money(outstandingBalance)}</strong></p>
+                <p style={{ color: "var(--gray)", fontSize: 13, marginBottom: 14 }}>{payScope === "ahead" ? "Paying ahead" : "Balance"}: <strong>{money(payAmount)}</strong></p>
                 {/* Oct 28 (per Mely): bank is listed first, recommended and preselected; the resident
                     picks one and continues. */}
                 <div role="radiogroup" aria-label="Payment method" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -2417,7 +2486,7 @@ export default function ResidentDashboard() {
                   {returnedFeeSentence(feeRates.returnFeePhrase)}
                 </p>
                 <button
-                  onClick={() => startPayment(payMethodChoice)}
+                  onClick={() => startPayment(payMethodChoice, payScope)}
                   disabled={startingPayment}
                   style={{ marginTop: 12, width: "100%", background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, padding: 14, fontWeight: 800, cursor: startingPayment ? "default" : "pointer", opacity: startingPayment ? 0.6 : 1 }}
                 >

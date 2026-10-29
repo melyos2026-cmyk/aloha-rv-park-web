@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError } from "@/lib/platformFee";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
-import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
+import { invoicesPreparing, invoiceGenerateDayForResident } from "@/lib/invoiceRentReady";
 import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { closeOtherInvoiceCheckouts } from "@/lib/invoiceCheckoutSessions";
 
@@ -45,15 +45,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "A bank payment for this invoice is already processing (3–5 business days). Nothing to pay right now." }, { status: 400 });
     }
 
-    // Oct 28 (review): a future month's invoice can't be paid before that month starts.
+    // Oct 28 (review) / Oct 29: an invoice two or more months ahead can't be paid yet (next month's can,
+    // from the invoice generation day — checked just below).
     if (!isInvoicePayableNow(invoice.invoice_month)) {
-      return NextResponse.json({ error: `This invoice can be paid starting ${invoicePayableFrom(invoice.invoice_month)}.` }, { status: 400 });
+      const genDay = await invoiceGenerateDayForResident(invoice.resident_id);
+      return NextResponse.json({ error: `This invoice can be paid starting ${invoicePayableFrom(invoice.invoice_month, undefined, genDay)}.` }, { status: 400 });
     }
 
-    // Oct 28 (review): this month's invoice isn't payable until the rent is on it.
-    const awaitingRent = await invoicesAwaitingRent(invoice.resident_id, [invoice]);
-    if (awaitingRent.has(invoice.id)) {
-      return NextResponse.json({ error: `This invoice is being prepared — it will be available to pay after rent is added on ${awaitingRent.get(invoice.id)}.` }, { status: 400 });
+    // Oct 28 (review) / Oct 29: not payable yet while it waits for its rent, or (next month's) before
+    // the invoice generation day — src/lib/invoiceRentReady.ts.
+    const preparing = (await invoicesPreparing(invoice.resident_id, [invoice])).get(invoice.id);
+    if (preparing) {
+      return NextResponse.json({ error: preparing.reason === "electric" ? preparing.message : `This invoice is being prepared — it will be available to pay on ${preparing.until}.` }, { status: 400 });
     }
 
     const totalAmount = Number(invoice.total_amount || 0);
