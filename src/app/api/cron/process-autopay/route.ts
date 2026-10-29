@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
-import { calculateProcessingFee, resolveConnectSplit, returnedAchFeesOnInvoices } from "@/lib/platformFee";
+import { calculateProcessingFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices } from "@/lib/platformFee";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
 import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
@@ -110,8 +110,12 @@ export async function GET(request: Request) {
       if (!isInvoicePayableNow(invoice.invoice_month)) continue;
 
       // Oct 28 (per Mely): a "Returned bank payment fee" line goes to MelyOS (below) and is not taxed.
-      const returnedAchFees = await returnedAchFeesOnInvoices([invoice.id], resident.company_id);
-      const taxAmount = taxEnabled ? Math.max(amount - returnedAchFees, 0) * (taxRatePercent / 100) : 0;
+      // Oct 28 (new model): the whole fee is never taxed; only MelyOS's part (if any) leaves the park's share.
+      // Lookup failed → not charged today (System Health told); tomorrow's run tries again.
+      let feeTotals: { total: number; melyos: number };
+      try { feeTotals = await returnedAchFeeTotalsOnInvoices([invoice.id], resident.company_id); } catch { continue; }
+      const { total: returnedFeesTotal, melyos: returnedAchFees } = feeTotals;
+      const taxAmount = taxEnabled ? Math.max(amount - returnedFeesTotal, 0) * (taxRatePercent / 100) : 0;
       const processingFee = calculateProcessingFee(amount);
       const chargeAmount = amount + taxAmount + (passFeeToResident ? processingFee : 0);
       // Aloha's share is the full invoice amount plus all tax (theirs to

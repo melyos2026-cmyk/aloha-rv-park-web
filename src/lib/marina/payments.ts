@@ -143,14 +143,14 @@ export async function settleMarinaAchPayment(companyId: string, reference: strin
 // marked returned, so the invoice goes back to open — the same as a bounced check.
 // Oct 28 (per Mely): + the marina's returned-payment fee as its own invoice (once per payment — see
 // ./returnedFee.ts). neverSubmitted: the payment never reached the bank (canceled) → no fee.
-export async function failMarinaAchPayment(companyId: string, reference: string, reason: string, opts?: { neverSubmitted?: boolean; paymentCreated?: number | string | null; autopayAuthorizedAt?: string | null; paymentRule?: unknown; authorizationRule?: unknown }) {
+export async function failMarinaAchPayment(companyId: string, reference: string, reason: string, opts?: { neverSubmitted?: boolean; paymentCreated?: number | string | null; autopayAuthorizedAt?: string | null; paymentRule?: unknown; authorizationRule?: unknown; paymentIntentId?: string | null }) {
   await supabaseAdmin.from("marina_invoice_payments")
     .update({ pending_at: null, returned_at: new Date().toISOString(), return_reason: `Bank payment failed: ${reason}`.slice(0, 300), recorded_by_name: "Online bank transfer (failed)" })
     .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).is("returned_at", null);
   if (opts?.neverSubmitted) return null;
   return ensureMarinaReturnedFeeInvoice(companyId, reference, {
     paymentCreated: opts?.paymentCreated ?? null,
-    paymentRule: opts?.paymentRule, authorizationRule: opts?.authorizationRule,
+    paymentRule: opts?.paymentRule, authorizationRule: opts?.authorizationRule, paymentIntentId: opts?.paymentIntentId ?? null,
     ...(opts && "autopayAuthorizedAt" in opts ? { autopayAuthorizedAt: opts.autopayAuthorizedAt ?? null } : {}),
   });
 }

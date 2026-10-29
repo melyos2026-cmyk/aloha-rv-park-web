@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
-import { loadReturnedFeeSettings, melyosShareOfReturnedFee, returnedFeeForReturn } from "@/lib/platformFee";
+import { loadReturnedFeeSettings, melyosShareOfReturnedFee, returnedFeeForReturn, billCompanyForReturnedPayment } from "@/lib/platformFee";
 import { round2, todayET } from "./data";
 import { isDemoCompany } from "./host";
 import { mailBoater } from "./slipAuto";
@@ -21,7 +21,7 @@ export const isAutoReturnedFeeInvoice = (inv: { invoice_number?: string | null; 
 // disclosed (MARINA_RETURNED_FEE_DISCLOSED_SINCE) get NO fee.
 // paymentRule / authorizationRule: the rule frozen on the payment (Stripe metadata) / with the autopay
 // authorization — used first; a higher current rule is never used instead.
-export async function ensureMarinaReturnedFeeInvoice(companyId: string, reference: string, timing: { paymentCreated: number | string | null; autopayAuthorizedAt?: string | null; paymentRule?: unknown; authorizationRule?: unknown }): Promise<{ total: number; description: string } | null> {
+export async function ensureMarinaReturnedFeeInvoice(companyId: string, reference: string, timing: { paymentCreated: number | string | null; autopayAuthorizedAt?: string | null; paymentRule?: unknown; authorizationRule?: unknown; paymentIntentId?: string | null }): Promise<{ total: number; description: string } | null> {
   try {
     // The bank payment rows this reference returned (one payment can cover several invoices).
     const { data: rows, error } = await supabaseAdmin
@@ -35,11 +35,19 @@ export async function ensureMarinaReturnedFeeInvoice(companyId: string, referenc
     if (returned.length === 0) return null;
     const invoiceAmount = round2(returned.reduce((a: number, r: any) => a + Number(r.amount || 0), 0));
     if (!(invoiceAmount > 0)) return null;
-
     const [{ data: company }, { data: first }] = await Promise.all([
       supabaseAdmin.from("companies").select("company_name, domain, is_demo").eq("id", companyId).maybeSingle(),
       supabaseAdmin.from("marina_invoices").select("member_id, customer_name, customer_email, slip_id").eq("company_id", companyId).eq("id", returned[0].invoice_id).maybeSingle(),
     ]);
+    // Oct 28 (per Mely — new model): MelyOS bills the marina its fixed charge for this returned payment
+    // (once per PaymentIntent; whether or not the boater pays — and even if no fee was disclosed to them).
+    // The billing row names the boater (member name, else the invoice's customer name).
+    let payerName: string | null = first?.customer_name ?? null;
+    if (first?.member_id) {
+      const { data: mem } = await supabaseAdmin.from("marina_members").select("full_name").eq("id", first.member_id).eq("company_id", companyId).maybeSingle();
+      payerName = mem?.full_name || payerName;
+    }
+    await billCompanyForReturnedPayment({ companyId, kind: "marina", payerName, amount: invoiceAmount, paymentIntentId: timing.paymentIntentId || (reference.startsWith("autopay:") ? reference.slice(8) : null) });
     if (!company || isDemoCompany(company as any)) return null;
     const fee = await returnedFeeForReturn({
       kind: "marina", companyId, companyName: company.company_name, invoiceAmount,

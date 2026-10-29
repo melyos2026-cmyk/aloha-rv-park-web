@@ -1,6 +1,6 @@
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
-import { normalizeReturnedFeeSettings, melyosShareOfReturnedFee, returnedPaymentFee as feeOf, decodeReturnedFeeRule, encodeReturnedFeeRule, RETURNED_BANK_COST, FLORIDA_RETURNED_FEE, FLAT_FOUR_RETURNED_FEE, type ReturnedFeeSettings } from "@/lib/returnedFeeRules";
+import { normalizeReturnedFeeSettings, melyosShareOfReturnedFee, returnedPaymentFee as feeOf, decodeReturnedFeeRule, encodeReturnedFeeRule, RETURNED_BANK_COST, BILLED_SHARE, melyosReturnedCharge, FLORIDA_RETURNED_FEE, FLAT_FOUR_RETURNED_FEE, type ReturnedFeeSettings } from "@/lib/returnedFeeRules";
 
 // Aug 4 (per Mely): the processing-fee surcharge shown to whoever pays it
 // (resident or park, per company_fee_settings.pass_processing_fee_to_resident)
@@ -59,6 +59,12 @@ export async function loadReturnedFeeSettingsStrict(companyId: string | null | u
   const noRow = kind === "marina" ? FLAT_FOUR_RETURNED_FEE : FLORIDA_RETURNED_FEE;
   if (!companyId) return kind === "marina" ? null : FLORIDA_RETURNED_FEE;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // Oct 28 (new money model): + melyos_returned_charge (returned_fee_billing_model.sql). With it, a
+    // company with no row gets the new default ("billed": the fee is the company's, MelyOS bills $9.95).
+    const r1 = await supabase.from("company_fee_settings").select(`${RETURNED_FEE_COLUMNS}, melyos_returned_charge`).eq("company_id", companyId).maybeSingle();
+    if (!r1.error) return r1.data ? normalizeReturnedFeeSettings(r1.data as any, { ...noRow, ...BILLED_SHARE }) : { ...noRow, ...BILLED_SHARE };
+    if (!/melyos_returned_charge/.test(String(r1.error.message || "")) && !isMissingColumnErr(r1.error)) continue;
+    // Before that SQL: the previous model.
     const { data, error } = await supabase.from("company_fee_settings").select(RETURNED_FEE_COLUMNS).eq("company_id", companyId).maybeSingle();
     if (!error) return data ? normalizeReturnedFeeSettings(data as any, noRow) : noRow;
     if (isMissingColumnErr(error)) return columnsMissing;
@@ -116,7 +122,7 @@ export async function returnedFeeForReturn(p: {
   paymentRule?: unknown; authorizationRule?: unknown; paymentCreated: number | string | Date | null | undefined; autopayAuthorizedAt?: string | null;
 }): Promise<ReturnType<typeof feeOf> | null> {
   const current = await loadReturnedFeeSettingsStrict(p.companyId, p.kind);
-  const share = { shareMode: current?.shareMode ?? "all", shareAmount: current?.shareAmount ?? RETURNED_BANK_COST } as const;
+  const share = { shareMode: current?.shareMode ?? "all", shareAmount: current?.shareAmount ?? RETURNED_BANK_COST, melyosCharge: current?.melyosCharge };
   let stored = decodeReturnedFeeRule(p.paymentRule);
   if (stored === undefined) stored = decodeReturnedFeeRule(p.authorizationRule);
   if (stored === undefined) {
@@ -150,6 +156,31 @@ export async function insertReturnedFeeLine(row: { invoice_id: string; charge_ty
 // MelyOS (application fee), the rest to the park. Callers subtract this from the park's share
 // (never below $0); invoice totals are not changed. Best-effort: if the lookup fails the payment
 // still goes through (as before) and System Health is told.
+// Oct 28 (new model): { total: every returned-payment fee on these invoices (never taxed), melyos: the
+// part of it that goes to MelyOS (0 for fees under the "billed" model — those are the company's) }.
+export async function returnedAchFeeTotalsOnInvoices(invoiceIds: string[], companyId?: string | null): Promise<{ total: number; melyos: number }> {
+  const ids = invoiceIds.filter(Boolean);
+  if (ids.length === 0) return { total: 0, melyos: 0 };
+  const { data, error } = await supabase.from("resident_invoice_items").select("amount").in("invoice_id", ids).eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE);
+  if (error) {
+    // Oct 28 (review): fail safe — never tax the fee or route it wrongly. The caller refuses the
+    // checkout with a "try again" message (ReturnedFeeLookupError).
+    console.error("returnedAchFeeTotalsOnInvoices:", error.message);
+    if (companyId) {
+      await logSystemHealthIssue({
+        companyId, issueType: "melyos_fee_split", source: "stripe",
+        message: `Could not check invoices ${ids.join(", ")} for a returned bank payment fee before charging (${error.message}). The payment was not started; the payer was asked to try again.`,
+      }).catch(() => null);
+    }
+    throw new ReturnedFeeLookupError();
+  }
+  const total = Math.round((data || []).reduce((a, r: any) => a + Math.max(Number(r.amount) || 0, 0), 0) * 100) / 100;
+  const melyos = total > 0 ? await returnedAchFeesOnInvoices(ids, companyId) : 0;
+  return { total, melyos };
+}
+export class ReturnedFeeLookupError extends Error {
+  constructor() { super("We couldn't check your balance right now. Please try again in a minute."); this.name = "ReturnedFeeLookupError"; }
+}
 export async function returnedAchFeesOnInvoices(invoiceIds: string[], companyId?: string | null): Promise<number> {
   const ids = invoiceIds.filter(Boolean);
   if (ids.length === 0) return 0;
@@ -272,4 +303,50 @@ export async function loadAutopayAuthorizationRule(table: "resident_accounts" | 
 export async function saveAutopayAuthorizationRule(table: "resident_accounts" | "marina_members", id: string, companyId: string, kind: "rv" | "marina") {
   const rule = JSON.parse(encodeReturnedFeeRule(await loadReturnedFeeSettings(companyId, kind)));
   await supabase.from(table).update({ returned_fee_rule: rule }).eq("id", id).eq("company_id", companyId).then(() => null, () => null);
+}
+
+// Oct 28 (per Mely — new money model, "like Stripe charges MelyOS, MelyOS charges the company"): the
+// moment a bank payment is RETURNED (and it really reached the bank), MelyOS bills the COMPANY its
+// fixed "Returned bank payment (MelyOS)" charge (company_fee_settings.melyos_returned_charge, default
+// $9.95) — whether or not the customer ever pays the returned-payment fee. Recorded in
+// melyos_billing_charges (added to the company's monthly MelyOS invoice), ONCE per returned
+// PaymentIntent (source "Returned bank payment <pi>"; unique index from returned_fee_billing_model.sql;
+// a 23505 = already billed). Only under the "billed" model; never for demo companies. Best-effort.
+export const MELYOS_RETURNED_CHARGE_TYPE = "Returned bank payment (MelyOS)";
+export async function billCompanyForReturnedPayment(p: { companyId: string; paymentIntentId: string | null | undefined; payerName?: string | null; amount: number; kind: "rv" | "marina" }) {
+  try {
+    if (!p.companyId || !p.paymentIntentId) return;
+    const { data: co } = await supabase.from("companies").select("is_demo, domain").eq("id", p.companyId).maybeSingle();
+    if (!co || co.is_demo === true || /(^|\.)melyos\.io$/i.test(String(co.domain || ""))) return;
+    const settings = await loadReturnedFeeSettingsStrict(p.companyId, p.kind);
+    if (!settings) {
+      // Oct 28 (review): unreadable — nothing billed blindly, but MelyOS can bill it by hand.
+      await logSystemHealthIssue({
+        companyId: p.companyId, issueType: "melyos_fee_split", source: "stripe",
+        message: `A bank payment of $${Number(p.amount || 0).toFixed(2)}${p.payerName ? ` (${p.payerName})` : ""} was returned, but the company's settings could not be read, so MelyOS's "Returned bank payment (MelyOS)" charge was NOT recorded. Bill it by hand (source "Returned bank payment ${p.paymentIntentId}").`,
+      }).catch(() => null);
+      return;
+    }
+    const charge = melyosReturnedCharge(settings);
+    if (!(charge > 0)) return; // older model: MelyOS's part comes from the customer's fee instead
+    const source = `Returned bank payment ${p.paymentIntentId}`;
+    const { data: had } = await supabase.from("melyos_billing_charges").select("id").eq("company_id", p.companyId).eq("source", source).limit(1);
+    if (had && had.length > 0) return;
+    const { data: last } = await supabase.from("melyos_billing_charges").select("billing_seq").eq("company_id", p.companyId).order("billing_seq", { ascending: false }).limit(1).maybeSingle();
+    const { error } = await supabase.from("melyos_billing_charges").insert({
+      company_id: p.companyId,
+      billing_seq: (last?.billing_seq || 0) + 1,
+      charge_date: new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }),
+      charge_type: MELYOS_RETURNED_CHARGE_TYPE,
+      source,
+      description: `${p.payerName || "A customer"}'s bank payment of $${Number(p.amount || 0).toFixed(2)} was returned by the bank. MelyOS charge per returned bank payment (the bank charges MelyOS for every return).`,
+      amount: Math.round(charge * 100) / 100,
+      markup: 0,
+    });
+    if (error && error.code !== "23505") {
+      await logSystemHealthIssue({ companyId: p.companyId, issueType: "melyos_fee_split", source: "stripe", message: `A bank payment was returned (${p.paymentIntentId}), but MelyOS's $${charge.toFixed(2)} charge could not be recorded (${error.message}). Add it to MelyOS Fees Owed by hand.` }).catch(() => null);
+    }
+  } catch (e: any) {
+    console.error("billCompanyForReturnedPayment:", e?.message);
+  }
 }

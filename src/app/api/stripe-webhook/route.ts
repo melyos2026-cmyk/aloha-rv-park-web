@@ -8,7 +8,7 @@ import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
-import { RETURNED_ACH_FEE_CHARGE_TYPE, returnedPaymentFee, returnedFeeForReturn, insertReturnedFeeLine, FLAT_FOUR_RETURNED_FEE } from "@/lib/platformFee";
+import { RETURNED_ACH_FEE_CHARGE_TYPE, returnedPaymentFee, returnedFeeForReturn, insertReturnedFeeLine, FLAT_FOUR_RETURNED_FEE, billCompanyForReturnedPayment } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
 import { autopayBankFailed } from "@/lib/marina/autopay";
 import { emailBoaterBankPaymentReturned } from "@/lib/marina/returnedFee";
@@ -599,7 +599,7 @@ async function handleWebhook(req: Request) {
     if ((session.metadata?.type === "marina_invoice" || session.metadata?.type === "marina_invoices") && session.metadata.company_id) {
       if (event.type === "checkout.session.async_payment_succeeded") await settleMarinaAchPayment(session.metadata.company_id, `online:${session.id}`);
       else {
-        const fee = await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer", { paymentCreated: session.created, paymentRule: session.metadata.returned_fee_rule });
+        const fee = await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer", { paymentCreated: session.created, paymentRule: session.metadata.returned_fee_rule, paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null });
         // Oct 28 (per Mely): tell the boater (once per payment; the fee only if one was really added).
         const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
         const intent = piId ? await stripe.paymentIntents.retrieve(piId, { expand: ["latest_charge"] }).catch(() => null) : null;
@@ -1055,6 +1055,12 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
     console.error("stripe-webhook: returned ACH payment with no company for session", session.id);
     return NextResponse.json({ received: true });
   }
+  // Oct 28 (per Mely — new model): MelyOS bills the park its fixed charge for this returned payment
+  // (once per PaymentIntent; whether or not the resident pays the fee).
+  await billCompanyForReturnedPayment({
+    companyId, kind: "rv", payerName: resident?.full_name || null, amount: (session.amount_total || 0) / 100,
+    paymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id,
+  });
 
   // One System Health issue per returned payment (a retry after a failure above doesn't add another).
   const { data: alreadyLogged } = await supabase
@@ -1082,7 +1088,7 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
     residentId: residentId || null,
     issueType: "rv_bank_payment_returned",
     source: "stripe_webhook",
-    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${returnFee.total.toFixed(2)} returned bank payment fee (${returnFee.description}${returnFee.companyShare > 0 ? `; when paid, $${returnFee.melyosShare.toFixed(2)} goes to MelyOS and $${returnFee.companyShare.toFixed(2)} to the park` : "; all of it goes to MelyOS when paid"}) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${returnFee.total.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
+    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${returnFee.total.toFixed(2)} returned bank payment fee (${returnFee.description}${returnFee.melyosShare > 0 ? `; when paid, $${returnFee.melyosShare.toFixed(2)} goes to MelyOS and $${returnFee.companyShare.toFixed(2)} to the park` : "; the fee is the park's — MelyOS bills the park its own charge per returned payment"}) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${returnFee.total.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
   });
   // Oct 28 (per Mely): email the resident — once (the issue above makes a redelivery stop at
   // alreadyLogged; the email also has its own per-session marker). One-time payment: autopay untouched.

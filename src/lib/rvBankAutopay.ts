@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, returnedFeeForReturn, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, insertReturnedFeeLine, returnedPaymentFee, FLAT_FOUR_RETURNED_FEE, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
+import { calculateAchFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, returnedFeeForReturn, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, insertReturnedFeeLine, returnedPaymentFee, FLAT_FOUR_RETURNED_FEE, RETURNED_ACH_FEE_CHARGE_TYPE, billCompanyForReturnedPayment } from "@/lib/platformFee";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
@@ -269,8 +269,12 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
   const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
   // Same money rules as create-checkout-session (one-time bank payment).
-  const returnedAchFees = await returnedAchFeesOnInvoices(invoiceIds, companyId);
-  const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedAchFees, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
+  // Oct 28 (new model): the whole fee is never taxed; only MelyOS's part (if any) leaves the park's share.
+  // Lookup failed → not charged today (before anything is claimed; System Health told).
+  let feeTotals: { total: number; melyos: number };
+  try { feeTotals = await returnedAchFeeTotalsOnInvoices(invoiceIds, companyId); } catch { return { status: "skipped", detail: "returned_fee_lookup_failed" }; }
+  const { total: returnedFeesTotal, melyos: returnedAchFees } = feeTotals;
+  const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
   const achFee = Math.round(calculateAchFee(totalAmount) * 100) / 100;
   const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? achFee : 0)) * 100) / 100;
   const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -achFee) - returnedAchFees, 0);
@@ -617,6 +621,9 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
 
   // Never reached the bank → no returned-payment fee.
   const neverSubmitted = pi.status === "canceled" || !pi.latest_charge || (await markerExists(cancelledMarker(pi.id)));
+  // Oct 28 (per Mely — new model): a return that reached the bank → MelyOS bills the park its fixed
+  // charge (once per PaymentIntent), whether or not the resident pays the fee.
+  if (!neverSubmitted) await billCompanyForReturnedPayment({ companyId, kind: "rv", payerName: resident.full_name || null, amount: Number(pi.amount || 0) / 100, paymentIntentId: pi.id });
 
   const { data: reopened, error: reopenErr } = await reopenProcessing(invoiceIds, residentId);
   if (reopenErr) return { ok: false, detail: reopenErr.message };
@@ -674,7 +681,7 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
     source: "stripe_webhook",
     message: (neverSubmitted
       ? `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} failed before reaching the bank${reason ? ` (${reason})` : ""}. Nothing was taken and no returned-payment fee was added. ${(reopened || []).length ? `${n} back to Pending. ` : ""}${autopayNote} Stripe payment ${pi.id}.`
-      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(returnFee.total)} returned bank payment fee (${returnFee.description}${returnFee.companyShare > 0 ? `; when paid, ${money(returnFee.melyosShare)} goes to MelyOS and ${money(returnFee.companyShare)} to the park` : "; all of it goes to MelyOS when paid"}) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(returnFee.total)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
+      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(returnFee.total)} returned bank payment fee (${returnFee.description}${returnFee.melyosShare > 0 ? `; when paid, ${money(returnFee.melyosShare)} goes to MelyOS and ${money(returnFee.companyShare)} to the park` : "; the fee is the park's — MelyOS bills the park its own charge per returned payment"}) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(returnFee.total)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
   });
   // Oct 28 (per Mely): email the resident — after the issue above (which makes every later call of
   // this function return "already_handled"), plus its own per-payment marker: sent once.

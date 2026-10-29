@@ -2,7 +2,7 @@ import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, returnedFeeRuleToDisclose } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError, returnedFeeRuleToDisclose } from "@/lib/platformFee";
 import { achAllowed } from "@/lib/marina/checkout";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
 import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
@@ -118,8 +118,9 @@ export async function POST(req: Request) {
     const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
     // Oct 28 (per Mely): a "Returned bank payment fee" line is Stripe's charge to MelyOS — it goes to
     // MelyOS's application fee (below) and is not taxed.
-    const returnedAchFees = await returnedAchFeesOnInvoices(invoiceIds, resident?.company_id);
-    const taxAmount = taxEnabled ? Math.max(totalAmount - returnedAchFees, 0) * (taxRatePercent / 100) : 0;
+    // Oct 28 (new model): the whole fee is never taxed; only MelyOS's part (if any) leaves the park's share.
+    const { total: returnedFeesTotal, melyos: returnedAchFees } = await returnedAchFeeTotalsOnInvoices(invoiceIds, resident?.company_id);
+    const taxAmount = taxEnabled ? Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) : 0;
 
     const chargeAmount = totalAmount + taxAmount + (passFeeToResident ? processingFee : 0);
 
@@ -230,6 +231,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
+    // Oct 28 (review): the returned-fee lookup failed — refuse rather than tax the fee or split it wrongly.
+    if (err instanceof ReturnedFeeLookupError) return NextResponse.json({ error: err.message }, { status: 503 });
     return NextResponse.json(
       { error: err.message || "Could not create checkout session." },
       { status: 500 }

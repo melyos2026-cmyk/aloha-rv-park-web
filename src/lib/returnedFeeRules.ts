@@ -14,7 +14,12 @@
 // `percent` is a percentage number (5 = 5%).
 
 export type ReturnedFeeMode = "florida" | "custom";
-export type ReturnedShareMode = "all" | "fixed";
+// Oct 28 (per Mely — new money model): "billed" (the default for every company) = the fee charged to
+// the customer is 100% the company's, and MelyOS bills the COMPANY a fixed charge per returned bank
+// payment (melyosCharge, default $9.95, at least $4.00) — like Stripe charges MelyOS. "all"/"fixed" are
+// the older model, still honored for fees already frozen with a MelyOS share.
+export type ReturnedShareMode = "all" | "fixed" | "billed";
+export const DEFAULT_MELYOS_RETURNED_CHARGE = 9.95;
 export type ReturnedFeeSettings = {
   mode: ReturnedFeeMode;
   flat: number;
@@ -22,10 +27,12 @@ export type ReturnedFeeSettings = {
   cap: number | null;
   shareMode: ReturnedShareMode;
   shareAmount: number;
+  melyosCharge?: number; // "billed": what MelyOS bills the company per returned bank payment
 };
 
 export const RETURNED_BANK_COST = 4.0;
 export const FLORIDA_RETURNED_FEE: ReturnedFeeSettings = { mode: "florida", flat: 0, percent: 0, cap: null, shareMode: "all", shareAmount: RETURNED_BANK_COST };
+export const BILLED_SHARE = { shareMode: "billed" as const, shareAmount: RETURNED_BANK_COST, melyosCharge: DEFAULT_MELYOS_RETURNED_CHARGE };
 // Used for marinas only when the settings columns don't exist yet (today's behavior there): flat $4.
 export const FLAT_FOUR_RETURNED_FEE: ReturnedFeeSettings = { mode: "custom", flat: RETURNED_BANK_COST, percent: 0, cap: null, shareMode: "all", shareAmount: RETURNED_BANK_COST };
 
@@ -41,13 +48,14 @@ export function normalizeReturnedFeeSettings(row: Record<string, any> | null | u
   const percent = Math.max(0, Math.min(100, Number(row.returned_fee_percent) || 0));
   const capRaw = row.returned_fee_cap;
   const cap = capRaw === null || capRaw === undefined || capRaw === "" ? null : Math.max(0, r2(capRaw));
-  const shareMode: ReturnedShareMode = row.melyos_returned_share_mode === "fixed" ? "fixed" : "all";
+  const shareMode: ReturnedShareMode = row.melyos_returned_share_mode === "billed" ? "billed" : row.melyos_returned_share_mode === "fixed" ? "fixed" : "all";
   const shareAmount = Math.max(RETURNED_BANK_COST, r2(row.melyos_returned_share_amount ?? RETURNED_BANK_COST));
-  return { mode, flat, percent, cap, shareMode, shareAmount };
+  const melyosCharge = Math.max(RETURNED_BANK_COST, r2(row.melyos_returned_charge ?? DEFAULT_MELYOS_RETURNED_CHARGE));
+  return { mode, flat, percent, cap, shareMode, shareAmount, melyosCharge };
 }
 
 // Checked when the admin saves. Returns an error message, or null when valid.
-export function validateReturnedFeeSettings(s: { mode: string; flat?: unknown; percent?: unknown; cap?: unknown; shareMode?: string; shareAmount?: unknown }): string | null {
+export function validateReturnedFeeSettings(s: { mode: string; flat?: unknown; percent?: unknown; cap?: unknown; shareMode?: string; shareAmount?: unknown; melyosCharge?: unknown }): string | null {
   if (s.mode !== "florida" && s.mode !== "custom") return "Choose Florida standard or Custom.";
   if (s.mode === "custom") {
     const flat = Number(s.flat);
@@ -60,7 +68,11 @@ export function validateReturnedFeeSettings(s: { mode: string; flat?: unknown; p
       if (cap < flat) return "The maximum can't be lower than the flat amount.";
     }
   }
-  if (s.shareMode !== undefined && s.shareMode !== "all" && s.shareMode !== "fixed") return "Choose how the fee is shared with MelyOS.";
+  if (s.shareMode !== undefined && s.shareMode !== "all" && s.shareMode !== "fixed" && s.shareMode !== "billed") return "Choose how the fee is shared with MelyOS.";
+  if ((s as any).melyosCharge !== undefined) {
+    const c = Number((s as any).melyosCharge);
+    if (!Number.isFinite(c) || c < RETURNED_BANK_COST) return `MelyOS's charge per returned payment must be at least ${usd2(RETURNED_BANK_COST)}.`;
+  }
   if (s.shareMode === "fixed") {
     const a = Number(s.shareAmount);
     if (!Number.isFinite(a) || a < RETURNED_BANK_COST) return `MelyOS's share must be at least ${usd2(RETURNED_BANK_COST)} (it covers the bank's charge).`;
@@ -75,9 +87,15 @@ export function floridaServiceCharge(invoiceAmount: number): number {
   return 31;
 }
 
+// What MelyOS charges the company per returned bank payment ("billed" model; 0 for the older model).
+export function melyosReturnedCharge(s: ReturnedFeeSettings): number {
+  return s.shareMode === "billed" ? Math.max(RETURNED_BANK_COST, r2(s.melyosCharge ?? DEFAULT_MELYOS_RETURNED_CHARGE)) : 0;
+}
+
 // What MelyOS gets from a returned-fee line of `lineAmount` (never more than the line).
 export function melyosShareOfReturnedFee(s: ReturnedFeeSettings, lineAmount: number): number {
   const amt = Math.max(0, r2(lineAmount));
+  if (s.shareMode === "billed") return 0; // the fee is the company's; MelyOS bills the company separately
   if (s.shareMode === "fixed") return Math.min(amt, Math.max(RETURNED_BANK_COST, r2(s.shareAmount)));
   return amt;
 }
