@@ -8,9 +8,10 @@ import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
-import { RETURNED_ACH_FEE_CHARGE_TYPE, rvReturnedAchFee } from "@/lib/platformFee";
+import { RETURNED_ACH_FEE_CHARGE_TYPE, returnedPaymentFee, returnedFeeForReturn, insertReturnedFeeLine, FLAT_FOUR_RETURNED_FEE } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
 import { autopayBankFailed } from "@/lib/marina/autopay";
+import { emailBoaterBankPaymentReturned } from "@/lib/marina/returnedFee";
 import { isRvBankAutopayIntent, settleRvBankAutopay, failRvBankAutopay, markInvoicesProcessing, RV_AUTOPAY_SETUP_TYPE } from "@/lib/rvBankAutopay";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import crypto from "crypto";
@@ -597,7 +598,20 @@ async function handleWebhook(req: Request) {
     }
     if ((session.metadata?.type === "marina_invoice" || session.metadata?.type === "marina_invoices") && session.metadata.company_id) {
       if (event.type === "checkout.session.async_payment_succeeded") await settleMarinaAchPayment(session.metadata.company_id, `online:${session.id}`);
-      else await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer");
+      else {
+        const fee = await failMarinaAchPayment(session.metadata.company_id, `online:${session.id}`, "the bank declined the transfer", { paymentCreated: session.created, paymentRule: session.metadata.returned_fee_rule });
+        // Oct 28 (per Mely): tell the boater (once per payment; the fee only if one was really added).
+        const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+        const intent = piId ? await stripe.paymentIntents.retrieve(piId, { expand: ["latest_charge"] }).catch(() => null) : null;
+        const ch: any = intent?.latest_charge && typeof intent.latest_charge !== "string" ? intent.latest_charge : null;
+        await emailBoaterBankPaymentReturned({
+          companyId: session.metadata.company_id, sessionId: session.id, reference: `online:${session.id}`,
+          amount: (session.amount_total || 0) / 100,
+          reasonCode: ch?.failure_code || intent?.last_payment_error?.code || null,
+          reasonMessage: intent?.last_payment_error?.message || null,
+          fee,
+        });
+      }
     }
     return NextResponse.json({ received: true });
   }
@@ -887,7 +901,7 @@ async function handleWebhook(req: Request) {
     const intent = event.data.object as Stripe.PaymentIntent;
     if (intent.metadata?.type === "marina_autopay" && intent.metadata.company_id) {
       if (event.type === "payment_intent.succeeded") await settleMarinaAchPayment(intent.metadata.company_id, `autopay:${intent.id}`);
-      else await autopayBankFailed(intent.metadata.company_id, intent.id, intent.last_payment_error?.message || "the payment failed");
+      else await autopayBankFailed(intent.metadata.company_id, intent.id, intent.last_payment_error?.message || "the payment failed", { paymentCreated: intent.created, paymentRule: intent.metadata?.returned_fee_rule });
       return NextResponse.json({ received: true });
     }
     // Oct 28 (per Mely): RV resident autopay by bank (src/lib/rvBankAutopay.ts). Only intents with
@@ -944,11 +958,19 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
   const residentId = session.metadata?.resident_id || "";
   const invoiceIds = String(session.metadata?.invoice_ids || "").split(",").filter(Boolean);
   const ref = returnedFeeRef(session.id);
-  // Oct 28 (per Mely): tiered RV fee — $4 bank cost + Fla. Stat. 68.065 service charge, by amount returned.
-  // Oct 28 (review): tiered on the INVOICE amount — what was collected minus the bank transfer fee and
-  // the sales tax this payment added.
-  const returnFee = rvReturnedAchFee(Math.max(
-    (session.amount_total || 0) / 100 - Number(session.metadata?.processing_fee_charged || 0) - Number(session.metadata?.tax_charged || 0), 0));
+  // Oct 28 (per Mely): the company's own returned-payment fee rule (Florida standard or its fee
+  // schedule — src/lib/returnedFeeRules.ts), on the INVOICE amount: what was collected minus the bank
+  // transfer fee and the sales tax this payment added.
+  const { data: feeResident } = await supabase.from("resident_accounts").select("company_id").eq("id", residentId).maybeSingle();
+  const feeCompanyId = feeResident?.company_id || null;
+  const { data: feeCompany } = feeCompanyId ? await supabase.from("companies").select("company_name").eq("id", feeCompanyId).maybeSingle() : { data: null as any };
+  // Oct 28 (review): the rule frozen on this payment when it was made (session metadata), else the
+  // fee disclosed at that time (older → flat $4); never a higher current rule.
+  const invoiceAmountForFee = Math.max((session.amount_total || 0) / 100 - Number(session.metadata?.processing_fee_charged || 0) - Number(session.metadata?.tax_charged || 0), 0);
+  const returnFee = (await returnedFeeForReturn({
+    kind: "rv", companyId: feeCompanyId, companyName: feeCompany?.company_name || null, invoiceAmount: invoiceAmountForFee,
+    paymentRule: session.metadata?.returned_fee_rule, paymentCreated: session.created,
+  })) || returnedPaymentFee(FLAT_FOUR_RETURNED_FEE, invoiceAmountForFee, feeCompany?.company_name || null); // RV: $4 was always disclosed
 
   const { error: reopenErr } = await supabase
     .from("resident_invoices")
@@ -962,7 +984,7 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
 
   const { data: existingFee, error: feeLookupErr } = await supabase
     .from("resident_invoice_items")
-    .select("id, invoice_id")
+    .select("id, invoice_id, amount")
     .in("invoice_id", invoiceIds)
     .eq("charge_type", RETURNED_ACH_FEE_TYPE)
     .like("description", `%${ref}%`)
@@ -985,6 +1007,13 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
   if (existingFee && existingFee.length > 0) {
     const inv = (invoices || []).find((i) => i.id === existingFee[0].invoice_id);
     feeInvoice = { id: existingFee[0].invoice_id, invoice_month: inv?.invoice_month };
+    // A retry: the line already added is what counts (settings may have changed since).
+    const was = Number((existingFee[0] as any).amount) || 0;
+    if (was > 0 && Math.abs(was - returnFee.total) > 0.005) {
+      returnFee.total = was;
+      returnFee.melyosShare = Math.min(was, returnFee.melyosShare);
+      returnFee.companyShare = Math.round((was - returnFee.melyosShare) * 100) / 100;
+    }
   } else {
     // The first invoice of this payment that is open again (an invoice the office already marked
     // paid by hand is left alone — the fee would never be collected there).
@@ -992,11 +1021,12 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
       .map((id) => (invoices || []).find((inv) => inv.id === id))
       .find((inv) => inv?.status === "Pending");
     if (target) {
-      const { error: insertErr } = await supabase.from("resident_invoice_items").insert({
+      const { error: insertErr } = await insertReturnedFeeLine({
         invoice_id: target.id,
         charge_type: RETURNED_ACH_FEE_TYPE,
         description: `${returnFee.description} (ref ${ref})`,
         amount: returnFee.total,
+        melyos_share: returnFee.melyosShare, // frozen now
       });
       if (insertErr) {
         console.error("stripe-webhook: could not add returned ACH fee:", insertErr.message);
@@ -1052,7 +1082,7 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
     residentId: residentId || null,
     issueType: "rv_bank_payment_returned",
     source: "stripe_webhook",
-    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${returnFee.total.toFixed(2)} returned bank payment fee ($${returnFee.bankFee.toFixed(2)} bank fee + $${returnFee.serviceCharge.toFixed(2)} service charge; all of it goes to MelyOS when paid) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${returnFee.total.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
+    message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${amount} was returned by the bank${reason ? ` (${reason})` : ""}. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} back to Pending (owed again). ${feeInvoice ? `A $${returnFee.total.toFixed(2)} returned bank payment fee (${returnFee.description}${returnFee.companyShare > 0 ? `; when paid, $${returnFee.melyosShare.toFixed(2)} goes to MelyOS and $${returnFee.companyShare.toFixed(2)} to the park` : "; all of it goes to MelyOS when paid"}) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the $${returnFee.total.toFixed(2)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe session ${session.id}.`,
   });
   // Oct 28 (per Mely): email the resident — once (the issue above makes a redelivery stop at
   // alreadyLogged; the email also has its own per-session marker). One-time payment: autopay untouched.
@@ -1071,8 +1101,9 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
       reasonMessage: reason || null,
       feeAdded: !!feeInvoice,
       feeAmount: returnFee.total,
-      feeBankPart: returnFee.bankFee,
-      feeServicePart: returnFee.serviceCharge,
+      feeBankPart: returnFee.serviceCharge !== null ? returnFee.bankFee : undefined,
+      feeServicePart: returnFee.serviceCharge ?? undefined,
+      feeExplanation: returnFee.serviceCharge === null ? returnFee.description : undefined,
       autopayTurnedOff: false,
       isAutopay: false,
     });

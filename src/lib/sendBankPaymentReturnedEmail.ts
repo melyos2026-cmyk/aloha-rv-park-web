@@ -53,6 +53,7 @@ export async function sendBankPaymentReturnedEmail(p: {
   feeAmount?: number; // total fee added (RV: $29–$35, see rvReturnedAchFee)
   feeBankPart?: number; // $4.00 bank fee part
   feeServicePart?: number; // Fla. Stat. 68.065 service charge part
+  feeExplanation?: string; // custom fee schedules: e.g. "Returned payment fee per City Marina fee schedule"
   autopayTurnedOff: boolean; // autopay was really switched off
   isAutopay: boolean;
 }): Promise<void> {
@@ -81,7 +82,7 @@ export async function sendBankPaymentReturnedEmail(p: {
     if (p.feeAdded) {
       const parts = p.feeBankPart != null && p.feeServicePart != null
         ? ` (${money(p.feeBankPart)} bank fee plus a ${money(p.feeServicePart)} service charge allowed by Florida law)`
-        : "";
+        : p.feeExplanation ? ` (${escapeHtml(p.feeExplanation.replace(/^Returned payment fee /, ""))})` : "";
       items.push(`<li>A <strong>${money(p.feeAmount ?? 0)}</strong> returned-payment fee${parts} was added to your balance.</li>`);
     }
     if (p.autopayTurnedOff) items.push(`<li>Bank <strong>autopay was turned off</strong>, so the same account won't be charged again automatically.</li>`);

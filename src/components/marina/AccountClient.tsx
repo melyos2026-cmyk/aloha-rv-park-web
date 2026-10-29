@@ -271,7 +271,7 @@ export default function AccountClient() {
   const invoices = (
       <div className="mr-card" id="invoices" style={{ scrollMarginTop: 110 }}>
         <h3>Invoices</h3>
-        {due.length > 0 && (acct as any).ach?.enabled && <p className="mr-note" style={{ marginTop: 0 }}>Bank (ACH) payment has a much lower fee than a card and is available on balances of {money((acct as any).ach?.min ?? 100)} or more. It takes 3–5 business days to clear.</p>}
+        {due.length > 0 && (acct as any).ach?.enabled && <p className="mr-note" style={{ marginTop: 0 }}>Bank (ACH) payment has a much lower fee than a card and is available on balances of {money((acct as any).ach?.min ?? 100)} or more. It takes 3–5 business days to clear.{(acct as any).ach?.returnFeeText ? ` ${(acct as any).ach.returnFeeText}` : ""}</p>}
         {payable.length > 1 && (
           <div className="mr-paybal">
             <div>

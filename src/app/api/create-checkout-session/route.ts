@@ -2,7 +2,7 @@ import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, returnedFeeRuleToDisclose } from "@/lib/platformFee";
 import { achAllowed } from "@/lib/marina/checkout";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
 import { invoicesAwaitingRent } from "@/lib/invoiceRentReady";
@@ -219,6 +219,8 @@ export async function POST(req: Request) {
         // Oct 28: the webhook marks the invoices "Processing" until the bank confirms.
         payment_method: ach ? "ach" : "card",
         source: "portal",
+        // Oct 28 (review): the returned-payment fee rule shown to the payer now (used if the bank returns it).
+        ...(ach ? { returned_fee_rule: await returnedFeeRuleToDisclose("rv", resident?.company_id || null) } : {}),
       },
       // Oct 28 (review): short-lived (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,

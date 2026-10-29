@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, rvReturnedAchFee, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
+import { calculateAchFee, resolveConnectSplit, returnedAchFeesOnInvoices, returnedFeeForReturn, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, insertReturnedFeeLine, returnedPaymentFee, FLAT_FOUR_RETURNED_FEE, RETURNED_ACH_FEE_CHARGE_TYPE } from "@/lib/platformFee";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
@@ -18,7 +18,7 @@ import { sendBankPaymentReturnedEmail } from "@/lib/sendBankPaymentReturnedEmail
 // us_bank_account PaymentIntent, with the same ACH fee and Connect split as a one-time bank payment.
 // The invoices are "Processing" while the bank clears (3–5 business days); payment_intent.succeeded
 // settles them (Paid + "Bank Transfer Fee" line + receipt + Daily Close), payment_intent.payment_failed
-// reopens them (Pending + a $4 "Returned bank payment fee" once, autopay off). The cron also asks
+// reopens them (Pending + the company's "Returned bank payment fee" once, autopay off). The cron also asks
 // Stripe each morning (reconcileRvBankAutopay), so nothing depends only on the webhook events.
 // Bank autopay only runs when the company's admin has bank payments ON (ach_enabled === true).
 
@@ -386,6 +386,8 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
         ...(claimRowId ? { claim_id: claimRowId } : {}),
+        // Oct 28 (review): the returned-payment fee rule the resident accepted with bank autopay.
+        returned_fee_rule: await (async () => { const a = await loadAutopayAuthorizationRule("resident_accounts", resident.id, companyId); return returnedFeeRuleToDisclose("rv", companyId, { authorizedAt: a.authorizedAt ?? resident.autopay_authorized_at ?? null, storedRule: a.rule }); })(),
       },
     }, { idempotencyKey });
   } catch (e: any) {
@@ -589,13 +591,23 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
   const residentId = pi.metadata.resident_id;
   const invoiceIds = idsOf(pi);
   const ref = returnedFeeRef(pi.id);
-  // Oct 28 (per Mely): tiered RV fee — $4 bank cost + Fla. Stat. 68.065 service charge, by amount returned.
-  // Oct 28 (review): tiered on the INVOICE amount (without the bank transfer fee and the sales tax).
-  const returnFee = rvReturnedAchFee(Math.max(
-    Number(pi.amount || 0) / 100 - Number(pi.metadata?.processing_fee_charged || 0) - Number(pi.metadata?.tax_charged || 0), 0));
-  const { data: resident } = await supabase.from("resident_accounts").select("id, full_name, company_id, stripe_payment_method_id").eq("id", residentId).maybeSingle();
+  const { data: resident } = await supabase.from("resident_accounts").select("id, full_name, company_id, stripe_payment_method_id, autopay_authorized_at").eq("id", residentId).maybeSingle();
   if (!resident || (pi.metadata.company_id && resident.company_id !== pi.metadata.company_id)) return { ok: true, detail: "resident_mismatch" };
   const companyId = resident.company_id as string;
+  // Oct 28 (per Mely): the company's own returned-payment fee rule (src/lib/returnedFeeRules.ts), on the
+  // INVOICE amount (without the bank transfer fee and the sales tax).
+  const { data: feeCompany } = await supabase.from("companies").select("company_name").eq("id", companyId).maybeSingle();
+  // Oct 28 (review): only the fee disclosed when the payment was made AND in the autopay terms the
+  // resident accepted (accepted before the company rule was disclosed → flat $4 until they set it up again).
+  // Oct 28 (review): the rule frozen on this payment (metadata), else the one stored with the autopay
+  // authorization, else the cutoff logic; never a higher current rule.
+  const invoiceAmount = Math.max(Number(pi.amount || 0) / 100 - Number(pi.metadata?.processing_fee_charged || 0) - Number(pi.metadata?.tax_charged || 0), 0);
+  const auth = await loadAutopayAuthorizationRule("resident_accounts", resident.id, companyId);
+  const returnFee = (await returnedFeeForReturn({
+    kind: "rv", companyId, companyName: feeCompany?.company_name || null, invoiceAmount,
+    paymentRule: pi.metadata?.returned_fee_rule, authorizationRule: auth.rule,
+    paymentCreated: pi.created, autopayAuthorizedAt: (resident as any).autopay_authorized_at ?? auth.authorizedAt ?? null,
+  })) || returnedPaymentFee(FLAT_FOUR_RETURNED_FEE, invoiceAmount, feeCompany?.company_name || null); // RV: $4 was always disclosed
 
   const { data: logged, error: loggedErr } = await supabase
     .from("system_health_issues").select("id")
@@ -612,17 +624,21 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
   let feeInvoice: { id: string; invoice_month?: string | null } | null = null;
   if (!neverSubmitted) {
     const { data: existingFee, error: feeLookupErr } = await supabase
-      .from("resident_invoice_items").select("id, invoice_id")
+      .from("resident_invoice_items").select("id, invoice_id, amount")
       .in("invoice_id", invoiceIds).eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE).like("description", `%${ref}%`).limit(1);
     if (feeLookupErr) return { ok: false, detail: feeLookupErr.message };
     const { data: invoices } = await supabase.from("resident_invoices").select("id, status, invoice_month").in("id", invoiceIds).eq("resident_id", residentId);
     if (existingFee && existingFee.length > 0) {
       feeInvoice = { id: existingFee[0].invoice_id, invoice_month: (invoices || []).find((i) => i.id === existingFee[0].invoice_id)?.invoice_month };
+      // A retry: the line already added is what counts.
+      const was = Number((existingFee[0] as any).amount) || 0;
+      if (was > 0) { returnFee.total = was; returnFee.melyosShare = Math.min(was, returnFee.melyosShare); returnFee.companyShare = Math.round((was - returnFee.melyosShare) * 100) / 100; }
     } else {
       const target = invoiceIds.map((id) => (invoices || []).find((i) => i.id === id)).find((i) => i?.status === "Pending");
       if (target) {
-        const { error } = await supabase.from("resident_invoice_items").insert({
+        const { error } = await insertReturnedFeeLine({
           invoice_id: target.id, charge_type: RETURNED_ACH_FEE_CHARGE_TYPE, description: `${returnFee.description} (ref ${ref})`, amount: returnFee.total,
+          melyos_share: returnFee.melyosShare, // frozen now
         });
         if (error) return { ok: false, detail: error.message };
         feeInvoice = { id: target.id, invoice_month: target.invoice_month };
@@ -658,7 +674,7 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
     source: "stripe_webhook",
     message: (neverSubmitted
       ? `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} failed before reaching the bank${reason ? ` (${reason})` : ""}. Nothing was taken and no returned-payment fee was added. ${(reopened || []).length ? `${n} back to Pending. ` : ""}${autopayNote} Stripe payment ${pi.id}.`
-      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(returnFee.total)} returned bank payment fee (${money(returnFee.bankFee)} bank fee + ${money(returnFee.serviceCharge)} service charge; all of it goes to MelyOS when paid) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(returnFee.total)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
+      : `${resident.full_name || "A resident"}'s bank AUTOPAY payment of ${money(Number(pi.amount || 0) / 100)} was returned by the bank${reason ? ` (${reason})` : ""}. ${(reopened || []).length ? `${n} back to Pending (owed again). ` : ""}${autopayNote} ${feeInvoice ? `A ${money(returnFee.total)} returned bank payment fee (${returnFee.description}${returnFee.companyShare > 0 ? `; when paid, ${money(returnFee.melyosShare)} goes to MelyOS and ${money(returnFee.companyShare)} to the park` : "; all of it goes to MelyOS when paid"}) was added to the ${feeInvoice.invoice_month || ""} invoice.` : `No invoice was open to add the ${money(returnFee.total)} returned bank payment fee to — add it by hand if it applies.`} Contact the resident to pay again. Stripe payment ${pi.id}.`) + pmTag(failedPm || currentPm),
   });
   // Oct 28 (per Mely): email the resident — after the issue above (which makes every later call of
   // this function return "already_handled"), plus its own per-payment marker: sent once.
@@ -680,8 +696,9 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
     reasonMessage: reason || pi.last_payment_error?.message || null,
     feeAdded: !!feeInvoice,
     feeAmount: returnFee.total,
-    feeBankPart: returnFee.bankFee,
-    feeServicePart: returnFee.serviceCharge,
+    feeBankPart: returnFee.serviceCharge !== null ? returnFee.bankFee : undefined,
+    feeServicePart: returnFee.serviceCharge ?? undefined,
+    feeExplanation: returnFee.serviceCharge === null ? returnFee.description : undefined,
     autopayTurnedOff: autopayOff,
     isAutopay: true,
   });

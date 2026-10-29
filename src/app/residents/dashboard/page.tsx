@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
 import BankPayBanner from "@/components/BankPayBanner";
-import { RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
+import { returnedFeeSentence } from "@/lib/autopayTerms";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
@@ -150,7 +150,7 @@ export default function ResidentDashboard() {
   const [achEnabled, setAchEnabled] = useState(false);
   const [achMinAmount, setAchMinAmount] = useState(100);
   const [passProcessingFee, setPassProcessingFee] = useState(true);
-  const [feeRates, setFeeRates] = useState<{ cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number } | null>(null);
+  const [feeRates, setFeeRates] = useState<{ cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number; returnFeePhrase?: string } | null>(null);
   const [showPayChoice, setShowPayChoice] = useState(false);
   const [startingPayment, setStartingPayment] = useState(false);
   // Invoices paid by bank that are still clearing (status "Processing") — not owed again.
@@ -466,6 +466,7 @@ export default function ResidentDashboard() {
     achFee: !passProcessingFee ? 0 : Math.round(Math.min(Math.max(autopayExample * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100,
     achMin: achMinAmount,
     returnFee: feeRates.achReturnFee,
+    returnFeePhrase: feeRates.returnFeePhrase,
   } : null;
 
   async function handlePayNow() {
@@ -2309,7 +2310,7 @@ export default function ResidentDashboard() {
                   ))}
                 </div>
                 <p style={{ color: "#b45309", fontSize: 12, marginTop: 12, background: "#fffbeb", padding: 8, borderRadius: 6 }}>
-                  {RV_RETURNED_ACH_FEE_DISCLOSURE}
+                  {returnedFeeSentence(feeRates.returnFeePhrase)}
                 </p>
                 <button
                   onClick={() => startPayment(payMethodChoice)}

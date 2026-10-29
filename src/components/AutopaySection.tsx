@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
-import { bankAutopayAuthorizationText, RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
+import { bankAutopayAuthorizationText, returnedFeeSentence } from "@/lib/autopayTerms";
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "");
 
@@ -115,7 +115,8 @@ export type BankAutopayOption = {
   cardFee: number;             // card fee on exampleAmount
   achFee: number;              // bank fee on exampleAmount
   achMin: number;              // bank autopay pays balances at or above this
-  returnFee: number;           // returned bank payment fee
+  returnFee: number;           // returned bank payment fee (bank cost; kept for older callers)
+  returnFeePhrase?: string;    // Oct 28: the company's returned-payment fee rule, in words
 };
 
 const money = (n: number) => `$${Number(n || 0).toFixed(2)}`;
@@ -146,7 +147,7 @@ function BankAutopaySetup({ residentId, parkName, bank, onCancel }: { residentId
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: "#374151", marginBottom: 4 }}>
           Bank Debit (ACH) Authorization
         </div>
-        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55, margin: 0 }}>{bankAutopayAuthorizationText(parkName, bank.returnFee)}</p>
+        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.55, margin: 0 }}>{bankAutopayAuthorizationText(parkName, bank.returnFeePhrase)}</p>
       </div>
       <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 12, cursor: "pointer" }}>
         <input
@@ -208,7 +209,7 @@ function MethodChoice({ value, onChange, bank }: { value: "ach" | "card"; onChan
       )}
       {opt("card", "Card", bank.passFee ? `Fee ${money(bank.cardFee)}${example} · charged instantly` : "No fee · charged instantly")}
       <p style={{ fontSize: 12, color: "#b45309", background: "#fffbeb", padding: 8, borderRadius: 6, margin: 0 }}>
-        {RV_RETURNED_ACH_FEE_DISCLOSURE} Autopay is then turned off.
+        {returnedFeeSentence(bank.returnFeePhrase)} Autopay is then turned off.
       </p>
     </div>
   );

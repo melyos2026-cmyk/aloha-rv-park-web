@@ -7,11 +7,14 @@ import { rentalsEnabled } from "@/lib/rentals";
 import { moduleOn } from "@/lib/concierge";
 import { loadRestaurant } from "@/lib/restaurant";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { loadReturnedFeeSettings, returnedFeeDisclosure } from "@/lib/platformFee";
 
 // Oct 24: whether bank (ACH) payments are offered and from what balance.
 async function achSettings(companyId: string) {
   const { data } = await supabaseAdmin.from("company_fee_settings").select("ach_enabled, ach_min_amount").eq("company_id", companyId).maybeSingle();
-  return { enabled: data?.ach_enabled !== false, min: Number(data?.ach_min_amount ?? 100) };
+  // Oct 28 (per Mely): + the marina's own returned-payment fee rule, in words (never MelyOS's share).
+  const returnFeeText = returnedFeeDisclosure(await loadReturnedFeeSettings(companyId, "marina"));
+  return { enabled: data?.ach_enabled !== false, min: Number(data?.ach_min_amount ?? 100), returnFeeText };
 }
 
 // GET /api/marina/account — the signed-in boater's own account.

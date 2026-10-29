@@ -5,7 +5,7 @@ import { requireMatchingSession } from "@/lib/portalSession";
 import { demoPaymentBlock } from "@/lib/demoPayments";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
 import { bankAutopayAuthorizationText } from "@/lib/autopayTerms";
-import { ACH_RETURN_FEE } from "@/lib/platformFee";
+import { loadReturnedFeeSettings, returnedFeePhrase, saveAutopayAuthorizationRule } from "@/lib/platformFee";
 import { RV_AUTOPAY_SETUP_TYPE, isMissingColumn } from "@/lib/rvBankAutopay";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
@@ -106,7 +106,8 @@ export async function POST(req: NextRequest) {
 
     const last4 = pm.us_bank_account?.last4 || null;
     const bankName = pm.us_bank_account?.bank_name || "Bank";
-    const authorizationText = bankAutopayAuthorizationText(parkName, ACH_RETURN_FEE);
+    // Oct 28 (per Mely): the company's own returned-payment fee rule, the same words the portal showed.
+    const authorizationText = bankAutopayAuthorizationText(parkName, returnedFeePhrase(await loadReturnedFeeSettings(resident.company_id || null, "rv")));
     const base = {
       stripe_payment_method_id: pm.id,
       autopay_enabled: true,
@@ -122,6 +123,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Bank autopay isn't available yet. Please use a card for autopay, or pay by bank each month." }, { status: 503 });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Oct 28 (review): the returned-payment fee rule the resident just accepted (used if a payment returns).
+    if (resident.company_id) await saveAutopayAuthorizationRule("resident_accounts", residentId, resident.company_id, "rv");
 
     await supabase.from("resident_update_notifications").insert({
       company_id: resident.company_id,

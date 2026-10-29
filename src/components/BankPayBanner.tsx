@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
+import { returnedFeeSentence } from "@/lib/autopayTerms";
 
 // Oct 28 (per Mely): one-time announcement on the resident portal home — "pay by bank" is new and
 // cheaper than a card. Shown only when the park has bank payments ON (the dashboard checks
@@ -24,7 +24,7 @@ export default function BankPayBanner({
   companyId: string;
   exampleAmount: number;
   passFee: boolean;
-  fees: { cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number };
+  fees: { cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number; returnFeePhrase?: string };
   canPayNow: boolean;
   canSetUpAutopay: boolean;
   hide?: boolean;
@@ -74,7 +74,7 @@ export default function BankPayBanner({
           : passFee
             ? `The bank fee is ${Math.round(fees.achPercent * 1000) / 10}% (at most ${money(fees.achMaximum)}), the card fee ${Math.round(fees.cardPercent * 1000) / 10}%.`
             : "No fee either way."}{" "}
-        Bank payments take 3–5 business days to clear. {RV_RETURNED_ACH_FEE_DISCLOSURE}
+        Bank payments take 3–5 business days to clear. {returnedFeeSentence(fees.returnFeePhrase)}
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {canPayNow && (

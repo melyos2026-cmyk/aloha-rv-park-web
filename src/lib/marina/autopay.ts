@@ -1,11 +1,12 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, loadReturnedFeeSettings, returnedFeePhrase, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, saveAutopayAuthorizationRule } from "@/lib/platformFee";
 import type { MarinaCompany } from "./company";
 import { isDemoCompany } from "./host";
 import { round2, todayET } from "./data";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment } from "./payments";
+import { marinaReturnedFeeMelyosPart } from "./returnedFee";
 import { mailBoater, mailOffice } from "./slipAuto";
 
 // Oct 26 (per Mely — Group 2): autopay for boaters. They save a card or a bank account (Stripe
@@ -18,8 +19,13 @@ import { mailBoater, mailOffice } from "./slipAuto";
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const MAX_INVOICES = 10;
 
-export const authText = (marina: string, method: string) =>
-  `I authorize ${marina} to charge my ${method === "ach" ? "bank account" : "card"} on file automatically for the invoices on my boater account on or after their due date (slip fees, contract payments, utilities, store charges and booking balances), plus the processing fee shown in my account, until I turn autopay off in my account. I can turn it off at any time.`;
+// Oct 28 (per Mely): bank autopay also states the marina's returned-payment fee rule (returnFeePhrase,
+// from returnedFeePhrase — e.g. "a returned-payment fee of $15 or 5% of the payment, whichever is greater, applies").
+export const authText = (marina: string, method: string, returnFeePhrase?: string | null) =>
+  `I authorize ${marina} to charge my ${method === "ach" ? "bank account" : "card"} on file automatically for the invoices on my boater account on or after their due date (slip fees, contract payments, utilities, store charges and booking balances), plus the processing fee shown in my account, until I turn autopay off in my account.${method === "ach" && returnFeePhrase ? ` If my bank returns a payment, ${returnFeePhrase}.` : ""} I can turn it off at any time.`;
+export async function marinaReturnFeePhrase(companyId: string) {
+  return returnedFeePhrase(await loadReturnedFeeSettings(companyId, "marina"));
+}
 
 export async function autopayStatus(companyId: string, memberId: string) {
   const { data: m, error } = await supabaseAdmin.from("marina_members").select("autopay_enabled, autopay_method, autopay_label, autopay_authorized_at, autopay_failed_at, autopay_fail_note").eq("id", memberId).eq("company_id", companyId).maybeSingle();
@@ -35,8 +41,9 @@ export async function startAutopay(company: MarinaCompany, memberId: string, met
   if (isDemoCompany(company)) {
     const { error } = await supabaseAdmin.from("marina_members").update({
       autopay_enabled: true, autopay_method: "demo", autopay_label: method === "ach" ? "Demo bank •••• 6789" : "Demo card •••• 4242", autopay_pm_id: null,
-      autopay_authorized_at: new Date().toISOString(), autopay_auth_text: authText(company.company_name, method), autopay_auth_ip: ip, autopay_failed_at: null, autopay_fail_note: null,
+      autopay_authorized_at: new Date().toISOString(), autopay_auth_text: authText(company.company_name, method, await marinaReturnFeePhrase(company.id)), autopay_auth_ip: ip, autopay_failed_at: null, autopay_fail_note: null,
     }).eq("id", memberId).eq("company_id", company.id);
+    if (!error) await saveAutopayAuthorizationRule("marina_members", memberId, company.id, "marina"); // Oct 28: rule accepted
     return error ? { error: /autopay/.test(error.message) ? "Autopay is not set up yet. Please ask the marina." : error.message } : { demo: true };
   }
   if (!stripe) return { error: "Online payments aren't set up for this marina yet." };
@@ -76,9 +83,10 @@ export async function confirmAutopay(company: MarinaCompany, memberId: string, s
   const label = method === "ach" ? `${pm.us_bank_account?.bank_name || "Bank"} •••• ${pm.us_bank_account?.last4 || ""}` : `${String(pm.card?.brand || "Card").replace(/^\w/, (c) => c.toUpperCase())} •••• ${pm.card?.last4 || ""}`;
   const { error } = await supabaseAdmin.from("marina_members").update({
     autopay_enabled: true, autopay_pm_id: pm.id, autopay_method: method, autopay_label: label,
-    autopay_authorized_at: new Date().toISOString(), autopay_auth_text: authText(company.company_name, method), autopay_auth_ip: ip, autopay_failed_at: null, autopay_fail_note: null,
+    autopay_authorized_at: new Date().toISOString(), autopay_auth_text: authText(company.company_name, method, await marinaReturnFeePhrase(company.id)), autopay_auth_ip: ip, autopay_failed_at: null, autopay_fail_note: null,
   }).eq("id", memberId).eq("company_id", company.id);
   if (error) return { error: error.message };
+  await saveAutopayAuthorizationRule("marina_members", memberId, company.id, "marina"); // Oct 28: the returned-fee rule accepted
   const { data: m } = await supabaseAdmin.from("marina_members").select("full_name").eq("id", memberId).maybeSingle();
   await supabaseAdmin.from("resident_update_notifications").insert({ company_id: company.id, resident_name: m?.full_name || "Boater", update_type: "autopay_enabled", message: `${m?.full_name || "A boater"} turned on autopay (${label}) and accepted the automatic payment authorization.` }).then(() => null, () => null);
   return { ok: true, label };
@@ -144,7 +152,9 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
   if (m.autopay_method === "demo") return fail("This payment method was saved on a demo. Please turn autopay on again with a real card or bank account.");
   if (ach && fs?.ach_enabled === false) return fail("The marina no longer takes bank payments. Please turn autopay on again with a card.");
   if (!stripe || !m.stripe_customer_id || !m.autopay_pm_id) return fail("No saved payment method. Please turn autopay on again.");
-  const split = await resolveConnectSplit(company.id, charge, total + (passFee ? 0 : -fee));
+  // Oct 28 (per Mely): MelyOS's share of a returned-payment fee invoice goes to MelyOS, not the marina.
+  const returnedFeeMelyos = await marinaReturnedFeeMelyosPart(company.id, rows.map((r) => ({ id: r.id, balance: r.balance })));
+  const split = await resolveConnectSplit(company.id, charge, Math.max(total + (passFee ? 0 : -fee) - returnedFeeMelyos, 0));
   if (!split) return fail("The marina's online payments are not set up.", false);
 
   // Only the charge itself is in this try: anything that fails AFTER money moved must never be
@@ -157,7 +167,11 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
       description: `Autopay — ${company.company_name}: ${rows.map((r) => r.invoice_number).join(", ")}`.slice(0, 900),
       application_fee_amount: split.applicationFeeAmountCents, transfer_data: { destination: split.connectedAccountId },
       ...(split.statementDescriptorSuffix ? { statement_descriptor_suffix: split.statementDescriptorSuffix } : {}),
-      metadata: { type: "marina_autopay", company_id: company.id, member_id: m.id, attempt_id: att.id, allocs: rows.map((r) => `${r.id}:${r.balance}`).join(";").slice(0, 490) },
+      metadata: {
+        type: "marina_autopay", company_id: company.id, member_id: m.id, attempt_id: att.id, allocs: rows.map((r) => `${r.id}:${r.balance}`).join(";").slice(0, 490),
+        // Oct 28 (review): the returned-payment fee rule the boater accepted with autopay (bank only).
+        ...(ach ? { returned_fee_rule: await (async () => { const a = await loadAutopayAuthorizationRule("marina_members", m.id, company.id); return returnedFeeRuleToDisclose("marina", company.id, { authorizedAt: a.authorizedAt, storedRule: a.rule }); })() } : {}),
+      },
     }, { idempotencyKey: `marina-autopay-${att.id}` });
   } catch (e: any) {
     const id = e?.raw?.payment_intent?.id || null;
@@ -190,8 +204,14 @@ async function afterCharge(company: MarinaCompany, m: any, attemptId: string, pi
 
 // A bank autopay payment bounced: reopen the invoices, tell the boater and the office, and pause
 // bank autopay after the second bounce in 60 days (bank rules allow only limited retries).
-export async function autopayBankFailed(companyId: string, piId: string, reason: string) {
-  await failMarinaAchPayment(companyId, `autopay:${piId}`, reason);
+export async function autopayBankFailed(companyId: string, piId: string, reason: string, opts?: { neverSubmitted?: boolean; paymentCreated?: number | null; paymentRule?: unknown }) {
+  // Oct 28 (review): the boater's autopay terms must have disclosed the returned-payment fee.
+  const { data: att0 } = await supabaseAdmin.from("marina_autopay_attempts").select("member_id").eq("company_id", companyId).eq("payment_intent_id", piId).limit(1);
+  const auth0 = att0?.[0]?.member_id ? await loadAutopayAuthorizationRule("marina_members", att0[0].member_id, companyId) : { authorizedAt: null, rule: null };
+  const returnedFee = await failMarinaAchPayment(companyId, `autopay:${piId}`, reason, {
+    neverSubmitted: opts?.neverSubmitted, paymentCreated: opts?.paymentCreated ?? null, autopayAuthorizedAt: auth0.authorizedAt,
+    paymentRule: opts?.paymentRule, authorizationRule: auth0.rule,
+  });
   const { data: a } = await supabaseAdmin.from("marina_autopay_attempts").update({ status: "failed", error: reason.slice(0, 300) }).eq("company_id", companyId).eq("payment_intent_id", piId).neq("status", "failed").select("member_id");
   const memberId = a?.[0]?.member_id;
   if (!memberId) return;
@@ -203,7 +223,7 @@ export async function autopayBankFailed(companyId: string, piId: string, reason:
   const company = await getMarinaById(companyId);
   if (!company || !m) return;
   await mailBoater(company, m.email, "Your bank returned the autopay payment", "Your bank returned the payment", [
-    `Your bank didn't complete the autopay payment from ${esc(m.autopay_label || "your account")}: ${esc(reason)}. The invoices are open again.`,
+    `Your bank didn't complete the autopay payment from ${esc(m.autopay_label || "your account")}: ${esc(reason)}. The invoices are open again.${returnedFee ? ` A returned-payment fee of ${money(returnedFee.total)} (${esc(returnedFee.description)}) was added to your account as its own invoice.` : ""}`,
     pause ? "Autopay is paused after two returned payments. Please pay in your account and turn autopay on again with a card or another account." : "Please make sure the account has funds, or pay in your account.",
   ], { label: "Open my account", url: `https://${company.domain}/marina/account#autopay` });
   await mailOffice(company, `Autopay bank payment returned: ${m.full_name}`, [`${esc(m.full_name)}'s bank returned an autopay payment (${esc(reason)}). The invoices are open again.${pause ? " Autopay was paused after the second return." : ""}`], undefined, "payments");
@@ -218,7 +238,7 @@ export async function reconcileAutopay() {
     const pi = await stripe.paymentIntents.retrieve(a.payment_intent_id).catch(() => null);
     if (!pi) continue;
     if (pi.status === "succeeded") { await settleMarinaAchPayment(a.company_id, `autopay:${pi.id}`); await supabaseAdmin.from("marina_autopay_attempts").update({ status: "succeeded" }).eq("id", a.id); n++; }
-    else if (pi.status === "requires_payment_method" || pi.status === "canceled") { await autopayBankFailed(a.company_id, pi.id, pi.last_payment_error?.message || "the bank declined the transfer"); n++; }
+    else if (pi.status === "requires_payment_method" || pi.status === "canceled") { await autopayBankFailed(a.company_id, pi.id, pi.last_payment_error?.message || "the bank declined the transfer", { neverSubmitted: pi.status === "canceled", paymentCreated: pi.created, paymentRule: pi.metadata?.returned_fee_rule }); n++; }
   }
   // Attempts that never got their payment id saved (the run stopped right after charging): find
   // the payment in Stripe by attempt id; record it if money moved, otherwise close the attempt.

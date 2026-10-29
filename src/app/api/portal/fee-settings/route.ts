@@ -4,6 +4,7 @@ import { requireMatchingSession } from "@/lib/portalSession";
 import {
   PROCESSING_FEE_PERCENT, PROCESSING_FEE_MINIMUM,
   ACH_FEE_PERCENT, ACH_FEE_MINIMUM, ACH_FEE_MAXIMUM, ACH_RETURN_FEE,
+  loadReturnedFeeSettings, returnedFeePhrase,
 } from "@/lib/platformFee";
 
 // GET /api/portal/fee-settings?residentId=...
@@ -85,6 +86,8 @@ export async function GET(req: NextRequest) {
       achMinimum: ACH_FEE_MINIMUM,
       achMaximum: ACH_FEE_MAXIMUM,
       achReturnFee: ACH_RETURN_FEE,
+      // Oct 28 (per Mely): this company's returned-payment fee rule, in words (never MelyOS's share).
+      returnFeePhrase: returnedFeePhrase(await loadReturnedFeeSettings(resident?.company_id || null, "rv")),
     },
   });
 }

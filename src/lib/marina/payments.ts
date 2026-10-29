@@ -8,6 +8,7 @@ import { conciergePaidForInvoice } from "./conciergePaid";
 import { rentalPaidForInvoice } from "./rentalPaid";
 import { slipRequestPaidForInvoice } from "./slipRequests";
 import { createBalanceInvoice } from "./booking";
+import { ensureMarinaReturnedFeeInvoice } from "./returnedFee";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const esc = (v: string) => v.replace(/[<>&"]/g, "");
@@ -140,10 +141,18 @@ export async function settleMarinaAchPayment(companyId: string, reference: strin
 
 // Oct 24: the bank rejected an ACH payment (insufficient funds, closed account…). The payment is
 // marked returned, so the invoice goes back to open — the same as a bounced check.
-export async function failMarinaAchPayment(companyId: string, reference: string, reason: string) {
+// Oct 28 (per Mely): + the marina's returned-payment fee as its own invoice (once per payment — see
+// ./returnedFee.ts). neverSubmitted: the payment never reached the bank (canceled) → no fee.
+export async function failMarinaAchPayment(companyId: string, reference: string, reason: string, opts?: { neverSubmitted?: boolean; paymentCreated?: number | string | null; autopayAuthorizedAt?: string | null; paymentRule?: unknown; authorizationRule?: unknown }) {
   await supabaseAdmin.from("marina_invoice_payments")
     .update({ pending_at: null, returned_at: new Date().toISOString(), return_reason: `Bank payment failed: ${reason}`.slice(0, 300), recorded_by_name: "Online bank transfer (failed)" })
     .eq("company_id", companyId).or(`reference.eq.${reference},reference.like.${reference}:%`).is("returned_at", null);
+  if (opts?.neverSubmitted) return null;
+  return ensureMarinaReturnedFeeInvoice(companyId, reference, {
+    paymentCreated: opts?.paymentCreated ?? null,
+    paymentRule: opts?.paymentRule, authorizationRule: opts?.authorizationRule,
+    ...(opts && "autopayAuthorizedAt" in opts ? { autopayAuthorizedAt: opts.autopayAuthorizedAt ?? null } : {}),
+  });
 }
 
 // Oct 24 (per Mely — security run): money given back in Stripe (full refund, or a lost dispute)

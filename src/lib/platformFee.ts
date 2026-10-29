@@ -1,5 +1,6 @@
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+import { normalizeReturnedFeeSettings, melyosShareOfReturnedFee, returnedPaymentFee as feeOf, decodeReturnedFeeRule, encodeReturnedFeeRule, RETURNED_BANK_COST, FLORIDA_RETURNED_FEE, FLAT_FOUR_RETURNED_FEE, type ReturnedFeeSettings } from "@/lib/returnedFeeRules";
 
 // Aug 4 (per Mely): the processing-fee surcharge shown to whoever pays it
 // (resident or park, per company_fee_settings.pass_processing_fee_to_resident)
@@ -32,45 +33,135 @@ export const ACH_RETURN_FEE = 4.0;
 // charge_type of that invoice line (written by the Stripe webhook).
 export const RETURNED_ACH_FEE_CHARGE_TYPE = "Returned bank payment fee";
 
-// Oct 28 (per Mely — owner-approved, RV PARKS only; marinas keep the flat $4 for now): the fee the
-// RESIDENT pays when their bank returns a payment = Stripe's $4.00 bank cost + a service charge as
-// allowed by Florida Statute 68.065 (capped at $31): returned amount ≤ $50 → $25; ≤ $300 → $30;
-// above $300 → $31. Totals $29 / $34 / $35. ALL of it goes to MelyOS (returnedAchFeesOnInvoices
-// takes it out of the park's share when the resident pays online). If the resident never pays it,
-// nobody is charged — the park is never responsible for it.
-export function rvReturnedAchServiceCharge(returnedAmount: number): number {
-  const a = Math.round(Number(returnedAmount || 0) * 100) / 100;
-  if (a <= 50) return 25;
-  if (a <= 300) return 30;
-  return 31;
-}
-export function rvReturnedAchFee(returnedAmount: number): { total: number; bankFee: number; serviceCharge: number; description: string } {
-  const serviceCharge = rvReturnedAchServiceCharge(returnedAmount);
-  const bankFee = ACH_RETURN_FEE;
-  return {
-    total: Math.round((bankFee + serviceCharge) * 100) / 100,
-    bankFee,
-    serviceCharge,
-    description: `Bank returned payment $${Number(returnedAmount || 0).toFixed(2)} ($${bankFee.toFixed(2)} bank fee + $${serviceCharge.toFixed(2)} service charge, Fla. Stat. 68.065)`,
-  };
-}
-// Shown to RV residents wherever bank payments / bank autopay are offered.
-export const RV_RETURNED_ACH_FEE_MIN = 29;
-export const RV_RETURNED_ACH_FEE_MAX = 35;
-export { RV_RETURNED_ACH_FEE_DISCLOSURE } from "@/lib/autopayTerms";
+// Oct 28 (per Mely — owner-approved): the returned-bank-payment fee is a PER-COMPANY setting
+// (company_fee_settings.returned_fee_* / melyos_returned_share_*, scratchpad returned_fee_settings.sql)
+// — rules in src/lib/returnedFeeRules.ts (Florida standard $29–$35, or a custom fee schedule; MelyOS
+// gets all of it or a fixed share ≥ $4). Before that SQL runs: RV parks = Florida, marinas = flat $4,
+// all to MelyOS (today's behavior). If the customer never pays it, nobody is charged.
+export {
+  returnedPaymentFee, returnedFeePhrase, returnedFeeDisclosure, melyosShareOfReturnedFee, normalizeReturnedFeeSettings,
+  validateReturnedFeeSettings, FLORIDA_RETURNED_FEE, FLAT_FOUR_RETURNED_FEE, RETURNED_BANK_COST,
+  encodeReturnedFeeRule, decodeReturnedFeeRule,
+} from "@/lib/returnedFeeRules";
+export type { ReturnedFeeSettings } from "@/lib/returnedFeeRules";
 
-// Oct 28 (per Mely): the returned-payment fee is Stripe's charge to MelyOS, so when an invoice that
-// carries it is paid, that amount goes to MelyOS (application fee), not to the park. Callers subtract
-// this from the park's share (never below $0); invoice totals are not changed. Best-effort: if the
-// lookup fails the payment still goes through (as before) and System Health is told.
+const RETURNED_FEE_COLUMNS = "returned_fee_mode, returned_fee_flat, returned_fee_percent, returned_fee_cap, melyos_returned_share_mode, melyos_returned_share_amount";
+const isMissingColumnErr = (e: { code?: string; message?: string } | null | undefined) =>
+  !!e && (e.code === "42703" || e.code === "PGRST204" || /returned_fee_|melyos_returned_share_/.test(String(e.message || "")));
+
+// Oct 28 (review): the rule to CHARGE with. null = could not be read (a marina is then charged NO fee
+// and System Health is told — never a fee the company may not have). Columns missing (SQL not run) →
+// today's behavior: RV parks Florida standard, marinas flat $4. No row: RV parks Florida (the default);
+// marinas flat $4 (existing marinas are set to flat $4 by returned_fee_settings.sql — the owner
+// decides per marina; a NEW marina gets the Florida default once its Fee Settings row exists).
+export async function loadReturnedFeeSettingsStrict(companyId: string | null | undefined, kind: "rv" | "marina" = "rv"): Promise<ReturnedFeeSettings | null> {
+  const columnsMissing = kind === "marina" ? FLAT_FOUR_RETURNED_FEE : FLORIDA_RETURNED_FEE;
+  const noRow = kind === "marina" ? FLAT_FOUR_RETURNED_FEE : FLORIDA_RETURNED_FEE;
+  if (!companyId) return kind === "marina" ? null : FLORIDA_RETURNED_FEE;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data, error } = await supabase.from("company_fee_settings").select(RETURNED_FEE_COLUMNS).eq("company_id", companyId).maybeSingle();
+    if (!error) return data ? normalizeReturnedFeeSettings(data as any, noRow) : noRow;
+    if (isMissingColumnErr(error)) return columnsMissing;
+  }
+  if (kind === "rv") return FLORIDA_RETURNED_FEE; // RV parks: the Florida standard is disclosed everywhere since Oct 28
+  await logSystemHealthIssue({
+    companyId, issueType: "melyos_fee_split", source: "stripe",
+    message: "Could not read this marina's returned-payment fee setting, so NO returned-payment fee was added for a returned bank payment. Add it by hand if it applies.",
+  }).catch(() => null);
+  return null;
+}
+// For disclosures (portal texts): the same rule; on a read failure, the safe default wording.
+export async function loadReturnedFeeSettings(companyId: string | null | undefined, kind: "rv" | "marina" = "rv"): Promise<ReturnedFeeSettings> {
+  const s = await loadReturnedFeeSettingsStrict(companyId, kind).catch(() => null);
+  return s || (kind === "marina" ? FLAT_FOUR_RETURNED_FEE : FLORIDA_RETURNED_FEE);
+}
+
+// Oct 28 (review — never charge an undisclosed fee): which rule applies to a RETURNED payment, by when
+// that payment was created (and, for autopay, when the payer accepted the autopay terms):
+//  - RV parks: $4.00 was disclosed since bank payments launched; the company rule ($29–$35 / custom)
+//    since RV_RETURNED_FEE_RULE_DISCLOSED_SINCE. Earlier → flat $4.00.
+//  - Marinas: no returned-payment fee was disclosed before MARINA_RETURNED_FEE_DISCLOSED_SINCE.
+//    Earlier → no fee (null).
+// Set these to the real deploy times.
+export const RV_RETURNED_FEE_RULE_DISCLOSED_SINCE = "2026-10-28T23:50:25Z"; // tiered-fee deploy (commit e97b5a8)
+export const MARINA_RETURNED_FEE_DISCLOSED_SINCE = "2026-10-29T01:15:00Z"; // marina returned-fee deploy
+export function returnedFeeRuleForPayment(kind: "rv" | "marina", companyRule: ReturnedFeeSettings | null, paymentCreated: number | string | Date | null | undefined, autopayAuthorizedAt?: string | null): ReturnedFeeSettings | null {
+  const since = Date.parse(kind === "marina" ? MARINA_RETURNED_FEE_DISCLOSED_SINCE : RV_RETURNED_FEE_RULE_DISCLOSED_SINCE);
+  const created = typeof paymentCreated === "number" ? paymentCreated * 1000 : paymentCreated ? new Date(paymentCreated).getTime() : NaN;
+  const authOk = autopayAuthorizedAt === undefined ? true : !!autopayAuthorizedAt && Date.parse(autopayAuthorizedAt) >= since;
+  const disclosed = Number.isFinite(created) && created >= since && authOk;
+  if (disclosed) return companyRule;
+  return kind === "marina" ? null : FLAT_FOUR_RETURNED_FEE;
+}
+
+// Oct 28 (review — freeze the disclosed rule): the rule to put in a NEW bank payment's metadata
+// (returned_fee_rule): what the payer is shown now. For autopay, the rule stored when they accepted the
+// autopay terms wins (else the cutoff logic for that authorization).
+export async function returnedFeeRuleToDisclose(kind: "rv" | "marina", companyId: string | null | undefined, autopay?: { authorizedAt: string | null; storedRule: unknown }): Promise<string> {
+  if (autopay) {
+    const stored = decodeReturnedFeeRule(autopay.storedRule);
+    if (stored !== undefined) return encodeReturnedFeeRule(stored);
+    return encodeReturnedFeeRule(returnedFeeRuleForPayment(kind, await loadReturnedFeeSettings(companyId, kind), new Date(), autopay.authorizedAt));
+  }
+  return encodeReturnedFeeRule(await loadReturnedFeeSettings(companyId, kind));
+}
+
+// Oct 28 (review): the fee for a RETURNED payment. Order: the rule frozen on the payment (metadata),
+// else the rule stored with the autopay authorization, else the cutoff logic with the current rule.
+// A stored rule is never replaced by a HIGHER current one (a lower current one is used — in the
+// payer's favor). MelyOS's share always follows the company's current share setting (and is then
+// frozen on the fee line). null = no fee.
+export async function returnedFeeForReturn(p: {
+  kind: "rv" | "marina"; companyId: string | null | undefined; companyName?: string | null; invoiceAmount: number;
+  paymentRule?: unknown; authorizationRule?: unknown; paymentCreated: number | string | Date | null | undefined; autopayAuthorizedAt?: string | null;
+}): Promise<ReturnType<typeof feeOf> | null> {
+  const current = await loadReturnedFeeSettingsStrict(p.companyId, p.kind);
+  const share = { shareMode: current?.shareMode ?? "all", shareAmount: current?.shareAmount ?? RETURNED_BANK_COST } as const;
+  let stored = decodeReturnedFeeRule(p.paymentRule);
+  if (stored === undefined) stored = decodeReturnedFeeRule(p.authorizationRule);
+  if (stored === undefined) {
+    const rule = returnedFeeRuleForPayment(p.kind, current, p.paymentCreated, p.autopayAuthorizedAt);
+    return rule ? feeOf(rule, p.invoiceAmount, p.companyName) : null;
+  }
+  if (stored === null) return null;
+  if (p.kind === "marina" && !current) return null; // the marina's setting couldn't be read (System Health told)
+  const fee = feeOf({ ...stored, ...share }, p.invoiceAmount, p.companyName);
+  if (current) {
+    const now = feeOf(current, p.invoiceAmount, p.companyName);
+    if (now.total < fee.total) return now;
+  }
+  return fee;
+}
+
+// Oct 28 (review): a returned-payment fee line, with MelyOS's share FROZEN on it (resident_invoice_items
+// .melyos_share — returned_fee_settings.sql), so later setting changes don't change an existing fee.
+// Before that column exists the line is added without it (the current setting is then used at payment).
+export async function insertReturnedFeeLine(row: { invoice_id: string; charge_type: string; description: string; amount: number; melyos_share: number }) {
+  const r = await supabase.from("resident_invoice_items").insert(row);
+  if (r.error && (r.error.code === "42703" || r.error.code === "PGRST204" || /melyos_share/.test(r.error.message || ""))) {
+    const { melyos_share: _ignored, ...rest } = row;
+    return supabase.from("resident_invoice_items").insert(rest);
+  }
+  return r;
+}
+
+// Oct 28 (per Mely): when an invoice that carries a returned-payment fee is paid online, MelyOS's
+// share of that fee (all of it, or the company's fixed share — see returnedFeeRules.ts) goes to
+// MelyOS (application fee), the rest to the park. Callers subtract this from the park's share
+// (never below $0); invoice totals are not changed. Best-effort: if the lookup fails the payment
+// still goes through (as before) and System Health is told.
 export async function returnedAchFeesOnInvoices(invoiceIds: string[], companyId?: string | null): Promise<number> {
   const ids = invoiceIds.filter(Boolean);
   if (ids.length === 0) return 0;
-  const { data, error } = await supabase
+  // MelyOS's share as frozen on the line when it was added; the current setting only for older lines.
+  let { data, error } = await supabase
     .from("resident_invoice_items")
-    .select("amount")
+    .select("amount, melyos_share")
     .in("invoice_id", ids)
-    .eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE);
+    .eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE) as { data: { amount: number; melyos_share?: number | null }[] | null; error: any };
+  if (error && (error.code === "42703" || error.code === "PGRST204" || /melyos_share/.test(error.message || ""))) {
+    ({ data, error } = await supabase.from("resident_invoice_items").select("amount").in("invoice_id", ids).eq("charge_type", RETURNED_ACH_FEE_CHARGE_TYPE) as any);
+  }
   if (error) {
     console.error("returnedAchFeesOnInvoices:", error.message);
     if (companyId) {
@@ -81,7 +172,14 @@ export async function returnedAchFeesOnInvoices(invoiceIds: string[], companyId?
     }
     return 0;
   }
-  return Math.round((data || []).reduce((sum, r) => sum + Math.max(Number(r.amount) || 0, 0), 0) * 100) / 100;
+  if (!data || data.length === 0) return 0;
+  const needsSetting = data.some((r) => r.melyos_share === null || r.melyos_share === undefined);
+  const settings = needsSetting ? await loadReturnedFeeSettings(companyId, "rv") : FLORIDA_RETURNED_FEE;
+  return Math.round(data.reduce((sum, r) => {
+    const amt = Math.max(Number(r.amount) || 0, 0);
+    const frozen = r.melyos_share === null || r.melyos_share === undefined ? null : Number(r.melyos_share);
+    return sum + (frozen !== null && Number.isFinite(frozen) ? Math.min(amt, Math.max(frozen, 0)) : melyosShareOfReturnedFee(settings, amt));
+  }, 0) * 100) / 100;
 }
 export function calculateAchFee(amount: number): number {
   return Math.min(Math.max(amount * ACH_FEE_PERCENT, ACH_FEE_MINIMUM), ACH_FEE_MAXIMUM);
@@ -161,4 +259,17 @@ export async function resolveConnectSplit(
     applicationFeeAmountCents: Math.round(melyOsShare * 100),
     statementDescriptorSuffix: buildStatementSuffix(company?.company_name),
   };
+}
+
+// Oct 28 (review): the autopay authorization's stored returned-fee rule (returned_fee_rule jsonb —
+// returned_fee_settings.sql) and when it was accepted. Works before the column exists (rule = null).
+export async function loadAutopayAuthorizationRule(table: "resident_accounts" | "marina_members", id: string, companyId: string) {
+  let { data, error } = await supabase.from(table).select("autopay_authorized_at, returned_fee_rule").eq("id", id).eq("company_id", companyId).maybeSingle() as { data: any; error: any };
+  if (error) ({ data } = await supabase.from(table).select("autopay_authorized_at").eq("id", id).eq("company_id", companyId).maybeSingle() as any);
+  return { authorizedAt: (data?.autopay_authorized_at as string | null) ?? null, rule: data?.returned_fee_rule ?? null };
+}
+// Saves the rule shown with an autopay authorization (no-op before the column exists).
+export async function saveAutopayAuthorizationRule(table: "resident_accounts" | "marina_members", id: string, companyId: string, kind: "rv" | "marina") {
+  const rule = JSON.parse(encodeReturnedFeeRule(await loadReturnedFeeSettings(companyId, kind)));
+  await supabase.from(table).update({ returned_fee_rule: rule }).eq("id", id).eq("company_id", companyId).then(() => null, () => null);
 }

@@ -1,12 +1,13 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedFeeRuleToDisclose } from "@/lib/platformFee";
 import type { MarinaCompany } from "./company";
 import { isDemoCompany } from "./host";
 import { round2 } from "./data";
 import { recordMarinaOnlinePayment } from "./payments";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
+import { marinaReturnedFeeMelyosPart } from "./returnedFee";
 
 // Oct 24 (per Mely — security run): a real marina must have its own connected Stripe account.
 // Without one the money would sit in MelyOS's balance (public money, for a city marina), so
@@ -97,7 +98,9 @@ export async function startInvoicePayment(p: {
     });
   }
 
-  const marinaShare = balance + (passFee ? 0 : -fee);
+  // Oct 28 (per Mely): MelyOS's share of a returned-payment fee invoice goes to MelyOS, not the marina.
+  const returnedFeeMelyos = await marinaReturnedFeeMelyosPart(company.id, [{ id: invoice.id, balance }]);
+  const marinaShare = Math.max(balance + (passFee ? 0 : -fee) - returnedFeeMelyos, 0);
   const split = await resolveConnectSplit(company.id, chargeAmount, marinaShare);
   if (!split) return noConnectedAccount(company);
 
@@ -126,6 +129,7 @@ export async function startInvoicePayment(p: {
         processing_fee_charged: passFee ? String(fee) : "0",
         payment_method: ach ? "ach" : "card",
         ...(p.hold ? { hold: "1" } : {}),
+        ...(ach ? { returned_fee_rule: await returnedFeeRuleToDisclose("marina", company.id) } : {}), // Oct 28: rule shown now
       },
       // Oct 24: short-lived checkout (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
@@ -194,7 +198,8 @@ export async function startMultiInvoicePayment(p: {
     price_data: { currency: "usd", unit_amount: Math.round(r.balance * 100), product_data: { name: `${company.company_name}: ${r.invoice_number}`, description: String(r.description || "").slice(0, 300) || undefined } },
   }));
   if (passFee) lineItems.push({ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(fee * 100), product_data: { name: ach ? "Bank Transfer Fee" : "Card Processing Fee" } } });
-  const split = await resolveConnectSplit(company.id, chargeAmount, total + (passFee ? 0 : -fee));
+  const returnedFeeMelyos = await marinaReturnedFeeMelyosPart(company.id, rows.map((r) => ({ id: r.id, balance: r.balance }))); // Oct 28
+  const split = await resolveConnectSplit(company.id, chargeAmount, Math.max(total + (passFee ? 0 : -fee) - returnedFeeMelyos, 0));
   if (!split) return noConnectedAccount(company);
   try {
     const checkout = await stripe.checkout.sessions.create({
@@ -211,6 +216,7 @@ export async function startMultiInvoicePayment(p: {
         invoice_amount: String(total),
         processing_fee_charged: passFee ? String(fee) : "0",
         payment_method: ach ? "ach" : "card",
+        ...(ach ? { returned_fee_rule: await returnedFeeRuleToDisclose("marina", company.id) } : {}), // Oct 28: rule shown now
       },
       // Oct 24: short-lived checkout (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,

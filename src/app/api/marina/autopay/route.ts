@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getMarinaForRequest } from "@/lib/marina/company";
 import { getMarinaSession } from "@/lib/marina/session";
 import { tooManyFromIp } from "@/lib/marina/ipLimit";
-import { autopayStatus, startAutopay, confirmAutopay, stopAutopay, dueForAutopay, authText } from "@/lib/marina/autopay";
+import { autopayStatus, startAutopay, confirmAutopay, stopAutopay, dueForAutopay, authText, marinaReturnFeePhrase } from "@/lib/marina/autopay";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // Oct 26 (per Mely — Group 2): Boater login → Autopay.
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     dueForAutopay(w.company.id, w.memberId),
     supabaseAdmin.from("company_fee_settings").select("ach_enabled").eq("company_id", w.company.id).maybeSingle(),
   ]);
-  return NextResponse.json({ ...st, due: due.map((d) => ({ number: d.invoice_number, amount: d.balance, due: d.due_date })), bank: fs.data?.ach_enabled !== false, terms: { card: authText(w.company.company_name, "card"), ach: authText(w.company.company_name, "ach") } });
+  return NextResponse.json({ ...st, due: due.map((d) => ({ number: d.invoice_number, amount: d.balance, due: d.due_date })), bank: fs.data?.ach_enabled !== false, terms: { card: authText(w.company.company_name, "card"), ach: authText(w.company.company_name, "ach", await marinaReturnFeePhrase(w.company.id)) } });
 }
 
 export async function POST(req: Request) {
