@@ -73,7 +73,7 @@ const ANCHOR_SECTION: Record<string, SectionId> = {
   autopay: "pay", invoices: "pay", charges: "pay", electric: "pay",
   maintenance: "requests", propane: "requests",
   announcements: "messages", notifications: "messages",
-  profile: "more",
+  profile: "more", "resident-info": "more", "emergency-contact": "more", marketplace: "more",
   "park-info": "info", emergency: "info", "emergency-line": "info", "office-hours": "info", "park-rules": "info",
   "lease-addendum": "home", // Oct 28: Lease Addenda card (link in the "please sign" email)
 };
@@ -88,7 +88,8 @@ const SUBMENU: Partial<Record<SectionId, SubItem[]>> = {
   requests: [{ label: "Maintenance", anchor: "maintenance" }, { label: "Propane", anchor: "propane" }],
   messages: [{ label: "Notifications", anchor: "notifications" }, { label: "Announcements", anchor: "announcements" }],
   info: [{ label: "Call 9-1-1 first", anchor: "emergency" }, { label: "Park emergency line", anchor: "emergency-line" }, { label: "Office hours", anchor: "office-hours" }, { label: "Park rules", anchor: "park-rules" }],
-  more: [{ label: "Profile", anchor: "profile" }, { label: "Documents", href: "/residents/documents" }],
+  // Oct 29 (per Mely — "dentro de profile haz otro sub menú con lo que hay, ex. marketplace").
+  more: [{ label: "My information", anchor: "resident-info" }, { label: "Emergency contact", anchor: "emergency-contact" }, { label: "Marketplace", anchor: "marketplace" }, { label: "Documents", href: "/residents/documents" }],
 };
 const sectionFor = (h: string): SectionId | null =>
   SECTIONS.some((x) => x.id === h) ? (h as SectionId) : ANCHOR_SECTION[h] || null;
@@ -2277,7 +2278,7 @@ export default function ResidentDashboard() {
               <div id="profile" className="rp-anchor">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
             {!editingResidentInfo ? (
-              <div style={card}>
+              <div id="resident-info" style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <h2 style={{ fontWeight: 900, fontSize: 18 }}>Resident Information</h2>
                   <button onClick={openEditResidentInfo} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
@@ -2287,7 +2288,7 @@ export default function ResidentDashboard() {
                 <SmsAlertsToggle residentId={resident.id} parkName={resident?.companies?.company_name || ""} phone={resident.phone} />
               </div>
             ) : (
-              <div style={card}>
+              <div id="resident-info" style={card}>
                 <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Resident Information</h2>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
@@ -2309,7 +2310,7 @@ export default function ResidentDashboard() {
             )}
 
             {!editingEmergencyContact ? (
-              <div style={card}>
+              <div id="emergency-contact" style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                   <h2 style={{ fontWeight: 900, fontSize: 18 }}>Emergency Contact</h2>
                   <button onClick={openEditEmergencyContact} style={{ background: "transparent", border: "1.5px solid #000", borderRadius: 6, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
@@ -2319,7 +2320,7 @@ export default function ResidentDashboard() {
                 <p><strong>Relationship:</strong> {resident.emergency_contact_relationship || "None"}</p>
               </div>
             ) : (
-              <div style={card}>
+              <div id="emergency-contact" style={card}>
                 <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Edit Emergency Contact</h2>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
@@ -2345,7 +2346,7 @@ export default function ResidentDashboard() {
             )}
           </div>
               </div>
-              <div className="rp-links">
+              <div id="marketplace" className="rp-links">
             <button onClick={() => router.push("/residents/marketplace")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>🛍️ Marketplace</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>Buy and sell with your neighbors.</p>
