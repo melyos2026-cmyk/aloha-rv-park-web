@@ -135,6 +135,35 @@ export function returnedFeeDisclosure(s: ReturnedFeeSettings): string {
   return `If your bank returns a payment, ${returnedFeePhrase(s)}.`;
 }
 
+// Oct 28 (per Mely): the "Returned Payments" clause put in every NEW lease / slip agreement / reservation
+// terms the platform generates (contracts already sent or signed are never changed). Text only — the fee
+// itself is still computed by returnedPaymentFee above. `payer` / `owner` are the party names exactly as
+// the contract already uses them (e.g. "Tenant"/"Landlord" in the RV lease, "the Owner"/"the Marina" in
+// the slip agreement). Florida mode cites Fla. Stat. 68.065 with the tiers from floridaServiceCharge;
+// custom mode states the company's own rule "as set by <owner>'s fee schedule" and does not cite 68.065.
+// The party names each generated contract already defines (keep in step with the contract text):
+// RV lease PDF (melyos-builder services/leaseApplications.ts) = "Tenant"/"Landlord"; marina slip
+// agreement sample = "the Owner"/"the Marina"; marina transient reservation terms = "the guest"/"the Marina".
+export const RV_LEASE_PARTIES = { payer: "Tenant", owner: "Landlord" };
+export const MARINA_CONTRACT_PARTIES = { payer: "the Owner", owner: "the Marina" };
+export const MARINA_RESERVATION_PARTIES = { payer: "the guest", owner: "the Marina" };
+export function returnedPaymentClause(s: ReturnedFeeSettings, parties: { payer: string; owner: string }): string {
+  const P = parties.payer, O = parties.owner;
+  let feeSentence: string;
+  let covers = "The fee covers the returned-payment processing cost and a service charge";
+  if (s.mode !== "custom") {
+    const t = (a: number) => usd2(RETURNED_BANK_COST + floridaServiceCharge(a));
+    feeSentence = `${P} agrees to pay a returned-payment fee as allowed by Florida Statute 68.065: ${t(50)} if the payment was $50.00 or less, ${t(300)} if it was more than $50.00 and up to $300.00, and ${t(300.01)} if it was more than $300.00.`;
+  } else {
+    const flat = Math.max(r2(s.flat), RETURNED_BANK_COST);
+    const capText = s.cap !== null && s.cap !== undefined ? `, up to a maximum of ${usd2(s.cap)}` : "";
+    const rule = s.percent > 0 ? `${usd2(flat)} or ${r2(s.percent)}% of the returned payment, whichever is greater${capText}` : `${usd2(flat)}`;
+    feeSentence = `${P} agrees to pay a returned-payment fee as set by ${O}'s fee schedule: ${rule}.`;
+    if (flat <= RETURNED_BANK_COST && !(s.percent > 0)) covers = "The fee covers the returned-payment processing cost";
+  }
+  return `Returned Payments. If any payment made by ${P} (check, bank transfer/ACH, or other electronic payment) is returned or refused by ${P}'s bank for any reason, including insufficient funds or a closed account, ${feeSentence} ${covers}, and is added to ${P}'s account. The returned amount is due again immediately. If ${P}'s automatic bank payment (autopay) is returned, autopay is turned off until ${P} sets it up again. After two returned payments in twelve months, ${O} may require future payments by certified funds or card.`;
+}
+
 // Oct 28 (review): the rule SHOWN to the payer, frozen per payment (Stripe metadata "returned_fee_rule")
 // and per autopay authorization (returned_fee_rule jsonb). Compact, never MelyOS's share:
 // {"m":"florida"} | {"m":"custom","f":15,"p":5,"c":null} | {"m":"none"} (no fee was disclosed).

@@ -265,7 +265,7 @@ export async function POST(req: Request) {
     terms_accepted_at: new Date().toISOString(), terms_accepted_ip: (req.headers.get("x-forwarded-for") || "").split(",")[0].trim().slice(0, 60) || null,
     terms_hash: crypto.createHash("sha256").update(rules.dockageTerms, "utf8").digest("hex"),
   }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);
-  await supabaseAdmin.from("marina_reservations").update({ terms_text: rules.dockageTerms.slice(0, 6000) }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null); // the exact words accepted
+  await supabaseAdmin.from("marina_reservations").update({ terms_text: rules.dockageTerms.slice(0, 8000) }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null); // the exact words accepted
   // Oct 27: when they expect to arrive (the dock office sees it in Today), and the residency proof used
   const eta = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(b.arrival_time || "")) ? String(b.arrival_time) : null;
   if (eta) await supabaseAdmin.from("marina_reservations").update({ arrival_time: eta }).eq("id", reservation.id).eq("company_id", company.id).then(() => null, () => null);

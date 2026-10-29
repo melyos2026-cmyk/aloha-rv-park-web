@@ -118,6 +118,8 @@ function ApplyPageInner() {
   // the form can mount before it's ready and never pick it up. settingsLoaded
   // gates a one-time remount (via the `key` prop below) once it's actually in.
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  // Oct 28 (per Mely): the park's Returned Payments lease clause (its Fee Settings rule).
+  const [returnedPaymentClause, setReturnedPaymentClause] = useState<string | null>(null);
 
   // Aug 8 (per Mely): polls the same Service Role Key route every 20s
   // while the applicant has this page open, so the "Lot X allows: ..."
@@ -162,6 +164,11 @@ function ApplyPageInner() {
         setLotsLoaded(true);
       })
       .catch(() => setLotsLoaded(true));
+
+    fetch(`/api/lease-returned-payment-terms?company_id=${company.id}`)
+      .then((res) => res.json())
+      .then((result) => setReturnedPaymentClause(result?.clause || null))
+      .catch(() => {});
 
     supabase
       .from("park_settings")
@@ -858,6 +865,7 @@ function ApplyPageInner() {
         initialData={initialData}
         isRentToOwn={isRentToOwn}
         rentToOwnTerms={rentToOwnTerms}
+        returnedPaymentClause={returnedPaymentClause}
         applicationId={invitationId}
         isWalkIn={isWalkIn}
         lockAdminFields={lockAdminFields}

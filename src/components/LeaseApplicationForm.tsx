@@ -604,6 +604,10 @@ interface Props {
     depositPaid: boolean;
   };
   applicationId?: string | null;
+  // Oct 28 (per Mely): the company's Returned Payments clause (built from Fee Settings → Returned bank
+  // payment fee, lib returnedFeeRules.returnedPaymentClause). Shown read-only in the lease terms; the
+  // same text goes into the generated lease PDF. Omitted/null = still loading or not available.
+  returnedPaymentClause?: string | null;
   // Aug 24 (per Mely): true only for a walk-in physically in the office
   // via "+ New Application" — the ONLY thing this controls is showing
   // the "pay in person instead" note near the payment screen. A remote
@@ -740,6 +744,7 @@ export default function LeaseApplicationForm({
   onSubmit,
   onUploadFile,
   submitting,
+  returnedPaymentClause,
 }: Props) {
   const [data, setData] = useState<LeaseApplicationData>({
     ...emptyForm,
@@ -2119,25 +2124,9 @@ export default function LeaseApplicationForm({
               </div>
             )}
 
-            <label style={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={data.nsf_fee_enabled}
-                onChange={(e) => set("nsf_fee_enabled", e.target.checked)}
-              />
-              Charge a fee for returned/bounced checks
-            </label>
-            {data.nsf_fee_enabled && (
-              <div style={styles.field}>
-                <label style={styles.label}>NSF Fee Amount ($)</label>
-                <input
-                  type="number"
-                  style={styles.input}
-                  value={data.nsf_fee_amount}
-                  onChange={(e) => set("nsf_fee_amount", e.target.value)}
-                />
-              </div>
-            )}
+            {/* Oct 28 (per Mely): the old "NSF fee" checkbox/amount is no longer what the lease
+                says or what the system charges — returned payments follow the company's Fee
+                Settings rule, shown in the Returned Payments section below. */}
           </>
         ) : (
           <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}>
@@ -2154,10 +2143,7 @@ export default function LeaseApplicationForm({
                 : "None."}
             </div>
             <div>
-              <strong>Returned Check Fee:</strong>{" "}
-              {data.nsf_fee_enabled
-                ? `$${data.nsf_fee_amount} per incident.`
-                : "None."}
+              <strong>Returned Payments:</strong> See the Returned Payments section below.
             </div>
           </div>
         )}
@@ -2180,6 +2166,20 @@ export default function LeaseApplicationForm({
         )}
       </div>
       )}
+
+      {/* Oct 28 (per Mely): Returned Payments — the company's rule (Fee Settings), always part of the
+          lease terms; read-only here (set by MelyOS under the company's agreement). */}
+      <div style={styles.card}>
+        <div style={styles.sectionTitle}>Returned Payments</div>
+        <div style={{ fontSize: 13, color: "#333", lineHeight: 1.6 }}>
+          {returnedPaymentClause || "Loading the park's returned payment terms…"}
+        </div>
+        {mode === "admin" && (
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+            Comes from Fee Settings → Returned bank payment fee. The same text is added to the lease PDF.
+          </div>
+        )}
+      </div>
 
       {/* 8-10. Occupants, Furnishings, Utilities */}
       <div style={styles.card}>

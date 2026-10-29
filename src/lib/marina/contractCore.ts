@@ -5,6 +5,8 @@ import crypto from "crypto";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { round2, todayET } from "./data";
+import { loadReturnedFeeSettings } from "@/lib/platformFee";
+import { returnedPaymentClause, MARINA_CONTRACT_PARTIES } from "@/lib/returnedFeeRules";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 export async function currentSchedule(companyId: string) {
@@ -174,7 +176,16 @@ export async function sendContract(companyId: string, actor: any, body: any): Pr
   values.renewal_terms = m2m
     ? `This Agreement is month-to-month. It begins on ${longDate(start)} and renews automatically for one more month at the end of each month, at the slip's monthly rate in effect, until either party gives the other at least ${noticeDays} days' written notice. The Agreement then ends on the last day of the monthly period in which the notice period ends. Each month's dockage is due on the first day of that monthly period.`
     : `This Agreement is for a fixed term from ${longDate(start)} to ${longDate(end)}. It does not renew automatically; any renewal requires a new agreement.`;
+  // Oct 28 (per Mely): every new contract has a Returned Payments clause with the marina's own rule
+  // (Fee Settings → Returned bank payment fee). Contracts already sent/signed keep their frozen body.
+  values.returned_payment_clause = returnedPaymentClause(await loadReturnedFeeSettings(companyId, "marina"), MARINA_CONTRACT_PARTIES);
   let tplBody = String(tpl.body);
+  // A template written without the placeholder (and without its own Returned Payments clause) still gets it.
+  if (!/\{\{\s*returned_payment_clause\s*\}\}/.test(tplBody) && !/Returned Payments\./i.test(tplBody)) {
+    const section = `## RETURNED PAYMENTS\n\n{{returned_payment_clause}}\n\n`;
+    const w = tplBody.search(/^IN WITNESS WHEREOF/m); // before the signing line, when the template has one
+    tplBody = w >= 0 ? tplBody.slice(0, w) + section + tplBody.slice(w) : `${tplBody}\n\n${section.trimEnd()}`;
+  }
   if (!/\{\{\s*renewal_terms\s*\}\}/.test(tplBody)) tplBody += `\n\n## TERM AND RENEWAL\n{{renewal_terms}}`;
   const text = tplBody.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (m, k) => (k in values ? values[k] : m));
   const title = String(body.title || "").trim().slice(0, 120) || `${tpl.name.replace(/\s*\(sample\)\s*$/i, "")}${slip ? ` — Slip ${slip.slip_name}` : ""}`;

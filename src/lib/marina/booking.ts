@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { round2, todayET } from "./data";
+import { loadReturnedFeeSettings } from "@/lib/platformFee";
+import { returnedPaymentClause, MARINA_RESERVATION_PARTIES } from "@/lib/returnedFeeRules";
 
 // Oct 26 (per Mely — "lo que nos hace falta"): how an online booking is paid. The marina chooses
 // in Reservations → Booking settings: the full stay now, or a deposit now (a percent or the first
@@ -105,7 +107,13 @@ export async function loadTransientRules(companyId: string) {
   const d: any = data || {};
   const maxNights = Math.max(1, Math.min(31, Math.round(Number(d.transient_max_nights ?? 30)) || 30));
   const maxDaysYear = d.transient_max_days_year ? Math.round(Number(d.transient_max_days_year)) : null;
-  const dockageTerms = String(d.dockage_terms || "").trim() || DEFAULT_DOCKAGE_TERMS;
+  // Oct 28 (per Mely): the reservation terms the guest accepts (and that are frozen on the reservation:
+  // terms_text + terms_hash) end with the marina's Returned Payments clause (Fee Settings rule), unless
+  // the marina's own terms already have one. Reservations already made keep the text they accepted.
+  const baseTerms = String(d.dockage_terms || "").trim() || DEFAULT_DOCKAGE_TERMS;
+  const dockageTerms = /Returned Payments\./i.test(baseTerms)
+    ? baseTerms
+    : `${baseTerms}\n\n${returnedPaymentClause(await loadReturnedFeeSettings(companyId, "marina"), MARINA_RESERVATION_PARTIES)}`;
   const offered = { month_to_month: true, "3_months": true, "6_months": true, annual: true, ...(d.offered_terms || {}) } as Record<string, boolean>;
   const tm = (v: any, def: string) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(v || "")) ? String(v) : def);
   const { data: rp } = await supabaseAdmin.from("company_modules").select("enabled").eq("company_id", companyId).eq("module_name", "marina_resident_pricing").maybeSingle();
