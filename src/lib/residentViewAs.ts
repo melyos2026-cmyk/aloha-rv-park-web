@@ -172,6 +172,8 @@ export function clearViewAsCookie(res: NextResponse) {
 
 export async function companyIdForHost(host: string): Promise<string | null> {
   if (!host) return null;
-  const { data } = await supabaseAdmin.from("companies").select("id").in("domain", [host, `www.${host}`]).limit(1).maybeSingle();
+  // Oct 29: "www.aloharvparkfl.com" and "aloharvparkfl.com" are the same park site.
+  const bare = host.toLowerCase().replace(/^www\./, "");
+  const { data } = await supabaseAdmin.from("companies").select("id").in("domain", [bare, `www.${bare}`]).limit(1).maybeSingle();
   return data?.id || null;
 }
