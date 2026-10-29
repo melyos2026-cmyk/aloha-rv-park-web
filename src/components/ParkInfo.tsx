@@ -142,7 +142,7 @@ export function ParkInfoSection({ data }: { data: ParkInfoData | null }) {
   return (
     <div style={{ display: "grid", gap: 16 }}>
       {/* A. Call 9-1-1 first */}
-      <div style={{ ...card, background: RED_BG, border: `2px solid ${RED}` }}>
+      <div id="emergency" className="rp-anchor" style={{ ...card, background: RED_BG, border: `2px solid ${RED}` }}>
         <Head icon={ALERT} title="Call 9-1-1 first" color={RED} right={<CallButton phone="911" label="Call 911" tone="red" />} />
         <p style={{ margin: "0 0 12px", fontSize: 14.5, color: "#7f1d1d" }}>
           For anything life-threatening, call 911 before anything else. Then also notify the park
@@ -154,7 +154,7 @@ export function ParkInfoSection({ data }: { data: ParkInfoData | null }) {
       </div>
 
       {/* B. Park emergency line */}
-      <div style={card}>
+      <div id="emergency-line" className="rp-anchor" style={card}>
         <Head icon={SHIELD} title="Call the park's emergency line" right={ePhone ? <CallButton phone={ePhone} /> : undefined} />
         <p style={{ margin: "0 0 12px", fontSize: 14, color: "var(--gray)" }}>
           For urgent problems at your site that are not life-threatening.{ePhone && data.emergencyIsOffice ? " This is the office number." : ""}
@@ -165,7 +165,7 @@ export function ParkInfoSection({ data }: { data: ParkInfoData | null }) {
       </div>
 
       {/* Office hours + after-hours note */}
-      <div style={card}>
+      <div id="office-hours" className="rp-anchor" style={card}>
         <Head icon={CLOCK} title="Office hours" right={<OpenPill open={open} />} />
         <HoursBlock d={data} now={now} />
         {data.officePhone && (
@@ -183,7 +183,7 @@ export function ParkInfoSection({ data }: { data: ParkInfoData | null }) {
 
       {/* Park rules — same rules as the lease application; hidden until the park has some */}
       {data.parkRules.length > 0 && (
-        <div style={card}>
+        <div id="park-rules" className="rp-anchor" style={card}>
           <Head icon={LIST} title="Park rules" />
           <ul style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 8, fontSize: 14.5, lineHeight: 1.5 }}>
             {data.parkRules.map((r, i) => (

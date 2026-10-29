@@ -3,7 +3,7 @@ import InstallApp, { AppBadge } from "@/components/InstallApp";
 import SmsAlertsToggle from "@/components/SmsAlertsToggle";
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import GolfCartCard from "@/components/GolfCartCard";
-import { useState, useEffect } from "react";
+import { Fragment, useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
@@ -74,10 +74,22 @@ const ANCHOR_SECTION: Record<string, SectionId> = {
   maintenance: "requests", propane: "requests",
   announcements: "messages", notifications: "messages",
   profile: "more",
-  "park-info": "info", emergency: "info", "office-hours": "info", "park-rules": "info",
+  "park-info": "info", emergency: "info", "emergency-line": "info", "office-hours": "info", "park-rules": "info",
   "lease-addendum": "home", // Oct 28: Lease Addenda card (link in the "please sign" email)
 };
 const ANCHORS = Object.keys(ANCHOR_SECTION);
+// Oct 29 (per Mely — "que el menú enseñe lo que tienen adentro, como Documents"): what each section
+// holds, shown under the open section in the side menu and as quick links at the top on a phone.
+type SubItem = { label: string; anchor?: string; href?: string };
+const SUBMENU: Partial<Record<SectionId, SubItem[]>> = {
+  pay: [{ label: "Autopay", anchor: "autopay" }, { label: "Charges & invoices", anchor: "charges" }, { label: "Electric usage", anchor: "electric" }],
+  lot: [{ label: "Home info", anchor: "home-info" }, { label: "Parking & pets", anchor: "parking-pets" }, { label: "Rent-to-own", anchor: "rent-to-own" }, { label: "Documents", href: "/residents/documents" }, { label: "Moving out", anchor: "move-out" }],
+  household: [{ label: "Occupants", anchor: "household-occupants" }, { label: "Visitors", anchor: "visitors-section" }, { label: "Vehicles", anchor: "vehicles" }, { label: "Golf carts", anchor: "golf-carts" }],
+  requests: [{ label: "Maintenance", anchor: "maintenance" }, { label: "Propane", anchor: "propane" }],
+  messages: [{ label: "Notifications", anchor: "notifications" }, { label: "Announcements", anchor: "announcements" }],
+  info: [{ label: "Call 9-1-1 first", anchor: "emergency" }, { label: "Park emergency line", anchor: "emergency-line" }, { label: "Office hours", anchor: "office-hours" }, { label: "Park rules", anchor: "park-rules" }],
+  more: [{ label: "Profile", anchor: "profile" }, { label: "Documents", href: "/residents/documents" }],
+};
 const sectionFor = (h: string): SectionId | null =>
   SECTIONS.some((x) => x.id === h) ? (h as SectionId) : ANCHOR_SECTION[h] || null;
 const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1002,6 +1014,20 @@ export default function ResidentDashboard() {
     window.addEventListener("hashchange", go);
     return () => window.removeEventListener("hashchange", go);
   }, [residentLoaded]);
+  function subItems(id: SectionId): SubItem[] {
+    return (SUBMENU[id] || []).filter((it) => it.anchor !== "maintenance" || maintenanceEnabled).filter((it) => it.anchor !== "propane" || propaneOrders.length > 0);
+  }
+  function openSub(it: SubItem) {
+    if (it.href) { router.push(it.href); return; }
+    if (!it.anchor) return;
+    if (window.location.hash.replace("#", "") === it.anchor) {
+      if (it.anchor === "move-out") setShowMoveOutModal(true);
+      const el = document.getElementById(it.anchor);
+      if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 110, behavior: "smooth" });
+      return;
+    }
+    window.location.hash = it.anchor;
+  }
   function openSection(id: SectionId) {
     if (window.location.hash.replace("#", "") === id) { setSection(id); window.scrollTo({ top: 0 }); return; }
     window.location.hash = id;
@@ -1219,14 +1245,28 @@ export default function ResidentDashboard() {
         <div className="rp-portal">
           <nav className="rp-nav" aria-label="Resident portal">
             {navSections.map((x) => (
-              <button key={x.id} type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined}>
+              <Fragment key={x.id}>
+              <button type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined}>
                 <NavIcon d={x.id === "more" ? "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" : x.icon} /><span>{x.label}</span><Badge n={badge[x.id]} />
               </button>
+              {section === x.id && subItems(x.id).length > 0 && (
+                <div className="rp-subnav">
+                  {subItems(x.id).map((it) => (
+                    <button key={it.label} type="button" onClick={() => openSub(it)}>{it.label}</button>
+                  ))}
+                </div>
+              )}
+              </Fragment>
             ))}
           </nav>
 
           <AppBadge n={attention.length} />
           <div className="rp-main">
+            {section !== "home" && subItems(section).length > 0 && (
+              <div className="rp-subchips" role="navigation" aria-label="In this section">
+                {subItems(section).map((it) => <button key={it.label} type="button" onClick={() => openSub(it)}>{it.label}</button>)}
+              </div>
+            )}
             {/* Oct 26 (per Mely): inside a section, show what the red number means — tap one to go
                 straight to it. The number goes away by itself once it's done. */}
             {section !== "home" && message === "" && attention.some((a) => a.go === section) && (
@@ -1830,7 +1870,7 @@ export default function ResidentDashboard() {
           )}
               </div>
               <div className="rp-links">
-            <button onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button id="documents" className="rp-anchor" onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement and any signed resident agreements.</p>
             </button>
