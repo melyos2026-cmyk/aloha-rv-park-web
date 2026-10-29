@@ -71,6 +71,10 @@ export async function GET(req: NextRequest) {
     golfCartInsuranceRequired: (parkSettings as any)?.lease_defaults?.golf_cart_insurance_required !== false,
     // Oct 28 (per Mely): "Residents can send maintenance requests from their portal" — the park's
     // switch in the admin Maintenance Requests module. DEFAULT OFF (missing = off).
+    // Oct 28 (per Mely): the grace period from Lease Defaults (same values the late-fee cron uses),
+    // so the portal can tell residents the last day to pay without a late fee.
+    lateFeeEnabled: (parkSettings as any)?.lease_defaults?.late_fee_enabled !== false && Number((parkSettings as any)?.lease_defaults?.late_fee_amount || 0) > 0,
+    lateFeeGraceDays: Math.max(0, Number((parkSettings as any)?.lease_defaults?.late_fee_grace_days || 0)),
     maintenanceRequestsEnabled: (parkSettings as any)?.lease_defaults?.portal_maintenance_requests === true,
     // Oct 28 (per Mely): bank (ACH) payments in the portal — same rule and fee constants the
     // checkout route uses (src/lib/platformFee.ts), so the portal shows the exact fee for each choice.
