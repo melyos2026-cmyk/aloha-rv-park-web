@@ -10,7 +10,7 @@ const day = (d: string | null) => (d ? new Date(d.length === 10 ? d + "T12:00:00
 // Oct 21 (per Mely): "adopt your signature" like Adobe Sign / DocuSign — the boater
 // gets an elegant handwriting signature made from their typed name.
 const STYLES = [{ font: "Great Vibes", size: 62 }]; // Oct 21 (per Mely): one elegant style only
-async function styledSignature(name: string, font: string, size: number): Promise<string | null> {
+export async function styledSignature(name: string, font: string, size: number): Promise<string | null> {
   try { await document.fonts?.load(`${size}px "${font}"`); } catch {}
   const c = document.createElement("canvas");
   const g = c.getContext("2d")!;

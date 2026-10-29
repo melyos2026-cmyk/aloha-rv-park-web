@@ -27,12 +27,16 @@ export async function POST(req: NextRequest) {
   // different resident's document just by knowing/guessing its id.
   const { data: existing } = await supabase
     .from("resident_documents")
-    .select("id, resident_id")
+    .select("id, resident_id, document_type")
     .eq("id", documentId)
     .maybeSingle();
 
   if (!existing || existing.resident_id !== residentId) {
     return NextResponse.json({ error: "Document not found." }, { status: 404 });
+  }
+  // Oct 28 (per Mely): a lease addendum signed online is part of the lease record (Lease Addenda).
+  if ((existing as any).document_type === "lease_addendum") {
+    return NextResponse.json({ error: "A signed lease addendum can't be removed. It is part of your lease record." }, { status: 400 });
   }
 
   // Sep 25 (per Mely — full security audit): this only ever deleted the

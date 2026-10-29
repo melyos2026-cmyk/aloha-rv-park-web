@@ -12,6 +12,7 @@ import { returnedFeeSentence } from "@/lib/autopayTerms";
 import ResidentPushAlerts from "@/components/ResidentPushAlerts";
 import { closeSeenNotifications } from "@/lib/closeNotifications";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
+import LeaseAddendaCard, { fetchLeaseAddenda, type PortalAddendum } from "@/components/LeaseAddendaCard";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -70,6 +71,7 @@ const ANCHOR_SECTION: Record<string, SectionId> = {
   maintenance: "requests", propane: "requests",
   announcements: "messages", notifications: "messages",
   profile: "more",
+  "lease-addendum": "home", // Oct 28: Lease Addenda card (link in the "please sign" email)
 };
 const ANCHORS = Object.keys(ANCHOR_SECTION);
 const sectionFor = (h: string): SectionId | null =>
@@ -104,6 +106,12 @@ export default function ResidentDashboard() {
   const [billOfSaleSignatureInput, setBillOfSaleSignatureInput] = useState("");
   const [signingBillOfSale, setSigningBillOfSale] = useState(false);
   const [billOfSaleMessage, setBillOfSaleMessage] = useState("");
+  // Oct 28 (per Mely): lease addenda the park sent to sign online (e.g. Returned Payments).
+  const [leaseAddenda, setLeaseAddenda] = useState<PortalAddendum[]>([]);
+  const [addendaLandlord, setAddendaLandlord] = useState("");
+  function loadLeaseAddenda(id: string) {
+    fetchLeaseAddenda(id).then((r) => { setLeaseAddenda(r.addenda); setAddendaLandlord(r.landlord); }).catch(() => setLeaseAddenda([]));
+  }
   // Sep 18 (per Mely): resident-facing notification bell — every
   // automatic system event (invoice, electric reading, maintenance
   // update, announcement, household background-check result) or manual
@@ -325,6 +333,7 @@ export default function ResidentDashboard() {
       .catch(() => setRentToOwnPlan(null));
 
     loadNotifications(residentId);
+    loadLeaseAddenda(residentId);
 
     fetch(`/api/portal/billing-info?residentId=${residentId}`)
       .then((res) => res.json())
@@ -1044,6 +1053,8 @@ export default function ResidentDashboard() {
       : { key: "id" + p.id, text: "Photo ID needed", sub: `${p.full_name} is 18+ — upload an ID, then the background check`, tone: "bad", go: "household", href: `/residents/documents?forOccupant=${p.id}` });
   }
   if (!bgTodo.length && pendingBgChecks.length) attention.push({ key: "bgp", text: "Background check needed", sub: `${pendingBgChecks.length} household occupant${pendingBgChecks.length === 1 ? "" : "s"}`, tone: "bad", go: "household", href: "/residents/background-checks" });
+  const addendaToSign = leaseAddenda.filter((a) => a.status === "pending");
+  for (const a of addendaToSign) attention.push({ key: "la" + a.id, text: `Please sign: ${a.title}`, sub: "Review and sign it online — it takes a minute", tone: "warn", go: "home", anchor: "lease-addendum" });
   if (billOfSaleToSign) attention.push({ key: "bos", text: "Sign your Bill of Sale", sub: "Your Rent-to-Own home is paid off", tone: "warn", go: "lot", anchor: "rent-to-own" });
   if (rvInfoMissing) attention.push({ key: "rv", text: "Add your home/unit info", sub: "Make, model and VIN / Tag #", tone: "warn", go: "lot", anchor: "home-info" });
   if (emergencyMissing) attention.push({ key: "ec", text: "Add an emergency contact", tone: "warn", go: "more", anchor: "profile" });
@@ -1214,6 +1225,17 @@ export default function ResidentDashboard() {
               </div>
             )}
             {section === "home" && (<>
+              {/* Oct 28 (per Mely): an addendum waiting for this resident's signature (Lease Addenda) */}
+              {residentId && (
+                <LeaseAddendaCard
+                  residentId={residentId}
+                  fullName={resident?.full_name || ""}
+                  parkName={resident?.companies?.company_name || "The park"}
+                  landlord={addendaLandlord}
+                  addenda={leaseAddenda}
+                  onChanged={() => residentId && loadLeaseAddenda(residentId)}
+                />
+              )}
               <div className="rp-balance">
                 <div>
                   <div style={label}>Outstanding Balance</div>
@@ -1776,7 +1798,7 @@ export default function ResidentDashboard() {
               <div className="rp-links">
             <button onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>📄 Documents</h2>
-              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement.</p>
+              <p style={{ color: "var(--gray)", fontSize: 13 }}>View and print your signed lease agreement and any signed addenda.</p>
             </button>
             {activeLease && (
               <button

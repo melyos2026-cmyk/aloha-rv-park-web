@@ -27,6 +27,8 @@ export type SignedContractInfo = {
   sentByTitle?: string | null;
   countersignedBy?: string | null; countersignedAt?: string | null; countersignTitle?: string | null; countersignSignature?: string | null; // Oct 27: second marina signature
   viewedAt?: string | null;
+  // Oct 28 (RV Lease Addenda reuse this layout): optional wording; the marina defaults are unchanged.
+  labels?: { signer?: string; company?: string; docRef?: string; idLabel?: string; method?: string; legal?: string };
 };
 
 // Standard PDF fonts only know Western characters; anything else becomes "?".
@@ -66,12 +68,14 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
   const black = rgb(0.07, 0.07, 0.09), gray = rgb(0.38, 0.4, 0.44);
   const W = 612, H = 792, M = 72, width = W - M * 2; // 1-inch margins, US Letter
   const ref = info.contractId.slice(0, 8).toUpperCase();
+  const L = info.labels || {};
+  const docRef = L.docRef || "Contract No.";
   let page!: PDFPage, y = 0;
 
   const newPage = () => {
     page = pdf.addPage([W, H]);
     page.drawText(clean(info.marinaName), { x: M, y: H - 40, size: 8.5, font: sans, color: gray });
-    const r = `Contract No. ${ref}`;
+    const r = `${docRef} ${ref}`;
     page.drawText(r, { x: W - M - sans.widthOfTextAtSize(r, 8.5), y: H - 40, size: 8.5, font: sans, color: gray });
     page.drawLine({ start: { x: M, y: H - 46 }, end: { x: W - M, y: H - 46 }, thickness: 0.5, color: gray });
     y = H - M;
@@ -128,9 +132,9 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
     yy -= 58;
     return { x, yy, sigLine, lines, image };
   };
-  const owner = block(M, "OWNER", `/s/ ${clean(info.signerName)}`, [clean(info.signerName), `Date: ${fmtDay(info.signedAt)}`], info.signatureImage);
+  const owner = block(M, L.signer || "OWNER", `/s/ ${clean(info.signerName)}`, [clean(info.signerName), `Date: ${fmtDay(info.signedAt)}`], info.signatureImage);
   const sentBy = clean(info.sentByName || "Authorized Representative");
-  const marina = block(M + colW + 36, "MARINA", `/s/ ${sentBy}`, [`${clean(info.marinaName)}`, `By: ${sentBy}, ${clean(info.sentByTitle || "") || "Authorized Representative"}`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`], info.sentBySignature);
+  const marina = block(M + colW + 36, L.company || "MARINA", `/s/ ${sentBy}`, [`${clean(info.marinaName)}`, `By: ${sentBy}, ${clean(info.sentByTitle || "") || "Authorized Representative"}`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`], info.sentBySignature);
   const draw = async (b: { x: number; yy: number; sigLine: string; lines: string[]; image?: string | null }) => {
     if (b.image && /^data:image\/png;base64,/.test(b.image)) {
       try {
@@ -157,16 +161,16 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
   // ── Electronic signature record ──
   newPage();
   centered("CERTIFICATE OF ELECTRONIC SIGNATURE", serifB, 13, 10);
-  para(`This certificate is part of Contract No. ${ref} between ${info.marinaName} and ${info.signerName}.`, serif, 10.5, 14, 10);
+  para(`This certificate is part of ${docRef} ${ref} between ${info.marinaName} and ${info.signerName}.`, serif, 10.5, 14, 10);
   const rows: [string, string][] = [
     ["Document", info.title],
-    ["Contract ID", info.contractId],
+    [L.idLabel || "Contract ID", info.contractId],
     ["Issued by", `${info.sentByName || "Authorized Representative"} for ${info.marinaName}${info.sentAt ? `, ${fmtET(new Date(info.sentAt))}` : ""}`],
     ...(info.countersignedBy ? [["Approved for the marina by", `${info.countersignedBy}${info.countersignTitle ? `, ${info.countersignTitle}` : ""}${info.countersignedAt ? `, ${fmtET(new Date(info.countersignedAt))}` : ""}`] as [string, string]] : []),
     ["Opened by signer", info.viewedAt ? fmtET(new Date(info.viewedAt)) : "-"],
     ["Signed by", `${info.signerName} (${info.signerEmail || "no email"})`],
     ["Date and time signed", `${fmtET(info.signedAt)}  (UTC ${info.signedAt.toISOString()})`],
-    ["Method", `Signer was signed in to their boater account at ${info.domain} with a one-time code sent to their email, typed their full name, and checked "I adopt this signature and agree to sign electronically"${info.signatureImage ? `; signature image ${info.signatureStyle || "captured"}` : ""}.`],
+    ["Method", L.method || `Signer was signed in to their boater account at ${info.domain} with a one-time code sent to their email, typed their full name, and checked "I adopt this signature and agree to sign electronically"${info.signatureImage ? `; signature image ${info.signatureStyle || "captured"}` : ""}.`],
     ["IP address", info.ip || "-"],
     ["Device / browser", info.userAgent || "-"],
     ["Document fingerprint (SHA-256 of the contract text)", info.bodyHash],
@@ -177,7 +181,7 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
     para(v, sans, 9.5, 12.5, 7);
   }
   y -= 6;
-  para(`Under the federal Electronic Signatures in Global and National Commerce Act (15 U.S.C. § 7001 et seq.) and the Florida Uniform Electronic Transaction Act (§ 668.50, Fla. Stat.), this electronic signature has the same legal effect as a handwritten signature. The document fingerprint above is computed from the exact contract text; any change to a single character produces a different fingerprint.`, serif, 9.5, 12.5, 0);
+  para(L.legal || `Under the federal Electronic Signatures in Global and National Commerce Act (15 U.S.C. § 7001 et seq.) and the Florida Uniform Electronic Transaction Act (§ 668.50, Fla. Stat.), this electronic signature has the same legal effect as a handwritten signature. The document fingerprint above is computed from the exact contract text; any change to a single character produces a different fingerprint.`, serif, 9.5, 12.5, 0);
 
   // Page X of Y on every page.
   const pages = pdf.getPages();

@@ -40,6 +40,7 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   registration: "Registration",
   move_out_statement: "Move-Out / Cancellation Statement",
   bill_of_sale: "Bill of Sale",
+  lease_addendum: "Lease Addendum (signed online)",
 };
 
 function documentTypeLabel(documentType: string) {
@@ -504,7 +505,8 @@ function DocumentsContent() {
                     >
                       📄 View
                     </button>
-                    <button
+                    {/* Oct 28: a signed lease addendum is part of the lease record — it can't be removed */}
+                    {doc.document_type !== "lease_addendum" && <button
                       onClick={() => deleteDocument(doc.id)}
                       style={{
                         background: "none",
@@ -518,7 +520,7 @@ function DocumentsContent() {
                       }}
                     >
                       Delete
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
