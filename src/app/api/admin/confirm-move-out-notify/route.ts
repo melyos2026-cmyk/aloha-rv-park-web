@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Admin sign-in is not configured on this site." }, { status: 503, headers: CORS_HEADERS });
   }
   {
-    const denied = requireAdminSessionForCompany(req, resident.company_id);
+    const denied = await requireAdminSessionForCompany(req, resident.company_id);
     if (denied) return denied;
   }
   const { data: leases } = await supabaseAdmin

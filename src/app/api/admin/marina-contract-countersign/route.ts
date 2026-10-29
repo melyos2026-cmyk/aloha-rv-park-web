@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { adminCorsHeaders, rejectForeignOrigin, verifyAdminSessionToken } from "@/lib/adminNotifyAuth";
+import { adminCorsHeaders, rejectForeignOrigin, verifyAdminSessionLive } from "@/lib/adminNotifyAuth";
 import { getMarinaById } from "@/lib/marina/company";
 import { finalizeSignedContract } from "@/lib/marina/contractFinalize";
 
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   const headers = adminCorsHeaders(req);
   const foreign = rejectForeignOrigin(req);
   if (foreign) return foreign;
-  const session = verifyAdminSessionToken(req.headers.get("x-admin-session"));
+  const session = await verifyAdminSessionLive(req.headers.get("x-admin-session"));
   if (!session) return NextResponse.json({ error: "Please sign in again." }, { status: 401, headers });
   const b = await req.json().catch(() => ({}));
   const companyId = String(b.companyId || ""), contractId = String(b.contractId || "");
