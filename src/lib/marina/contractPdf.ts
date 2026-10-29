@@ -134,7 +134,7 @@ export async function buildSignedContractPdf(info: SignedContractInfo): Promise<
   };
   const owner = block(M, L.signer || "OWNER", `/s/ ${clean(info.signerName)}`, [clean(info.signerName), `Date: ${fmtDay(info.signedAt)}`], info.signatureImage);
   const sentBy = clean(info.sentByName || "Authorized Representative");
-  const marina = block(M + colW + 36, L.company || "MARINA", `/s/ ${sentBy}`, [`${clean(info.marinaName)}`, `By: ${sentBy}, ${clean(info.sentByTitle || "") || "Authorized Representative"}`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`], info.sentBySignature);
+  const marina = block(M + colW + 36, L.company || "MARINA", info.sentByName ? `/s/ ${sentBy}` : "", [`${clean(info.marinaName)}`, `By: ${sentBy}, ${clean(info.sentByTitle || "") || "Authorized Representative"}`, `Date: ${info.sentAt ? fmtDay(new Date(info.sentAt)) : fmtDay(info.signedAt)}`], info.sentBySignature);
   const draw = async (b: { x: number; yy: number; sigLine: string; lines: string[]; image?: string | null }) => {
     if (b.image && /^data:image\/png;base64,/.test(b.image)) {
       try {

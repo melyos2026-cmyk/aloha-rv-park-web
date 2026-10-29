@@ -21,6 +21,16 @@ const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest(
 const norm = (s: string) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const missingTable = (e: { code?: string; message?: string } | null | undefined) =>
   !!e && (e.code === "42P01" || e.code === "PGRST205" || e.code === "42703" || /does not exist|could not find the table|schema cache/i.test(String(e.message || "")));
+// Oct 28 (per Mely): the LANDLORD signature is a park manager's own adopted signature — never MelyOS's.
+// While an addendum is waiting, it shows the park manager's CURRENT signature (blank until one exists);
+// it is frozen into the record the moment the resident signs.
+async function parkSigner(companyId: string): Promise<{ name: string; title: string | null; signature: string } | null> {
+  const { data } = await supabase.from("admin_users").select("*").eq("company_id", companyId);
+  const ok = (data || []).filter((m: any) => m.signature_image && m.role !== "master_admin" && m.can_manage_money === true);
+  const m: any = ok.find((x: any) => x.role === "park_admin") || ok[0];
+  return m ? { name: m.full_name || m.email || "Park manager", title: m.signature_title || null, signature: m.signature_image } : null;
+}
+
 const LIST_COLS = "id, addendum_type, title, body, body_sha256, status, effective_date, lot_name, sent_at, last_sent_at, sent_by_name, sent_by_title, sent_by_signature, viewed_at, signed_at, signer_name, signature_image, pdf_path, document_id";
 
 async function who(req: NextRequest, residentId: string | null) {
@@ -55,12 +65,16 @@ export async function GET(req: NextRequest) {
     .eq("company_id", r.company_id).eq("resident_id", r.id).in("status", ["pending", "signed"])
     .order("sent_at", { ascending: false }).limit(20);
   if (error) return NextResponse.json({ addenda: [] }); // table not created yet on this database
+  const signer = (data || []).some((a: any) => a.status === "pending") ? await parkSigner(r.company_id) : null;
   const { data: co } = await supabase.from("companies").select("company_name, dba_name, legal_name").eq("id", r.company_id).maybeSingle();
   const landlord = String((co as any)?.legal_name || (co as any)?.dba_name || (co as any)?.company_name || "");
   return NextResponse.json({
     fullName: r.full_name,
     landlord,
-    addenda: (data || []).map((a: any) => ({ ...a, hasPdf: !!a.pdf_path, pdf_path: undefined, signature_image: a.status === "signed" ? a.signature_image : null })),
+    addenda: (data || []).map((a: any) => ({
+      ...a, hasPdf: !!a.pdf_path, pdf_path: undefined, signature_image: a.status === "signed" ? a.signature_image : null,
+      ...(a.status === "pending" ? { sent_by_name: signer?.name || null, sent_by_title: signer?.title || null, sent_by_signature: signer?.signature || null } : {}),
+    })),
   }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -106,6 +120,10 @@ export async function POST(req: NextRequest) {
     signature_image: sig, signature_style: sigStyle, viewed_at: a.viewed_at || signedAt.toISOString(), updated_at: signedAt.toISOString(),
   }).eq("id", a.id).eq("status", "pending").eq("body_sha256", a.body_sha256).select("id").maybeSingle();
   if (!claimed) return NextResponse.json({ error: "This addendum was already signed or changed. Please reload the page." }, { status: 409 });
+  // Freeze the park's signature as it is right now (blank if no manager has one yet — never MelyOS's).
+  const signer = await parkSigner(r.company_id);
+  a.sent_by_name = signer?.name || null; a.sent_by_title = signer?.title || null; a.sent_by_signature = signer?.signature || null;
+  await supabase.from("resident_lease_addenda").update({ sent_by_name: a.sent_by_name, sent_by_title: a.sent_by_title, sent_by_signature: a.sent_by_signature }).eq("id", a.id);
 
   const { data: co } = await supabase.from("companies").select("company_name, dba_name, legal_name, address, city, state, zip_code, domain").eq("id", r.company_id).maybeSingle();
   const c: any = co || {};
