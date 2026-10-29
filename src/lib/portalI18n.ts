@@ -233,7 +233,68 @@ export function translateServerMessage(lang: PortalLang, msg: string | null | un
   if ((m = /^Your electric reading is added around the (\d+)(?:st|nd|rd|th) — you can pay as soon as it's on your invoice\.$/.exec(s)))
     return translate(lang, "Your electric reading is added around day {day} of the month — you can pay as soon as it's on your invoice.", { day: m[1] });
   if ((m = /^Could not upload file: (.*)$/.exec(s))) return translate(lang, "Could not upload file: {detail}", { detail: m[1] });
+  const n = translateNotificationMessage(lang, s);
+  if (n !== null) return n;
   return s;
+}
+
+/** "October 2026", "October 2026 and November 2026", "your invoice" (server bell text) in this language. */
+function localizeMonthList(lang: PortalLang, list: string): string {
+  const v = list.trim();
+  if (v === "your invoice") return translate(lang, "notif:your invoice");
+  const parts = v.split(/, | and /).map((x) => localizeDateLabel(lang, x.trim()));
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(", ")}${translate(lang, "notif: and ")}${parts[parts.length - 1]}`;
+}
+
+/**
+ * Oct 29 (per Mely): the resident's bell / Messages rows. The server stores ENGLISH text (never
+ * changed); every resident_facing template written by either app (melyos-builder + this site) is
+ * matched here and shown in Spanish / Portuguese. null = not a known template (shown as stored).
+ * Keep in sync with: melyos-builder lib/monthlyInvoices.ts (invoice ready), app/api/admin/
+ * electric-readings (recorded/corrected), charge-resident + resident-invoices (charges, office
+ * payment), maintenance-requests, lease-addenda + lib/residentAgreementsAuto.ts, announcements,
+ * cron/apply-invoice-late-fees; here: checkr-webhook, rvCardAutopay/rvBankAutopay, stripe-webhook.
+ */
+export function translateNotificationMessage(lang: PortalLang, s: string): string | null {
+  if (lang === "en") return s;
+  let m: RegExpExecArray | null;
+  const T = (key: string, vars?: Vars) => translate(lang, key, vars).replace("referente a sua fatura", "referente à sua fatura");
+  if ((m = /^Your (.+?) invoice is ready — total due (\$[\d.,]+), due (.+)\.$/.exec(s)))
+    return T("Your {month} invoice is ready — total due {amount}, due {date}.", { month: localizeDateLabel(lang, m[1]), amount: m[2], date: localizeDateLabel(lang, m[3]) });
+  if ((m = /^A late fee of (\$[\d.,]+) was added to your (.+?) invoice\. New balance: (\$[\d.,]+)\.$/.exec(s)))
+    return m[2] === "current"
+      ? T("A late fee of {amount} was added to your current invoice. New balance: {balance}.", { amount: m[1], balance: m[3] })
+      : T("A late fee of {amount} was added to your {month} invoice. New balance: {balance}.", { amount: m[1], month: localizeDateLabel(lang, m[2]), balance: m[3] });
+  if ((m = /^We received your payment of (\$[\d.,]+) for (.+)\. Thank you!$/.exec(s)))
+    return T("We received your payment of {amount} for {month}. Thank you!", { amount: m[1], month: localizeMonthList(lang, m[2]) });
+  if ((m = /^Your bank payment of (\$[\d.,]+) is processing \(3–5 business days\)\.$/.exec(s)))
+    return T("Your bank payment of {amount} is processing (3–5 business days).", { amount: m[1] });
+  if ((m = /^Your bank payment of (\$[\d.,]+) for (.+) was returned by your bank\. The (invoice is|invoices are) open again(?:, plus a returned-payment fee of (\$[\d.,]+))?\.$/.exec(s))) {
+    const vars = { amount: m[1], month: localizeMonthList(lang, m[2]), fee: m[4] };
+    const plural = m[3] === "invoices are";
+    return T(`Your bank payment of {amount} for {month} was returned by your bank. ${plural ? "The invoices are" : "The invoice is"} open again${m[4] ? ", plus a returned-payment fee of {fee}" : ""}.`, vars);
+  }
+  if ((m = /^Your electric reading for (.+?) was (recorded|corrected): ([\d.,]+) kWh used(?: — (\$[\d.,]+) (added to your invoice|on your invoice))?\.$/.exec(s))) {
+    const key = `Your electric reading for {month} was ${m[2]}: {usage} kWh used${m[4] ? ` — {amount} ${m[5]}` : ""}.`;
+    return T(key, { month: localizeDateLabel(lang, m[1]), usage: m[3], amount: m[4] });
+  }
+  if ((m = /^A new charge was added to your invoice: ([\s\S]+) — (\$[\d.,]+)\.$/.exec(s)))
+    return T("A new charge was added to your invoice: {what} — {amount}.", { what: translateStatus(lang, m[1]), amount: m[2] });
+  if ((m = /^A maintenance charge was added to your invoice: ([\s\S]+) — (\$[\d.,]+)\.$/.exec(s)))
+    return T("A maintenance charge was added to your invoice: {what} — {amount}.", { what: translateStatus(lang, m[1]), amount: m[2] });
+  if ((m = /^Your maintenance request status changed to "(.*)"\.$/.exec(s)))
+    return T('Your maintenance request status changed to "{status}".', { status: DICT["maint:" + m[1]] ? T("maint:" + m[1]) : translateStatus(lang, m[1]) });
+  if (s === "The office added an update to your maintenance request.") return T(s);
+  if ((m = /^([\s\S]+) added "([\s\S]+)" to your resident portal for you to review and sign\.$/.exec(s)))
+    return T('{park} added "{title}" to your resident portal for you to review and sign.', { park: m[1], title: translateStatus(lang, m[2]) });
+  if ((m = /^([\s\S]+) sent you "([\s\S]+)" to review and sign in your resident portal\.$/.exec(s)))
+    return T('{park} sent you "{title}" to review and sign in your resident portal.', { park: m[1], title: translateStatus(lang, m[2]) });
+  if ((m = /^New announcement: "([\s\S]*)"$/.exec(s))) return T('New announcement: "{title}"', { title: m[1] });
+  if ((m = /^Background check for (.+) \(household occupant of (.+)\): ([\s\S]+)\.$/.exec(s)))
+    return T("Background check for {name} (household occupant of {resident}): {result}.", { name: m[1], resident: m[2], result: DICT["bgc:" + m[3]] ? T("bgc:" + m[3]) : m[3] });
+  if (DICT[s]) return T(s); // fixed texts (e.g. the autopay-failed notices)
+  return null;
 }
 
 /**
@@ -341,6 +402,40 @@ const DICT: Record<string, [string, string]> = {
   "Written by the park": ["Escrito por el parque", "Escrito pelo parque"],
   "Uploading...": ["Subiendo...", "Enviando..."],
 
+  // ---- Resident bell / Messages templates (translateNotificationMessage — server text stays English) ----
+  "notif:your invoice": ["su factura", "sua fatura"],
+  "notif: and ": [" y ", " e "],
+  "Your {month} invoice is ready — total due {amount}, due {date}.": ["Su factura de {month} está lista: total a pagar {amount}, vence el {date}.", "Sua fatura de {month} está pronta: total a pagar {amount}, vencimento em {date}."],
+  "A late fee of {amount} was added to your {month} invoice. New balance: {balance}.": ["Se agregó un recargo por pago tardío de {amount} a su factura de {month}. Nuevo saldo: {balance}.", "Uma multa por atraso de {amount} foi adicionada à sua fatura de {month}. Novo saldo: {balance}."],
+  "A late fee of {amount} was added to your current invoice. New balance: {balance}.": ["Se agregó un recargo por pago tardío de {amount} a su factura actual. Nuevo saldo: {balance}.", "Uma multa por atraso de {amount} foi adicionada à sua fatura atual. Novo saldo: {balance}."],
+  "We received your payment of {amount} for {month}. Thank you!": ["Recibimos su pago de {amount} correspondiente a {month}. ¡Gracias!", "Recebemos seu pagamento de {amount} referente a {month}. Obrigado!"],
+  "Your bank payment of {amount} is processing (3–5 business days).": ["Su pago bancario de {amount} está en proceso (de 3 a 5 días hábiles).", "Seu pagamento bancário de {amount} está em processamento (de 3 a 5 dias úteis)."],
+  "Your bank payment of {amount} for {month} was returned by your bank. The invoice is open again.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. La factura vuelve a estar pendiente de pago.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. A fatura está em aberto novamente."],
+  "Your bank payment of {amount} for {month} was returned by your bank. The invoices are open again.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. Las facturas vuelven a estar pendientes de pago.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. As faturas estão em aberto novamente."],
+  "Your bank payment of {amount} for {month} was returned by your bank. The invoice is open again, plus a returned-payment fee of {fee}.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. La factura vuelve a estar pendiente de pago, más un cargo por pago devuelto de {fee}.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. A fatura está em aberto novamente, com uma taxa de pagamento devolvido de {fee}."],
+  "Your bank payment of {amount} for {month} was returned by your bank. The invoices are open again, plus a returned-payment fee of {fee}.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. Las facturas vuelven a estar pendientes de pago, más un cargo por pago devuelto de {fee}.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. As faturas estão em aberto novamente, com uma taxa de pagamento devolvido de {fee}."],
+  "Your electric reading for {month} was recorded: {usage} kWh used.": ["Se registró su lectura de electricidad de {month}: {usage} kWh consumidos.", "Sua leitura de energia de {month} foi registrada: {usage} kWh consumidos."],
+  "Your electric reading for {month} was recorded: {usage} kWh used — {amount} added to your invoice.": ["Se registró su lectura de electricidad de {month}: {usage} kWh consumidos. Se agregaron {amount} a su factura.", "Sua leitura de energia de {month} foi registrada: {usage} kWh consumidos. Foram adicionados {amount} à sua fatura."],
+  "Your electric reading for {month} was corrected: {usage} kWh used.": ["Se corrigió su lectura de electricidad de {month}: {usage} kWh consumidos.", "Sua leitura de energia de {month} foi corrigida: {usage} kWh consumidos."],
+  "Your electric reading for {month} was corrected: {usage} kWh used — {amount} on your invoice.": ["Se corrigió su lectura de electricidad de {month}: {usage} kWh consumidos. Su factura ahora incluye {amount} de electricidad.", "Sua leitura de energia de {month} foi corrigida: {usage} kWh consumidos. Sua fatura agora inclui {amount} de energia."],
+  "A new charge was added to your invoice: {what} — {amount}.": ["Se agregó un nuevo cargo a su factura: {what} — {amount}.", "Uma nova cobrança foi adicionada à sua fatura: {what} — {amount}."],
+  "A maintenance charge was added to your invoice: {what} — {amount}.": ["Se agregó un cargo de mantenimiento a su factura: {what} — {amount}.", "Uma cobrança de manutenção foi adicionada à sua fatura: {what} — {amount}."],
+  "Maintenance charge": ["Cargo de mantenimiento", "Cobrança de manutenção"],
+  'Your maintenance request status changed to "{status}".': ['El estado de su solicitud de mantenimiento cambió a "{status}".', 'O status da sua solicitação de manutenção mudou para "{status}".'],
+  "The office added an update to your maintenance request.": ["La oficina agregó una actualización a su solicitud de mantenimiento.", "O escritório adicionou uma atualização à sua solicitação de manutenção."],
+  '{park} sent you "{title}" to review and sign in your resident portal.': ['{park} le envió "{title}" para que lo revise y firme en su portal de residentes.', '{park} enviou "{title}" para você revisar e assinar no seu portal do morador.'],
+  '{park} added "{title}" to your resident portal for you to review and sign.': ['{park} agregó "{title}" a su portal de residentes para que lo revise y firme.', '{park} adicionou "{title}" ao seu portal do morador para você revisar e assinar.'],
+  'New announcement: "{title}"': ['Nuevo anuncio: "{title}"', 'Novo aviso: "{title}"'],
+  "Background check for {name} (household occupant of {resident}): {result}.": ["Verificación de antecedentes de {name} (ocupante del hogar de {resident}): {result}.", "Verificação de antecedentes de {name} (morador da residência de {resident}): {result}."],
+  "maint:pending": ["Pendiente", "Pendente"],
+  "maint:in_progress": ["En progreso", "Em andamento"],
+  "maint:completed": ["Completada", "Concluída"],
+  "Resident Agreement — Returned Payments": ["Acuerdo de residente — Pagos devueltos", "Acordo do morador — Pagamentos devolvidos"],
+  "bgc:passed": ["aprobada", "aprovada"],
+  "bgc:needs review": ["requiere revisión", "precisa de revisão"],
+  "bgc:canceled by Checkr (no result — contact Checkr support)": ["cancelada por Checkr (sin resultado; comuníquese con el soporte de Checkr)", "cancelada pela Checkr (sem resultado; fale com o suporte da Checkr)"],
+  "bgc:paused — Checkr needs more information from the applicant to continue (check that they received Checkr's email and completed the next step in their candidate portal)": ["en pausa: Checkr necesita más información de la persona para continuar (verifique que recibió el correo de Checkr y completó el siguiente paso en su portal de candidato)", "pausada: a Checkr precisa de mais informações da pessoa para continuar (confira se ela recebeu o e-mail da Checkr e concluiu a próxima etapa no portal do candidato)"],
+  "bgc:invitation expired": ["la invitación venció", "o convite expirou"],
   // ---- Statuses from the database ("status:" + value; see st()) ----
   "status:Paid": ["Pagada", "Paga"],
   "status:Pending": ["Pendiente", "Pendente"],

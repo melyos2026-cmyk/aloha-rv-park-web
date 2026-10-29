@@ -8,6 +8,7 @@ import { recordMelyOSBillingCharge } from "@/lib/billingCharges";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { notifyAdminBellOnce } from "@/lib/adminBell";
+import { notifyResidentBellOnce, bellMoney, bellMonths } from "@/lib/residentBell";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { RETURNED_ACH_FEE_CHARGE_TYPE, returnedPaymentFee, returnedFeeForReturn, insertReturnedFeeLine, FLAT_FOUR_RETURNED_FEE, billCompanyForReturnedPayment } from "@/lib/platformFee";
 import { recordMarinaOnlinePayment, settleMarinaAchPayment, failMarinaAchPayment, returnMarinaOnlinePayment, returnMarinaPaymentRef } from "@/lib/marina/payments";
@@ -294,6 +295,15 @@ async function handleWebhook(req: Request) {
           });
         }
       }
+      // Oct 29 (per Mely): the RESIDENT's bell — their bank payment is on its way (once per payment).
+      if ((movedRows || []).length > 0 && session.metadata?.resident_id) {
+        const bellCompanyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+        await notifyResidentBellOnce({
+          companyId: bellCompanyId, residentId: session.metadata.resident_id,
+          onceKey: `ach_processing:${piId || session.id}`, updateType: "payment_processing",
+          message: `Your bank payment of ${bellMoney((session.amount_total || 0) / 100)} is processing (3–5 business days).`,
+        }).then(() => null, () => null);
+      }
       return NextResponse.json({ received: true });
     }
 
@@ -310,6 +320,7 @@ async function handleWebhook(req: Request) {
     console.log("Marking invoice IDs as Paid:", invoiceIds);
 
     let chargesPaid: { label: string; amount: number }[] = [];
+    let bellMonthsPaid: (string | null)[] = []; // Oct 29: for the resident's "payment received" bell
 
     // Oct 20 (security review — webhook idempotency): Stripe can deliver
     // the same event more than once (retries). There's no processed-events
@@ -328,6 +339,7 @@ async function handleWebhook(req: Request) {
       const alreadyPaidIds = new Set(
         (paidInvoices || []).filter((inv) => inv.status === "Paid").map((inv) => inv.id)
       );
+      bellMonthsPaid = (paidInvoices || []).map((inv) => inv.invoice_month);
       allInvoicesAlreadyPaid =
         (paidInvoices || []).length > 0 && invoiceIds.every((id) => alreadyPaidIds.has(id));
       // Oct 28 (review): invoices "Processing" = another bank payment (bank autopay, or a different
@@ -579,6 +591,17 @@ async function handleWebhook(req: Request) {
       } catch (emailErr) {
         console.error("Failed to send receipt email:", emailErr);
       }
+    }
+    // Oct 29 (per Mely): the RESIDENT's bell — payment received (card, or bank once it cleared).
+    // After the money logic; once per payment (PaymentIntent, else session). Never throws.
+    if (residentId && !allInvoicesAlreadyPaid && invoiceIds.length > 0 && isRvInvoiceSession(session) && session.payment_status === "paid") {
+      const bellCompanyId = await resolveCompanyIdFromMetadata(session.metadata).catch(() => null);
+      const piRef = (typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id) || session.id;
+      await notifyResidentBellOnce({
+        companyId: bellCompanyId, residentId,
+        onceKey: `payment_received:${piRef}`, updateType: "payment_received",
+        message: `We received your payment of ${bellMoney((session.amount_total || 0) / 100)} for ${bellMonths(bellMonthsPaid)}. Thank you!`,
+      }).then(() => null, () => null);
     }
     // Oct 28: a settled RV bank payment is fully handled above.
     if (rvAchSettled) return NextResponse.json({ received: true });
@@ -1178,6 +1201,13 @@ async function handleRvAchPaymentFailed(session: Stripe.Checkout.Session) {
       residentId: residentId || null, residentName: resident?.full_name || null,
       message: `${resident?.full_name || "A resident"}'s bank (ACH) payment of $${((session.amount_total || 0) / 100).toFixed(2)} was returned by the bank. ${invoiceIds.length === 1 ? "The invoice is" : "The invoices are"} owed again — see System Health. Ref ${piRef}.`,
     });
+    // Oct 29 (per Mely): the RESIDENT's bell too — once per payment. Never throws.
+    if (residentId) {
+      await notifyResidentBellOnce({
+        companyId, residentId, onceKey: `ach_returned:${piRef}`, updateType: "payment_returned",
+        message: `Your bank payment of ${bellMoney((session.amount_total || 0) / 100)} for ${bellMonths((invoices || []).map((i) => i.invoice_month))} was returned by your bank. ${(invoices || []).length > 1 ? "The invoices are" : "The invoice is"} open again${feeInvoice ? `, plus a returned-payment fee of ${bellMoney(returnFee.total)}` : ""}.`,
+      }).then(() => null, () => null);
+    }
   }
 
   // One System Health issue per returned payment (a retry after a failure above doesn't add another).

@@ -59,5 +59,6 @@ export async function GET(req: NextRequest) {
     console.error("RV fields fetch threw (non-fatal):", err);
   }
 
-  return NextResponse.json({ invitation: { ...(data as object), ...rvFields } });
+  // Oct 29: never cached (the invite's terms can change, and it holds personal info).
+  return NextResponse.json({ invitation: { ...(data as object), ...rvFields } }, { headers: { "Cache-Control": "no-store" } });
 }

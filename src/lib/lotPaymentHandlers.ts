@@ -486,7 +486,7 @@ export async function handleApplicationFeePaid(session: Stripe.Checkout.Session)
       // still show something rather than an empty table.
       if (lineItems.length === 0) {
         lineItems.push({
-          description: "Lease Application Fee",
+          description: "Site Rental Application Fee",
           qty: 1,
           unitPrice: amountPaid,
           amount: amountPaid,

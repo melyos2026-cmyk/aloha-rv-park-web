@@ -13,5 +13,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "company_id is required." }, { status: 400 });
   }
   const settings = await loadReturnedFeeSettings(companyId, "rv");
-  return NextResponse.json({ clause: returnedPaymentClause(settings, RV_LEASE_PARTIES) });
+  // Oct 29: never cached — a Fee Settings change must show on the application right away.
+  return NextResponse.json({ clause: returnedPaymentClause(settings, RV_LEASE_PARTIES) }, { headers: { "Cache-Control": "no-store" } });
 }

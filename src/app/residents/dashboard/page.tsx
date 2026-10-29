@@ -1144,7 +1144,7 @@ export default function ResidentDashboard() {
   if (emergencyMissing) attention.push({ key: "ec", text: t("Add an emergency contact"), tone: "warn", go: "more", anchor: "profile" });
   if (petsNoShots.length) attention.push({ key: "pets", text: t("Pet shots records not provided"), sub: petsNoShots.map((p: any) => p.name || t("Pet")).join(", "), tone: "warn", go: "lot", anchor: "parking-pets" });
   if (propaneReady.length) attention.push({ key: "pr", text: tp(propaneReady.length, "{n} propane order ready for pickup", "{n} propane orders ready for pickup"), sub: t("Show the QR code to staff"), tone: "info", go: "requests", anchor: "propane" });
-  if (unreadNotifs.length) attention.push({ key: "nt", text: tp(unreadNotifs.length, "{n} new notification", "{n} new notifications"), sub: unreadNotifs[0]?.message, tone: "info", go: "messages" });
+  if (unreadNotifs.length) attention.push({ key: "nt", text: tp(unreadNotifs.length, "{n} new notification", "{n} new notifications"), sub: err(unreadNotifs[0]?.message), tone: "info", go: "messages" });
 
   const badge: Partial<Record<SectionId, number>> = {
     pay: pendingInvoices.length + (autopayFailed ? 1 : 0),
@@ -1445,7 +1445,7 @@ export default function ResidentDashboard() {
                 )}
                 <Tile go="messages" h={t("Messages")} cta={notifications.length || announcements.length ? t("Open") : t("View")} lines={[
                   unreadNotifs.length ? tp(unreadNotifs.length, "{n} new notification", "{n} new notifications") : announcements[0] ? announcements[0].title : notifications[0] ? t("Notifications") : t("No messages yet"),
-                  unreadNotifs.length ? unreadNotifs[0].message : announcements[0] ? announcements[0].message : notifications[0]?.message,
+                  unreadNotifs.length ? err(unreadNotifs[0].message) : announcements[0] ? announcements[0].message : err(notifications[0]?.message),
                 ]} />
               </div>
               {/* Oct 28 (per Mely): emergency phone, 911, today's office hours — full details in Park info */}

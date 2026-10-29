@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { notifyResidentBellOnce, bellMoney, bellMonths } from "@/lib/residentBell";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { calculateProcessingFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices } from "@/lib/platformFee";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
@@ -260,6 +261,11 @@ async function finishInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; det
   await logRvOnlinePayment({ companyId, sourceId: pi.id, description: "Autopay (online)", payerName: resident.full_name, amountCents: Number(pi.amount_received || pi.amount || 0), reference: pi.id });
   await checkAndCompleteRentToOwnPlan(resident.id, companyId).catch(() => null);
   await notifyOffice(resident, "autopay_charged", `Autopay charged ${resident.full_name || "a resident"} ${money(Number(pi.amount || 0) / 100)} for invoice due ${inv?.due_date || ""}.`);
+  // Oct 29 (per Mely): the RESIDENT's bell — once per payment. Never throws.
+  await notifyResidentBellOnce({
+    companyId, residentId: resident.id, onceKey: `payment_received:${pi.id}`, updateType: "payment_received",
+    message: `We received your payment of ${bellMoney(Number(pi.amount_received || pi.amount || 0) / 100)} for ${bellMonths([inv?.invoice_month])}. Thank you!`,
+  }).then(() => null, () => null);
   try {
     if (resident.email && inv) {
       const { data: items } = await supabase.from("resident_invoice_items").select("description, charge_type, amount").eq("invoice_id", inv.id);

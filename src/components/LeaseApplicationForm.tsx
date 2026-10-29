@@ -360,6 +360,21 @@ function getSeasonalRent(
   return inHighSeason ? lot.high_season_price : lot.low_season_price;
 }
 
+// Oct 29 (per Mely): the Late Fee line follows the park's Lease Defaults (how often the fee
+// repeats: daily / weekly / days of the month / one time, and the max per invoice) — same wording
+// as the Mely chat. It used to always say "per day", even when the park charges weekly.
+function lateFeeSummary(d: any): string {
+  const amt = `$${d.late_fee_amount}`;
+  const grace = Number(d.late_fee_grace_days) || 0;
+  const days = String(d.late_fee_charge_days || "").split(/[^0-9]+/).filter(Boolean).join(", ");
+  const max = Number(d.late_fee_max) || 0;
+  const cap = max > 0 ? ` (up to ${max} late fee${max === 1 ? "" : "s"} per invoice)` : "";
+  if (d.late_fee_frequency === "days_of_month" && days) return `${amt} added on day(s) ${days} of each month while rent is still unpaid${cap}.`;
+  if (d.late_fee_frequency === "weekly") return `${amt} for each week rent remains unpaid${grace ? `, after a ${grace}-day grace period` : ""}${cap}.`;
+  if (d.late_fee_frequency === "one_time") return `A one-time ${amt} if rent is not paid ${grace ? `within ${grace} day(s) after the due date` : "by the due date"}.`;
+  return `${amt} per day rent remains unpaid${grace ? `, after a ${grace}-day grace period` : ""}${cap}.`;
+}
+
 function calculateLeaseRent(
   lot: LotOption,
   startDate: string,
@@ -1303,11 +1318,17 @@ export default function LeaseApplicationForm({
       </div>
 
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
-        Lease Application
+        {isRentToOwn ? "Rent-to-Own Application" : "Site Rental Application"}
       </h1>
+      {/* Oct 29 (per the owner): the park rents the SITE only (month-to-month), not a dwelling. */}
+      {!isRentToOwn && (
+        <p style={{ ...styles.helper, fontWeight: 600, color: "#134e4a" }}>
+          Month-to-month site rental (the space only — you bring your own RV or park model).
+        </p>
+      )}
       <p style={styles.helper}>
         {mode === "applicant"
-          ? "Fill out this application to apply for your lot. You'll be able to review everything before signing."
+          ? "Fill out this application to rent your site. You'll be able to review everything before signing."
           : "Fill out this application on behalf of the resident. They'll receive a copy to confirm."}
       </p>
 
@@ -1672,10 +1693,10 @@ export default function LeaseApplicationForm({
 
       {/* 3-4. Lease Term & Rent */}
       <div style={styles.card}>
-        <div style={styles.sectionTitle}>Lease Term &amp; Rent</div>
+        <div style={styles.sectionTitle}>Rental Term &amp; Rent</div>
         <div style={styles.row}>
           <div style={styles.field}>
-            <label style={styles.label}>Lease Start Date</label>
+            <label style={styles.label}>Rental Start Date</label>
             <div style={{ position: "relative" }}>
               <DatePicker
                 selected={parseDateString(data.lease_start_date)}
@@ -1774,19 +1795,19 @@ export default function LeaseApplicationForm({
               }
             }}
           />
-          Month-to-month (no set end date)
+          Month-to-month site rental (the space only — you bring your own RV or park model)
         </label>
 
         {data.month_to_month && (
           <p style={{ margin: "6px 0 14px", padding: "10px 12px", borderRadius: 8, background: "#f0fdfa", border: "1px solid #99f6e4", color: "#134e4a", fontSize: 13, lineHeight: 1.45 }}>
-            Month-to-month is a verbal agreement with no fixed term. This application and the lease document record its terms. Either party may end it with written notice as stated in the lease.
+            Month-to-month is a verbal agreement with no fixed term. This application and the Month-to-Month Site Rental Agreement record its terms. Either party may end it with written notice as stated in the agreement.
           </p>
         )}
 
         {!data.month_to_month && (
           <div style={styles.row}>
             <div style={styles.field}>
-              <label style={styles.label}>Lease End / Checkout Date</label>
+              <label style={styles.label}>Rental End / Checkout Date</label>
               <DatePicker
                 selected={parseDateString(data.lease_end_date)}
                 onChange={(date: Date | null) => {
@@ -1900,7 +1921,7 @@ export default function LeaseApplicationForm({
             <div style={styles.row}>
               <div style={styles.field}>
                 <label style={styles.label}>
-                  Notice to Terminate Lease (days){" "}
+                  Notice to End the Rental (days){" "}
                   <span style={{ fontWeight: 400, color: "#999" }}>
                     (written notice either party must give before ending)
                   </span>
@@ -2012,7 +2033,7 @@ export default function LeaseApplicationForm({
           >
             {proration.isFullMonth ? (
               <div>
-                Since the lease starts on the 1st, the first month's rent is
+                Since the rental starts on the 1st, the first month's rent is
                 the full ${proration.proratedAmount.toFixed(2)}.
               </div>
             ) : (
@@ -2133,13 +2154,13 @@ export default function LeaseApplicationForm({
             <div>
               <strong>Security Deposit:</strong>{" "}
               {data.security_deposit_enabled
-                ? `$${data.security_deposit_amount}, returned within ${data.security_deposit_return_days} days after lease ends.`
+                ? `$${data.security_deposit_amount}, returned within ${data.security_deposit_return_days} days after the rental ends.`
                 : "None required."}
             </div>
             <div>
               <strong>Late Fee:</strong>{" "}
               {data.late_fee_enabled
-                ? `$${data.late_fee_amount} per day rent remains unpaid, after a ${data.late_fee_grace_days}-day grace period.`
+                ? lateFeeSummary(data)
                 : "None."}
             </div>
             <div>
@@ -3759,7 +3780,7 @@ export default function LeaseApplicationForm({
           ) : mode === "applicant" && data.month_to_month ? (
             <>
               <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
-                Every applicant must pass a background check before the lease
+                Every applicant must pass a background check before the application
                 is approved.
               </p>
               <p
@@ -3781,7 +3802,7 @@ export default function LeaseApplicationForm({
           ) : backgroundCheckRequired ? (
             <>
               <p style={{ fontSize: 13, color: "#333", marginTop: 0 }}>
-                Every applicant must pass a background check before the lease
+                Every applicant must pass a background check before the application
                 is approved. The fees below cover the application processing
                 and background check, and are paid by the applicant.
               </p>
@@ -4296,8 +4317,8 @@ be sent to me electronically.
                     }}
                   >
                     {backgroundCheckRequired
-                      ? "These are one-time fees, separate from your monthly rent, which is billed after your lease is approved."
-                      : "This is a one-time fee, separate from your rent, which will be billed after your lease is approved."}
+                      ? "These are one-time fees, separate from your monthly rent, which is billed after your application is approved."
+                      : "This is a one-time fee, separate from your rent, which will be billed after your application is approved."}
                   </div>
                 )}
                 {backgroundCheckRequired && (

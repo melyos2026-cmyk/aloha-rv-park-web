@@ -12,6 +12,9 @@ const PUBLIC_LEASE_DEFAULT_KEYS = [
   "landlord_name", "landlord_address", "property_address",
   "notice_days", "month_to_month", "rent_amount", "rent_due_day", "rent_payment_instructions", "use_seasonal_pricing",
   "late_fee_enabled", "late_fee_amount", "late_fee_grace_days",
+  // Oct 29: how often the late fee repeats — the form's Late Fee line reads these (it used to
+  // always say "per day"); the admin's Lease Defaults editor sets them.
+  "late_fee_frequency", "late_fee_charge_days", "late_fee_max",
   "security_deposit_enabled", "security_deposit_amount", "security_deposit_return_days",
   "nsf_fee_enabled", "nsf_fee_amount",
   "occupants_enabled", "vehicles_enabled",

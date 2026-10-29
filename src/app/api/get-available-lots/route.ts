@@ -74,5 +74,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ lots });
+  // Oct 29: never cached — the application must show the lots' current prices/status.
+  return NextResponse.json({ lots }, { headers: { "Cache-Control": "no-store" } });
 }

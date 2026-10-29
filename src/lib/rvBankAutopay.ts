@@ -10,6 +10,7 @@ import { sendReceiptEmail } from "@/lib/send-receipt-email";
 import { checkAndCompleteRentToOwnPlan } from "@/lib/rentToOwnCompletion";
 import { claimStripeEvent, finishStripeEvent } from "@/lib/stripeEventClaim";
 import { sendBankPaymentReturnedEmail } from "@/lib/sendBankPaymentReturnedEmail";
+import { notifyResidentBellOnce, bellMoney, bellMonths } from "@/lib/residentBell";
 import { parkShareMetadata, refuseUnsplitRvPayments } from "@/lib/parkPayoutLedger";
 
 // Oct 28 (per Mely): RV residents can pay autopay by BANK (ACH) instead of card — same Stripe
@@ -468,6 +469,11 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
     return { status: "succeeded", amount: totalAmount };
   }
   await notifyOffice(resident, "autopay_charged", `Autopay started a bank payment of ${money(chargeAmount)} for ${resident.full_name || "a resident"} (${invoices.map((i) => i.invoice_month).filter(Boolean).join(", ")}). It clears in 3–5 business days.`);
+  // Oct 29 (per Mely): the RESIDENT's bell — once per payment. Never throws.
+  await notifyResidentBellOnce({
+    companyId, residentId: resident.id, onceKey: `ach_processing:${pi.id}`, updateType: "payment_processing",
+    message: `Your bank payment of ${bellMoney(chargeAmount)} is processing (3–5 business days).`,
+  }).then(() => null, () => null);
   return { status: "processing", amount: totalAmount };
 }
 
@@ -606,6 +612,11 @@ async function settleInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; det
     console.error("settleRvBankAutopay receipt:", e?.message);
   }
   await notifyOffice(resident, "autopay_charged", `Autopay bank payment of ${money(amountCents / 100)} from ${resident.full_name || "a resident"} cleared (${processing.map((i) => i.invoice_month).filter(Boolean).join(", ")}).`);
+  // Oct 29 (per Mely): the RESIDENT's bell — once per payment. Never throws.
+  await notifyResidentBellOnce({
+    companyId, residentId, onceKey: `payment_received:${pi.id}`, updateType: "payment_received",
+    message: `We received your payment of ${bellMoney(amountCents / 100)} for ${bellMonths(processing.map((i) => i.invoice_month))}. Thank you!`,
+  }).then(() => null, () => null);
   return { ok: true };
 }
 
@@ -749,6 +760,14 @@ async function failInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; detai
     autopayTurnedOff: autopayOff,
     isAutopay: true,
   });
+  // Oct 29 (per Mely): the RESIDENT's bell — only when the bank really returned it (once per payment).
+  if (!neverSubmitted) {
+    const { data: bellInvoices } = await supabase.from("resident_invoices").select("invoice_month").in("id", invoiceIds).eq("resident_id", residentId).then((r) => r, () => ({ data: null }));
+    await notifyResidentBellOnce({
+      companyId, residentId, onceKey: `ach_returned:${pi.id}`, updateType: "payment_returned",
+      message: `Your bank payment of ${bellMoney(Number(pi.amount || 0) / 100)} for ${bellMonths((bellInvoices || []).map((i: any) => i.invoice_month))} was returned by your bank. ${invoiceIds.length > 1 ? "The invoices are" : "The invoice is"} open again${feeInvoice ? `, plus a returned-payment fee of ${bellMoney(returnFee.total)}` : ""}.`,
+    }).then(() => null, () => null);
+  }
   return { ok: true };
 }
 
