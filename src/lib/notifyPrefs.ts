@@ -96,6 +96,8 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     types: ["propane_payment"] },
   { key: "real_estate_inquiry", category: "bookings", label: "Real estate inquiry", channels: ALL, defaults: BELL_PHONE,
     types: ["real_estate_inquiry"] },
+  { key: "rec_hall_request", category: "bookings", label: "Rec Hall requests", description: "A resident requests or cancels the Rec Hall from the portal", channels: ALL, defaults: BELL_PHONE,
+    types: ["rec_hall_request", "rec_hall_cancelled"] },
   // Office
   { key: "shift_left_open", category: "office", label: "Shift left open", description: "Once a day, for a shift from a previous day", channels: ALL, defaults: BELL_PHONE,
     types: ["shift_left_open"] },

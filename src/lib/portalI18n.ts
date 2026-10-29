@@ -15,6 +15,11 @@
 //   autopay / ACH / SMS authorizations that are stored as proof) and anything the park wrote
 //   (rules, announcements, office notes, listing text). Money is always USD.
 import { createElement, Fragment, useMemo, useSyncExternalStore, type ReactNode } from "react";
+// Oct 29: the bell / push templates + date labels live in the pure ./notificationI18n (shared with the
+// server push in melyos-builder). Re-exported here so existing imports keep working.
+import { NOTIF_DICT, NOTIF_LOCALES, formatDate, localizeDateLabel, translateNotificationTemplate } from "./notificationI18n";
+export { formatDate, localizeDateLabel };
+import { translateRecHallNotice } from "./recHallI18n";
 
 export type PortalLang = "en" | "es" | "pt";
 export const PORTAL_LANGS: { code: PortalLang; label: string; name: string }[] = [
@@ -23,7 +28,7 @@ export const PORTAL_LANGS: { code: PortalLang; label: string; name: string }[] =
   { code: "pt", label: "PT", name: "Português" },
 ];
 const STORAGE_KEY = "portal_lang";
-const LOCALES: Record<PortalLang, string> = { en: "en-US", es: "es-US", pt: "pt-BR" };
+const LOCALES: Record<PortalLang, string> = NOTIF_LOCALES;
 
 const isLang = (x: unknown): x is PortalLang => x === "en" || x === "es" || x === "pt";
 
@@ -78,8 +83,23 @@ export function setPortalLang(lang: PortalLang, residentId?: string | null) {
 }
 
 /** The language saved on the resident's account (if any) — used only when this browser has no choice yet. */
-export function adoptSavedPortalLang(saved: unknown) {
-  if (typeof window === "undefined" || !isLang(saved) || readStored()) return;
+// Oct 29: also the other way round — when the account's column exists but is empty (null) and this
+// browser already chose Spanish/Portuguese, save that choice once so phone alerts come in it too.
+export function adoptSavedPortalLang(saved: unknown, residentId?: string | null) {
+  if (typeof window === "undefined") return;
+  if (saved === null && residentId) {
+    const stored = readStored();
+    if (stored && stored !== "en") {
+      fetch("/api/portal/language", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ residentId, lang: stored }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+    return;
+  }
+  if (!isLang(saved) || readStored()) return;
   if (getPortalLang() === saved) return;
   current = saved;
   try { window.localStorage.setItem(STORAGE_KEY, saved); } catch {}
@@ -132,59 +152,11 @@ export function formatMoney(lang: PortalLang, n: number | string | null | undefi
   }
 }
 
-const EN_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
-
-/**
- * Dates by locale. Accepts a Date, a timestamp, "YYYY-MM-DD" (shown as that calendar day, no
- * time-zone shift) or an ISO date-time. Anything unparseable is returned as-is.
- */
-export function formatDate(lang: PortalLang, value: string | number | Date | null | undefined, opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" }) {
-  if (value === null || value === undefined || value === "") return "";
-  const s = typeof value === "string" ? value : "";
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  let d: Date;
-  let o = opts;
-  if (dateOnly) {
-    d = new Date(Date.UTC(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3])));
-    o = { ...opts, timeZone: "UTC" };
-  } else {
-    d = value instanceof Date ? value : new Date(value);
-  }
-  if (isNaN(d.getTime())) return String(value);
-  try { return d.toLocaleDateString(LOCALES[lang], o); } catch { return d.toLocaleDateString("en-US", o); }
-}
-
 export function formatDateTime(lang: PortalLang, value: string | number | Date | null | undefined, opts: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" }) {
   if (value === null || value === undefined || value === "") return "";
   const d = value instanceof Date ? value : new Date(value);
   if (isNaN(d.getTime())) return String(value);
   try { return d.toLocaleString(LOCALES[lang], opts); } catch { return d.toLocaleString("en-US", opts); }
-}
-
-/**
- * English labels the server builds — "November 1, 2026", "Nov 1, 2026", "July 2026" — shown in the
- * resident's language. ISO dates work too. Anything else comes back unchanged.
- */
-export function localizeDateLabel(lang: PortalLang, label: string | null | undefined, long = true): string {
-  if (!label) return "";
-  const s = String(label).trim();
-  if (lang === "en") return s;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return formatDate(lang, s.slice(0, 10), long ? { month: "long", day: "numeric", year: "numeric" } : undefined);
-  const md = /^([A-Za-z]+)\.? (\d{1,2}), (\d{4})$/.exec(s);
-  const my = /^([A-Za-z]+) (\d{4})$/.exec(s);
-  const monthIdx = (name: string) => EN_MONTHS.findIndex((m) => m === name.toLowerCase() || m.slice(0, 3) === name.toLowerCase().slice(0, 3));
-  if (md) {
-    const m = monthIdx(md[1]);
-    if (m < 0) return s;
-    const iso = `${md[3]}-${String(m + 1).padStart(2, "0")}-${String(Number(md[2])).padStart(2, "0")}`;
-    return formatDate(lang, iso, long ? { month: "long", day: "numeric", year: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
-  }
-  if (my) {
-    const m = monthIdx(my[1]);
-    if (m < 0) return s;
-    return formatDate(lang, `${my[2]}-${String(m + 1).padStart(2, "0")}-01`, { month: "long", year: "numeric" });
-  }
-  return s;
 }
 
 /** The company's returned-payment fee rule (src/lib/returnedFeeRules.ts returnedFeePhrase) in the resident's language. */
@@ -238,63 +210,14 @@ export function translateServerMessage(lang: PortalLang, msg: string | null | un
   return s;
 }
 
-/** "October 2026", "October 2026 and November 2026", "your invoice" (server bell text) in this language. */
-function localizeMonthList(lang: PortalLang, list: string): string {
-  const v = list.trim();
-  if (v === "your invoice") return translate(lang, "notif:your invoice");
-  const parts = v.split(/, | and /).map((x) => localizeDateLabel(lang, x.trim()));
-  if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(", ")}${translate(lang, "notif: and ")}${parts[parts.length - 1]}`;
-}
-
 /**
- * Oct 29 (per Mely): the resident's bell / Messages rows. The server stores ENGLISH text (never
- * changed); every resident_facing template written by either app (melyos-builder + this site) is
- * matched here and shown in Spanish / Portuguese. null = not a known template (shown as stored).
- * Keep in sync with: melyos-builder lib/monthlyInvoices.ts (invoice ready), app/api/admin/
- * electric-readings (recorded/corrected), charge-resident + resident-invoices (charges, office
- * payment), maintenance-requests, lease-addenda + lib/residentAgreementsAuto.ts, announcements,
- * cron/apply-invoice-late-fees; here: checkr-webhook, rvCardAutopay/rvBankAutopay, stripe-webhook.
+ * Oct 29 (per Mely): the resident's bell / Messages rows (English in the database) in this language.
+ * The patterns live in ./notificationI18n.ts (also used by the server push); the full UI dictionary is
+ * passed so charge names / document titles translate too. null = not a known template.
  */
 export function translateNotificationMessage(lang: PortalLang, s: string): string | null {
-  if (lang === "en") return s;
-  let m: RegExpExecArray | null;
-  const T = (key: string, vars?: Vars) => translate(lang, key, vars).replace("referente a sua fatura", "referente à sua fatura");
-  if ((m = /^Your (.+?) invoice is ready — total due (\$[\d.,]+), due (.+)\.$/.exec(s)))
-    return T("Your {month} invoice is ready — total due {amount}, due {date}.", { month: localizeDateLabel(lang, m[1]), amount: m[2], date: localizeDateLabel(lang, m[3]) });
-  if ((m = /^A late fee of (\$[\d.,]+) was added to your (.+?) invoice\. New balance: (\$[\d.,]+)\.$/.exec(s)))
-    return m[2] === "current"
-      ? T("A late fee of {amount} was added to your current invoice. New balance: {balance}.", { amount: m[1], balance: m[3] })
-      : T("A late fee of {amount} was added to your {month} invoice. New balance: {balance}.", { amount: m[1], month: localizeDateLabel(lang, m[2]), balance: m[3] });
-  if ((m = /^We received your payment of (\$[\d.,]+) for (.+)\. Thank you!$/.exec(s)))
-    return T("We received your payment of {amount} for {month}. Thank you!", { amount: m[1], month: localizeMonthList(lang, m[2]) });
-  if ((m = /^Your bank payment of (\$[\d.,]+) is processing \(3–5 business days\)\.$/.exec(s)))
-    return T("Your bank payment of {amount} is processing (3–5 business days).", { amount: m[1] });
-  if ((m = /^Your bank payment of (\$[\d.,]+) for (.+) was returned by your bank\. The (invoice is|invoices are) open again(?:, plus a returned-payment fee of (\$[\d.,]+))?\.$/.exec(s))) {
-    const vars = { amount: m[1], month: localizeMonthList(lang, m[2]), fee: m[4] };
-    const plural = m[3] === "invoices are";
-    return T(`Your bank payment of {amount} for {month} was returned by your bank. ${plural ? "The invoices are" : "The invoice is"} open again${m[4] ? ", plus a returned-payment fee of {fee}" : ""}.`, vars);
-  }
-  if ((m = /^Your electric reading for (.+?) was (recorded|corrected): ([\d.,]+) kWh used(?: — (\$[\d.,]+) (added to your invoice|on your invoice))?\.$/.exec(s))) {
-    const key = `Your electric reading for {month} was ${m[2]}: {usage} kWh used${m[4] ? ` — {amount} ${m[5]}` : ""}.`;
-    return T(key, { month: localizeDateLabel(lang, m[1]), usage: m[3], amount: m[4] });
-  }
-  if ((m = /^A new charge was added to your invoice: ([\s\S]+) — (\$[\d.,]+)\.$/.exec(s)))
-    return T("A new charge was added to your invoice: {what} — {amount}.", { what: translateStatus(lang, m[1]), amount: m[2] });
-  if ((m = /^A maintenance charge was added to your invoice: ([\s\S]+) — (\$[\d.,]+)\.$/.exec(s)))
-    return T("A maintenance charge was added to your invoice: {what} — {amount}.", { what: translateStatus(lang, m[1]), amount: m[2] });
-  if ((m = /^Your maintenance request status changed to "(.*)"\.$/.exec(s)))
-    return T('Your maintenance request status changed to "{status}".', { status: DICT["maint:" + m[1]] ? T("maint:" + m[1]) : translateStatus(lang, m[1]) });
-  if (s === "The office added an update to your maintenance request.") return T(s);
-  if ((m = /^([\s\S]+) added "([\s\S]+)" to your resident portal for you to review and sign\.$/.exec(s)))
-    return T('{park} added "{title}" to your resident portal for you to review and sign.', { park: m[1], title: translateStatus(lang, m[2]) });
-  if ((m = /^([\s\S]+) sent you "([\s\S]+)" to review and sign in your resident portal\.$/.exec(s)))
-    return T('{park} sent you "{title}" to review and sign in your resident portal.', { park: m[1], title: translateStatus(lang, m[2]) });
-  if ((m = /^New announcement: "([\s\S]*)"$/.exec(s))) return T('New announcement: "{title}"', { title: m[1] });
-  if ((m = /^Background check for (.+) \(household occupant of (.+)\): ([\s\S]+)\.$/.exec(s)))
-    return T("Background check for {name} (household occupant of {resident}): {result}.", { name: m[1], resident: m[2], result: DICT["bgc:" + m[3]] ? T("bgc:" + m[3]) : m[3] });
-  if (DICT[s]) return T(s); // fixed texts (e.g. the autopay-failed notices)
-  return null;
+  if (lang !== "en") { const rh = translateRecHallNotice(lang, s); if (rh !== null) return rh; } // Oct 29: Rec Hall requests
+  return translateNotificationTemplate(lang, s, DICT);
 }
 
 /**
@@ -360,9 +283,7 @@ export function ptr(key: string, vars?: Vars) {
 // Dictionary: English → [Spanish, Brazilian Portuguese]
 // ---------------------------------------------------------------------------------------------
 const DICT: Record<string, [string, string]> = {
-  // Oct 29: resident bell notices written by lib/rvCardAutopay.ts / lib/rvBankAutopay.ts (exact text).
-  "Autopay could not charge your card, so autopay was turned off. Please pay your invoice by hand, or update your card and turn autopay on again.": ["El pago automático no pudo cobrar su tarjeta, así que se desactivó. Pague su factura manualmente, o actualice su tarjeta y vuelva a activar el pago automático.", "O pagamento automático não conseguiu cobrar seu cartão, então foi desativado. Pague sua fatura manualmente, ou atualize seu cartão e ative o pagamento automático novamente."],
-  "Autopay could not take your bank payment, so autopay was turned off. Please pay your invoice by hand, or set up autopay again.": ["El pago automático no pudo cobrar de su cuenta bancaria, así que se desactivó. Pague su factura manualmente, o configure el pago automático de nuevo.", "O pagamento automático não conseguiu debitar sua conta bancária, então foi desativado. Pague sua fatura manualmente, ou configure o pagamento automático novamente."],
+  ...NOTIF_DICT,
   // ---- Shared / general ----
   "Resident Portal": ["Portal de residentes", "Portal do morador"],
   "Language": ["Idioma", "Idioma"],
@@ -402,40 +323,7 @@ const DICT: Record<string, [string, string]> = {
   "Written by the park": ["Escrito por el parque", "Escrito pelo parque"],
   "Uploading...": ["Subiendo...", "Enviando..."],
 
-  // ---- Resident bell / Messages templates (translateNotificationMessage — server text stays English) ----
-  "notif:your invoice": ["su factura", "sua fatura"],
-  "notif: and ": [" y ", " e "],
-  "Your {month} invoice is ready — total due {amount}, due {date}.": ["Su factura de {month} está lista: total a pagar {amount}, vence el {date}.", "Sua fatura de {month} está pronta: total a pagar {amount}, vencimento em {date}."],
-  "A late fee of {amount} was added to your {month} invoice. New balance: {balance}.": ["Se agregó un recargo por pago tardío de {amount} a su factura de {month}. Nuevo saldo: {balance}.", "Uma multa por atraso de {amount} foi adicionada à sua fatura de {month}. Novo saldo: {balance}."],
-  "A late fee of {amount} was added to your current invoice. New balance: {balance}.": ["Se agregó un recargo por pago tardío de {amount} a su factura actual. Nuevo saldo: {balance}.", "Uma multa por atraso de {amount} foi adicionada à sua fatura atual. Novo saldo: {balance}."],
-  "We received your payment of {amount} for {month}. Thank you!": ["Recibimos su pago de {amount} correspondiente a {month}. ¡Gracias!", "Recebemos seu pagamento de {amount} referente a {month}. Obrigado!"],
-  "Your bank payment of {amount} is processing (3–5 business days).": ["Su pago bancario de {amount} está en proceso (de 3 a 5 días hábiles).", "Seu pagamento bancário de {amount} está em processamento (de 3 a 5 dias úteis)."],
-  "Your bank payment of {amount} for {month} was returned by your bank. The invoice is open again.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. La factura vuelve a estar pendiente de pago.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. A fatura está em aberto novamente."],
-  "Your bank payment of {amount} for {month} was returned by your bank. The invoices are open again.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. Las facturas vuelven a estar pendientes de pago.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. As faturas estão em aberto novamente."],
-  "Your bank payment of {amount} for {month} was returned by your bank. The invoice is open again, plus a returned-payment fee of {fee}.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. La factura vuelve a estar pendiente de pago, más un cargo por pago devuelto de {fee}.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. A fatura está em aberto novamente, com uma taxa de pagamento devolvido de {fee}."],
-  "Your bank payment of {amount} for {month} was returned by your bank. The invoices are open again, plus a returned-payment fee of {fee}.": ["Su banco devolvió su pago bancario de {amount} correspondiente a {month}. Las facturas vuelven a estar pendientes de pago, más un cargo por pago devuelto de {fee}.", "Seu banco devolveu seu pagamento bancário de {amount} referente a {month}. As faturas estão em aberto novamente, com uma taxa de pagamento devolvido de {fee}."],
-  "Your electric reading for {month} was recorded: {usage} kWh used.": ["Se registró su lectura de electricidad de {month}: {usage} kWh consumidos.", "Sua leitura de energia de {month} foi registrada: {usage} kWh consumidos."],
-  "Your electric reading for {month} was recorded: {usage} kWh used — {amount} added to your invoice.": ["Se registró su lectura de electricidad de {month}: {usage} kWh consumidos. Se agregaron {amount} a su factura.", "Sua leitura de energia de {month} foi registrada: {usage} kWh consumidos. Foram adicionados {amount} à sua fatura."],
-  "Your electric reading for {month} was corrected: {usage} kWh used.": ["Se corrigió su lectura de electricidad de {month}: {usage} kWh consumidos.", "Sua leitura de energia de {month} foi corrigida: {usage} kWh consumidos."],
-  "Your electric reading for {month} was corrected: {usage} kWh used — {amount} on your invoice.": ["Se corrigió su lectura de electricidad de {month}: {usage} kWh consumidos. Su factura ahora incluye {amount} de electricidad.", "Sua leitura de energia de {month} foi corrigida: {usage} kWh consumidos. Sua fatura agora inclui {amount} de energia."],
-  "A new charge was added to your invoice: {what} — {amount}.": ["Se agregó un nuevo cargo a su factura: {what} — {amount}.", "Uma nova cobrança foi adicionada à sua fatura: {what} — {amount}."],
-  "A maintenance charge was added to your invoice: {what} — {amount}.": ["Se agregó un cargo de mantenimiento a su factura: {what} — {amount}.", "Uma cobrança de manutenção foi adicionada à sua fatura: {what} — {amount}."],
-  "Maintenance charge": ["Cargo de mantenimiento", "Cobrança de manutenção"],
-  'Your maintenance request status changed to "{status}".': ['El estado de su solicitud de mantenimiento cambió a "{status}".', 'O status da sua solicitação de manutenção mudou para "{status}".'],
-  "The office added an update to your maintenance request.": ["La oficina agregó una actualización a su solicitud de mantenimiento.", "O escritório adicionou uma atualização à sua solicitação de manutenção."],
-  '{park} sent you "{title}" to review and sign in your resident portal.': ['{park} le envió "{title}" para que lo revise y firme en su portal de residentes.', '{park} enviou "{title}" para você revisar e assinar no seu portal do morador.'],
-  '{park} added "{title}" to your resident portal for you to review and sign.': ['{park} agregó "{title}" a su portal de residentes para que lo revise y firme.', '{park} adicionou "{title}" ao seu portal do morador para você revisar e assinar.'],
-  'New announcement: "{title}"': ['Nuevo anuncio: "{title}"', 'Novo aviso: "{title}"'],
-  "Background check for {name} (household occupant of {resident}): {result}.": ["Verificación de antecedentes de {name} (ocupante del hogar de {resident}): {result}.", "Verificação de antecedentes de {name} (morador da residência de {resident}): {result}."],
-  "maint:pending": ["Pendiente", "Pendente"],
-  "maint:in_progress": ["En progreso", "Em andamento"],
-  "maint:completed": ["Completada", "Concluída"],
-  "Resident Agreement — Returned Payments": ["Acuerdo de residente — Pagos devueltos", "Acordo do morador — Pagamentos devolvidos"],
-  "bgc:passed": ["aprobada", "aprovada"],
-  "bgc:needs review": ["requiere revisión", "precisa de revisão"],
-  "bgc:canceled by Checkr (no result — contact Checkr support)": ["cancelada por Checkr (sin resultado; comuníquese con el soporte de Checkr)", "cancelada pela Checkr (sem resultado; fale com o suporte da Checkr)"],
-  "bgc:paused — Checkr needs more information from the applicant to continue (check that they received Checkr's email and completed the next step in their candidate portal)": ["en pausa: Checkr necesita más información de la persona para continuar (verifique que recibió el correo de Checkr y completó el siguiente paso en su portal de candidato)", "pausada: a Checkr precisa de mais informações da pessoa para continuar (confira se ela recebeu o e-mail da Checkr e concluiu a próxima etapa no portal do candidato)"],
-  "bgc:invitation expired": ["la invitación venció", "o convite expirou"],
+  // (Resident bell / Messages templates: NOTIF_DICT in ./notificationI18n.ts, spread in above.)
   // ---- Statuses from the database ("status:" + value; see st()) ----
   "status:Paid": ["Pagada", "Paga"],
   "status:Pending": ["Pendiente", "Pendente"],
@@ -1439,4 +1327,51 @@ const DICT: Record<string, [string, string]> = {
   "Push is not set up yet.": ["Las alertas todavía no están configuradas.", "Os alertas ainda não estão configurados."],
   "Invalid subscription.": ["Suscripción no válida.", "Inscrição inválida."],
   "Could not load your propane orders.": ["No se pudieron cargar sus pedidos de propano.", "Não foi possível carregar seus pedidos de propano."],
+  // ---- Oct 29: Request the Rec Hall (src/components/RecHallCard.tsx + /api/portal/rec-hall; bell texts: ./recHallI18n.ts) ----
+  "Rec Hall": ["Rec Hall", "Rec Hall"],
+  "Request the Rec Hall": ["Solicitar el Rec Hall", "Solicitar o Rec Hall"],
+  "Rec Hall requests are not available yet.": ["Las solicitudes del Rec Hall todavía no están disponibles.", "As solicitações do Rec Hall ainda não estão disponíveis."],
+  "Ask the office to reserve the {room} for your event. Free for residents — the office will approve or decline your request.": ["Pida a la oficina que le reserve el {room} para su evento. Es gratis para residentes; la oficina aprobará o rechazará su solicitud.", "Peça ao escritório para reservar o {room} para o seu evento. É gratuito para moradores; o escritório vai aprovar ou recusar sua solicitação."],
+  "Fits up to {n} people.": ["Capacidad para hasta {n} personas.", "Capacidade para até {n} pessoas."],
+  "Date": ["Fecha", "Data"],
+  "Start time": ["Hora de inicio", "Horário de início"],
+  "End time": ["Hora de fin", "Horário de término"],
+  "Already taken that day": ["Horarios ocupados ese día", "Horários ocupados nesse dia"],
+  "Nothing booked yet — the whole day is open.": ["Todavía no hay reservaciones: el día entero está libre.", "Ainda não há reservas: o dia inteiro está livre."],
+  "Your request": ["Su solicitud", "Sua solicitação"],
+  "Booked": ["Reservado", "Reservado"],
+  "Requested (pending)": ["Solicitado (pendiente)", "Solicitado (pendente)"],
+  "The Rec Hall is already booked for part of that time. Please choose another time.": ["El Rec Hall ya está reservado durante parte de ese horario. Elija otro horario.", "O Rec Hall já está reservado em parte desse horário. Escolha outro horário."],
+  "Event name": ["Nombre del evento", "Nome do evento"],
+  "Birthday party, family gathering…": ["Fiesta de cumpleaños, reunión familiar…", "Festa de aniversário, reunião de família…"],
+  "Number of guests": ["Número de invitados", "Número de convidados"],
+  "Send request": ["Enviar solicitud", "Enviar solicitação"],
+  "Up to {n} days ahead, 7:00 AM – 11:00 PM, up to 8 hours.": ["Hasta {n} días por adelantado, de 7:00 a. m. a 11:00 p. m., máximo 8 horas.", "Até {n} dias de antecedência, das 7h às 23h, no máximo 8 horas."],
+  "Request sent ✓ The office will review it and let you know.": ["Solicitud enviada ✓ La oficina la revisará y le avisará.", "Solicitação enviada ✓ O escritório vai analisar e avisar você."],
+  "Cancel this Rec Hall request?": ["¿Cancelar esta solicitud del Rec Hall?", "Cancelar esta solicitação do Rec Hall?"],
+  "My Rec Hall requests": ["Mis solicitudes del Rec Hall", "Minhas solicitações do Rec Hall"],
+  "Event": ["Evento", "Evento"],
+  "{n} guests": ["{n} invitados", "{n} convidados"],
+  "Reason: {reason}": ["Motivo: {reason}", "Motivo: {reason}"],
+  "Cancelled by the office.": ["Cancelada por la oficina.", "Cancelada pelo escritório."],
+  "Requested": ["Solicitada", "Solicitada"],
+  "Approved": ["Aprobada", "Aprovada"],
+  "Declined": ["Rechazada", "Recusada"],
+  "Cancelled": ["Cancelada", "Cancelada"],
+  "Completed": ["Completada", "Concluída"],
+  "Cancel request": ["Cancelar solicitud", "Cancelar solicitação"],
+  "Choose a date, a start time and an end time.": ["Elija una fecha, una hora de inicio y una hora de fin.", "Escolha uma data, um horário de início e um de término."],
+  "The end time must be after the start time.": ["La hora de fin debe ser después de la hora de inicio.", "O horário de término deve ser depois do horário de início."],
+  "The Rec Hall can be requested between 7:00 AM and 11:00 PM.": ["El Rec Hall se puede solicitar entre las 7:00 a. m. y las 11:00 p. m.", "O Rec Hall pode ser solicitado entre 7h e 23h."],
+  "A request must be at least 30 minutes long.": ["La solicitud debe ser de al menos 30 minutos.", "A solicitação deve ter pelo menos 30 minutos."],
+  "A request can be at most 8 hours long.": ["La solicitud puede ser de máximo 8 horas.", "A solicitação pode ter no máximo 8 horas."],
+  "Please choose a date and time that haven't passed.": ["Elija una fecha y hora que no hayan pasado.", "Escolha uma data e um horário que ainda não passaram."],
+  "You can request the Rec Hall up to 90 days ahead.": ["Puede solicitar el Rec Hall con hasta 90 días de anticipación.", "Você pode solicitar o Rec Hall com até 90 dias de antecedência."],
+  "Please enter the event name.": ["Escriba el nombre del evento.", "Digite o nome do evento."],
+  "Please enter how many guests (1 or more).": ["Indique cuántos invitados (1 o más).", "Informe quantos convidados (1 ou mais)."],
+  "The Rec Hall fits up to {n} people.": ["El Rec Hall tiene capacidad para hasta {n} personas.", "O Rec Hall comporta até {n} pessoas."],
+  "The Rec Hall can't be requested right now.": ["En este momento no se puede solicitar el Rec Hall.", "No momento não é possível solicitar o Rec Hall."],
+  "You already have {n} requests waiting for the office. Please wait for an answer or cancel one.": ["Ya tiene {n} solicitudes esperando respuesta de la oficina. Espere la respuesta o cancele una.", "Você já tem {n} solicitações aguardando o escritório. Aguarde a resposta ou cancele uma."],
+  "You already requested the Rec Hall for part of that time.": ["Usted ya solicitó el Rec Hall para parte de ese horario.", "Você já solicitou o Rec Hall para parte desse horário."],
+  "This request can't be cancelled any more.": ["Esta solicitud ya no se puede cancelar.", "Esta solicitação não pode mais ser cancelada."],
 };

@@ -15,6 +15,7 @@ import { isInvoicePayableNow, invoicePayableFrom, isPayAheadInvoice } from "@/li
 import LeaseAddendaCard, { fetchLeaseAddenda, type PortalAddendum } from "@/components/LeaseAddendaCard";
 import { ParkInfoSection, ParkInfoHomeCard, fetchParkInfo, type ParkInfoData } from "@/components/ParkInfo";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import RecHallCard, { fetchRecHallOn } from "@/components/RecHallCard";
 import { usePortalLang, adoptSavedPortalLang } from "@/lib/portalI18n";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
@@ -73,7 +74,7 @@ const ANCHOR_SECTION: Record<string, SectionId> = {
   "household-occupants": "household", "visitors-section": "household", vehicles: "household", "golf-carts": "household",
   "move-out": "lot", "move-out-request": "lot", "rent-to-own": "lot", "parking-pets": "lot", "home-info": "lot", documents: "lot",
   autopay: "pay", invoices: "pay", charges: "pay", electric: "pay",
-  maintenance: "requests", propane: "requests",
+  maintenance: "requests", propane: "requests", "rec-hall": "requests",
   announcements: "messages", notifications: "messages",
   profile: "more", "resident-info": "more", "emergency-contact": "more", marketplace: "more",
   "park-info": "info", emergency: "info", "emergency-line": "info", "office-hours": "info", "park-rules": "info",
@@ -87,7 +88,7 @@ const SUBMENU: Partial<Record<SectionId, SubItem[]>> = {
   pay: [{ label: "Autopay", anchor: "autopay" }, { label: "Charges & invoices", anchor: "charges" }, { label: "Electric usage", anchor: "electric" }],
   lot: [{ label: "Home info", anchor: "home-info" }, { label: "Parking & pets", anchor: "parking-pets" }, { label: "Rent-to-own", anchor: "rent-to-own" }, { label: "Documents", href: "/residents/documents" }, { label: "Moving out", anchor: "move-out" }],
   household: [{ label: "Occupants", anchor: "household-occupants" }, { label: "Visitors", anchor: "visitors-section" }, { label: "Vehicles", anchor: "vehicles" }, { label: "Golf carts", anchor: "golf-carts" }],
-  requests: [{ label: "Maintenance", anchor: "maintenance" }, { label: "Propane", anchor: "propane" }],
+  requests: [{ label: "Maintenance", anchor: "maintenance" }, { label: "Propane", anchor: "propane" }, { label: "Rec Hall", anchor: "rec-hall" }],
   messages: [{ label: "Notifications", anchor: "notifications" }, { label: "Announcements", anchor: "announcements" }],
   info: [{ label: "Call 9-1-1 first", anchor: "emergency" }, { label: "Park emergency line", anchor: "emergency-line" }, { label: "Office hours", anchor: "office-hours" }, { label: "Park rules", anchor: "park-rules" }],
   // Oct 29 (per Mely — "dentro de profile haz otro sub menú con lo que hay, ex. marketplace").
@@ -292,6 +293,9 @@ export default function ResidentDashboard() {
   // Oct 28 (per Mely): park switch "Residents can send maintenance requests from their portal"
   // (admin Maintenance Requests module) — OFF by default. Off = no maintenance card/list/lines.
   const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+  // Oct 29 (per Mely): "Request the Rec Hall" (Requests section) — only while the admin's Rec Hall switch is on.
+  const [recHallOn, setRecHallOn] = useState(false);
+  useEffect(() => { if (residentId) fetchRecHallOn(residentId).then(setRecHallOn); }, [residentId]);
   const [petsMessage, setPetsMessage] = useState("");
 
   // Aug 4: resident_payments (the legacy billing table) was fully unified
@@ -345,7 +349,8 @@ export default function ResidentDashboard() {
       .then((res) => res.json())
       .catch(() => ({ resident: null, error: "Failed to load profile." }));
     // The language saved on the account (if the column exists) — only when this browser has no choice yet.
-    adoptSavedPortalLang(residentData?.portal_language);
+    // Oct 29: column exists but empty + this browser chose ES/PT → saved once (phone alerts use it).
+    if (residentData) adoptSavedPortalLang(residentData.portal_language, residentId);
 
     setResidentId(residentId);
     setAutopayEnabled(!!residentData?.autopay_enabled);
@@ -1052,7 +1057,7 @@ export default function ResidentDashboard() {
     return () => window.removeEventListener("hashchange", go);
   }, [residentLoaded]);
   function subItems(id: SectionId): SubItem[] {
-    return (SUBMENU[id] || []).filter((it) => it.anchor !== "maintenance" || maintenanceEnabled).filter((it) => it.anchor !== "propane" || propaneOrders.length > 0);
+    return (SUBMENU[id] || []).filter((it) => it.anchor !== "maintenance" || maintenanceEnabled).filter((it) => it.anchor !== "propane" || propaneOrders.length > 0).filter((it) => it.anchor !== "rec-hall" || recHallOn);
   }
   function openSub(it: SubItem) {
     if (it.href) { router.push(it.href); return; }
@@ -1159,7 +1164,7 @@ export default function ResidentDashboard() {
   const sectionTitle = t(SECTIONS.find((x) => x.id === section)?.label || "");
   // Oct 28 (per Mely): Requests holds maintenance (if the park turned it on) and propane orders.
   // Nothing to show there → hide the Requests nav item too.
-  const requestsVisible = maintenanceEnabled || propaneOrders.length > 0;
+  const requestsVisible = maintenanceEnabled || propaneOrders.length > 0 || recHallOn;
   const navSections = SECTIONS.filter((x) => x.id !== "requests" || requestsVisible);
   function goTo(item: { go: SectionId; anchor?: string }) {
     if (item.anchor) { window.location.hash = item.anchor; return; }
@@ -2332,6 +2337,7 @@ export default function ResidentDashboard() {
             </div>
           )}
               </div>
+              {residentId && <RecHallCard residentId={residentId} onAvailability={setRecHallOn} />}
             </>)}
 
             {section === "messages" && (<>
