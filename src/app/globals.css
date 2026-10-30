@@ -129,10 +129,18 @@ button:active,
 .rp-subnav { display: grid; gap: 1px; margin: 2px 0 6px 34px; border-left: 2px solid var(--border); padding-left: 8px; }
 .rp-subnav button { padding: 7px 10px; font: 500 13.5px 'DM Sans', sans-serif; color: var(--gray, #4b5563); border-radius: 6px; }
 .rp-subnav button:hover { color: var(--green); background: var(--gray-light); }
+.rp-subnav button.on { color: var(--green); background: var(--sea); font-weight: 700; }
+/* Oct 30: portal sub-pages (Invoices, Payment history, Electric history…) sit in the same frame as
+   the dashboard — the page's own full-screen wrapper becomes a plain column next to the menu. */
+.rp-sub-main > main, .rp-sub-main > section, .rp-sub-main > div:not(.rp-subchips) { padding: 0 !important; min-height: 0 !important; background: transparent !important; max-width: none !important; margin: 0 !important; width: 100%; }
+.rp-sub-main > main > div[style*="max-width"], .rp-sub-main > section > div[style*="max-width"] { max-width: none !important; margin-left: 0 !important; margin-right: 0 !important; }
+@media (max-width: 560px) { .rp-sub-main #printable-area { padding: 20px !important; overflow-x: auto; } }
+@media print { .rp-nav, .rp-tabbar, .rp-subchips { display: none !important; } .rp-subpage { padding: 0 !important; background: #fff !important; } .rp-subpage .rp-portal { display: block; } }
 .rp-subchips { display: none; }
 @media (max-width: 860px) {
   .rp-subchips { display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 2px 2px 10px; margin-bottom: 4px; }
   .rp-subchips button { flex: 0 0 auto; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: 999px; background: var(--white, #fff); font: 600 13px 'DM Sans', sans-serif; color: var(--black); white-space: nowrap; }
+  .rp-subchips button.on { background: var(--sea); border-color: var(--green); color: var(--green); }
 }
 
 /* Oct 29 (per Mely): "View as resident" — read-only banner + the "Park staff only"

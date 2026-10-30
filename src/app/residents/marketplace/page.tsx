@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/CompanyContext";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { portalBackHref } from "@/components/ResidentPortalNav";
 import { usePortalLang } from "@/lib/portalI18n";
 import { SERVICES_CATEGORY, SERVICE_SUBCATEGORIES, SERVICE_PRICE_UNITS, SERVICE_PRICE_UNIT_LABELS, SERVICES_NOTE, isServicesCategory, servicePriceParts, type ServicePriceUnit } from "@/lib/marketplaceServices";
 
@@ -445,8 +446,8 @@ export default function MarketplacePage() {
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "40px 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-        <button onClick={() => router.push("/residents/dashboard")} style={{ background: "none", border: "none", fontSize: 14, color: "var(--gray)", cursor: "pointer" }}>
-          ← {t("Back to Dashboard")}
+        <button onClick={() => router.push(portalBackHref("more"))} style={{ background: "none", border: "none", fontSize: 14, color: "var(--gray)", cursor: "pointer" }}>
+          ← {t("Back")}
         </button>
         <PortalLangSwitcher compact />
       </div>

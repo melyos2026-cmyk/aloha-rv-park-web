@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ViewAsBanner from "@/components/ViewAsBanner";
+import { ResidentSubPageFrame } from "@/components/ResidentPortalNav";
 
 // Sep 25 (per Mely — resident portal installable as its own app, same
 // as admin dashboard and Propane Scanner today): only /residents links
@@ -15,7 +16,8 @@ export default function ResidentsLayout({ children }: { children: React.ReactNod
     <>
       {/* Oct 29: read-only "View as resident" banner (shows only in that mode) */}
       <ViewAsBanner />
-      {children}
+      {/* Oct 30: portal sub-pages get the same side menu / tab bar as the dashboard */}
+      <ResidentSubPageFrame>{children}</ResidentSubPageFrame>
       <script
         dangerouslySetInnerHTML={{
           __html: `

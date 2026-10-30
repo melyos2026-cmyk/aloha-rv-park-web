@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { portalBackHref } from "@/components/ResidentPortalNav";
 import { usePortalLang } from "@/lib/portalI18n";
 
 type Payment = {
@@ -158,10 +159,10 @@ function PaymentReviewContent() {
               <p style={{ marginTop: 8, color: "#111827" }}>{confirmationError}</p>
             </div>
             <button
-              onClick={() => (window.location.href = "/residents/dashboard")}
+              onClick={() => (window.location.href = portalBackHref("pay"))}
               style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
             >
-              {t("Back to Dashboard")}
+              {t("Back")}
             </button>
           </div>
         </main>
@@ -270,10 +271,10 @@ function PaymentReviewContent() {
           </div>
 
           <button
-            onClick={() => (window.location.href = "/residents/dashboard")}
+            onClick={() => (window.location.href = portalBackHref("pay"))}
             style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
           >
-            {t("Back to Dashboard")}
+            {t("Back")}
           </button>
         </div>
       </main>
@@ -340,7 +341,7 @@ function PaymentReviewContent() {
               </div>
 
               <button
-                onClick={() => (window.location.href = "/residents/dashboard")}
+                onClick={() => (window.location.href = portalBackHref("pay"))}
                 style={{
                   width: "100%",
                   borderRadius: 8,
@@ -359,10 +360,10 @@ function PaymentReviewContent() {
         </div>
 
         <button
-          onClick={() => (window.location.href = "/residents/dashboard")}
+          onClick={() => (window.location.href = portalBackHref("pay"))}
           style={{ fontSize: 14, color: "#111827", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
         >
-          {t("Back to Dashboard")}
+          {t("Back")}
         </button>
       </div>
     </main>

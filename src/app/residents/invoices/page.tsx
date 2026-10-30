@@ -4,6 +4,7 @@ import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import { useEffect, useState } from "react";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { portalBackHref } from "@/components/ResidentPortalNav";
 import { usePortalLang } from "@/lib/portalI18n";
 
 type InvoiceItem = {
@@ -163,7 +164,7 @@ export default function InvoicesPage() {
       <div style={{ maxWidth: 576, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
-          onClick={() => (window.location.href = "/residents/dashboard")}
+          onClick={() => (window.location.href = portalBackHref("pay"))}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
           style={{
@@ -184,7 +185,7 @@ export default function InvoicesPage() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          {t("Back to Dashboard")}
+          {t("Back")}
         </button>
         <PortalLangSwitcher compact />
         </div>

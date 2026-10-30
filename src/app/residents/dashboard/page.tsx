@@ -3,7 +3,7 @@ import InstallApp, { AppBadge } from "@/components/InstallApp";
 import SmsAlertsToggle from "@/components/SmsAlertsToggle";
 import { portalConfirm, portalAlert } from "@/components/portalDialog";
 import GolfCartCard from "@/components/GolfCartCard";
-import { Fragment, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import AutopaySection from "@/components/AutopaySection";
@@ -17,6 +17,11 @@ import { ParkInfoSection, ParkInfoHomeCard, fetchParkInfo, type ParkInfoData } f
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
 import RecHallCard, { fetchRecHallOn } from "@/components/RecHallCard";
 import { usePortalLang, adoptSavedPortalLang } from "@/lib/portalI18n";
+import {
+  SECTIONS, ANCHORS, sectionFor, filterSubItems, requestsVisible as requestsVisibleFor, subKey, subPageHref,
+  NavIcon, ResidentSideNav, ResidentSubChips, ResidentTabBar, SaveNavContext,
+  type SectionId, type SubItem, type NavFlags,
+} from "@/components/ResidentPortalNav";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
 const cardAccent: React.CSSProperties = { ...card, border: "2px solid var(--red)" };
@@ -55,51 +60,8 @@ function calculateAge(dateOfBirth: string | null | undefined): number | null {
 }
 
 // Oct 26 (per Mely): portal sections — same idea as the marina boater account.
-type SectionId = "home" | "pay" | "lot" | "household" | "requests" | "messages" | "info" | "more";
-const SECTIONS: { id: SectionId; label: string; short: string; icon: string }[] = [
-  { id: "home", label: "Home", short: "Home", icon: "M3 11 12 4l9 7M5 10v10h5v-6h4v6h5V10" },
-  { id: "pay", label: "Payments", short: "Pay", icon: "M3 6h18v12H3zM3 10h18M7 15h4" },
-  { id: "lot", label: "My lot & home", short: "My lot", icon: "M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" },
-  { id: "household", label: "Household", short: "Household", icon: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 7.5M22 21a7 7 0 0 0-4-6.3" },
-  { id: "requests", label: "Requests", short: "Requests", icon: "M14 6a4 4 0 0 0-5 5l-6 6 3 3 6-6a4 4 0 0 0 5-5l-3 3-3-3z" },
-  { id: "messages", label: "Messages", short: "Messages", icon: "M4 5h16v11H8l-4 4z" },
-  // Oct 28 (per Mely): office hours, emergency phone + what to do, after-hours note, park rules.
-  { id: "info", label: "Park info", short: "Park info", icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01" },
-  { id: "more", label: "Profile & more", short: "More", icon: "M5 12h.01M12 12h.01M19 12h.01" },
-];
-const MOBILE_TABS: SectionId[] = ["home", "pay", "lot", "messages", "more"];
-const UNDER_MORE: SectionId[] = ["household", "requests", "info", "more"];
-// Old anchors (from other pages and emails) → the section that now holds them.
-const ANCHOR_SECTION: Record<string, SectionId> = {
-  "household-occupants": "household", "visitors-section": "household", vehicles: "household", "golf-carts": "household",
-  "move-out": "lot", "move-out-request": "lot", "rent-to-own": "lot", "parking-pets": "lot", "home-info": "lot", documents: "lot",
-  autopay: "pay", invoices: "pay", charges: "pay", electric: "pay",
-  maintenance: "requests", propane: "requests", "rec-hall": "requests",
-  announcements: "messages", notifications: "messages",
-  profile: "more", "resident-info": "more", "emergency-contact": "more", marketplace: "more",
-  "park-info": "info", emergency: "info", "emergency-line": "info", "office-hours": "info", "park-rules": "info",
-  "lease-addendum": "home", // Oct 28: Lease Addenda card (link in the "please sign" email)
-};
-const ANCHORS = Object.keys(ANCHOR_SECTION);
-// Oct 29 (per Mely — "que el menú enseñe lo que tienen adentro, como Documents"): what each section
-// holds, shown under the open section in the side menu and as quick links at the top on a phone.
-type SubItem = { label: string; anchor?: string; href?: string };
-const SUBMENU: Partial<Record<SectionId, SubItem[]>> = {
-  pay: [{ label: "Autopay", anchor: "autopay" }, { label: "Charges & invoices", anchor: "charges" }, { label: "Electric usage", anchor: "electric" }],
-  lot: [{ label: "Home info", anchor: "home-info" }, { label: "Parking & pets", anchor: "parking-pets" }, { label: "Rent-to-own", anchor: "rent-to-own" }, { label: "Documents", href: "/residents/documents" }, { label: "Moving out", anchor: "move-out" }],
-  household: [{ label: "Occupants", anchor: "household-occupants" }, { label: "Visitors", anchor: "visitors-section" }, { label: "Vehicles", anchor: "vehicles" }, { label: "Golf carts", anchor: "golf-carts" }],
-  requests: [{ label: "Maintenance", anchor: "maintenance" }, { label: "Propane", anchor: "propane" }, { label: "Rec Hall", anchor: "rec-hall" }],
-  messages: [{ label: "Notifications", anchor: "notifications" }, { label: "Announcements", anchor: "announcements" }],
-  info: [{ label: "Call 9-1-1 first", anchor: "emergency" }, { label: "Park emergency line", anchor: "emergency-line" }, { label: "Office hours", anchor: "office-hours" }, { label: "Park rules", anchor: "park-rules" }],
-  // Oct 29 (per Mely — "dentro de profile haz otro sub menú con lo que hay, ex. marketplace").
-  more: [{ label: "My information", anchor: "resident-info" }, { label: "Emergency contact", anchor: "emergency-contact" }, { label: "Marketplace", anchor: "marketplace" }, { label: "Documents", href: "/residents/documents" }],
-};
-const sectionFor = (h: string): SectionId | null =>
-  SECTIONS.some((x) => x.id === h) ? (h as SectionId) : ANCHOR_SECTION[h] || null;
-
-function NavIcon({ d }: { d: string }) {
-  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
-}
+// Oct 30: sections, sub-menus and the menu components live in components/ResidentPortalNav.tsx,
+// shared with the portal sub-pages (Invoices, Payment history, Electric history…).
 
 // Oct 29 (i18n): inline messages are translated when set, so their color can't be read from the
 // English text any more. BAD (an invisible zero-width space) marks an error message (shown red).
@@ -1037,6 +999,7 @@ export default function ResidentDashboard() {
   // opened Messages, so they stay highlighted as "new" after being marked read.
   const [freshNotifIds, setFreshNotifIds] = useState<Set<string>>(new Set());
   const residentLoaded = !!resident;
+  const navFlags: NavFlags = { maintenance: maintenanceEnabled, propane: propaneOrders.length > 0, recHall: recHallOn };
   useEffect(() => {
     if (!residentLoaded) return;
     const go = () => {
@@ -1056,12 +1019,42 @@ export default function ResidentDashboard() {
     window.addEventListener("hashchange", go);
     return () => window.removeEventListener("hashchange", go);
   }, [residentLoaded]);
+  // Oct 30 (per Mely — the menu in sync with what's on the right): highlight the sub item for the
+  // address (#charges…) and, while scrolling, the part of the section that's on screen.
+  const [activeSub, setActiveSub] = useState<string | null>(null);
+  const spyKeys = residentLoaded ? subItems(section).filter((it) => it.anchor && !it.href).map((it) => it.anchor!).join(",") : "";
+  useEffect(() => {
+    const anchors = spyKeys ? spyKeys.split(",") : [];
+    let raf = 0;
+    const spy = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const h = window.location.hash.replace("#", "");
+        const hashSub = anchors.includes(h) ? h : null;
+        const els = anchors.map((a) => [a, document.getElementById(a)] as const).filter(([, el]) => el && el.offsetParent !== null) as [string, HTMLElement][];
+        const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+        let cur: string | null = null;
+        if (window.scrollY >= 8) {
+          for (const [a, el] of els) {
+            const top = el.getBoundingClientRect().top;
+            if (top <= 160 || (atBottom && top < window.innerHeight)) cur = a;
+          }
+        }
+        setActiveSub(cur || hashSub);
+      });
+    };
+    spy();
+    if (!anchors.length) return () => cancelAnimationFrame(raf);
+    window.addEventListener("scroll", spy, { passive: true });
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("scroll", spy); };
+  }, [spyKeys, section]);
   function subItems(id: SectionId): SubItem[] {
-    return (SUBMENU[id] || []).filter((it) => it.anchor !== "maintenance" || maintenanceEnabled).filter((it) => it.anchor !== "propane" || propaneOrders.length > 0).filter((it) => it.anchor !== "rec-hall" || recHallOn);
+    return filterSubItems(id, navFlags);
   }
   function openSub(it: SubItem) {
-    if (it.href) { router.push(it.href); return; }
+    if (it.href) { router.push(subPageHref(it.href, section)); return; }
     if (!it.anchor) return;
+    setActiveSub(subKey(it));
     if (window.location.hash.replace("#", "") === it.anchor) {
       if (it.anchor === "move-out") setShowMoveOutModal(true);
       const el = document.getElementById(it.anchor);
@@ -1164,7 +1157,7 @@ export default function ResidentDashboard() {
   const sectionTitle = t(SECTIONS.find((x) => x.id === section)?.label || "");
   // Oct 28 (per Mely): Requests holds maintenance (if the park turned it on) and propane orders.
   // Nothing to show there → hide the Requests nav item too.
-  const requestsVisible = maintenanceEnabled || propaneOrders.length > 0 || recHallOn;
+  const requestsVisible = requestsVisibleFor(navFlags);
   const navSections = SECTIONS.filter((x) => x.id !== "requests" || requestsVisible);
   function goTo(item: { go: SectionId; anchor?: string }) {
     if (item.anchor) { window.location.hash = item.anchor; return; }
@@ -1312,30 +1305,12 @@ export default function ResidentDashboard() {
 
       <section className="rp-wrap">
         <div className="rp-portal">
-          <nav className="rp-nav" aria-label={t("Resident Portal")}>
-            {navSections.map((x) => (
-              <Fragment key={x.id}>
-              <button type="button" className={section === x.id ? "on" : ""} onClick={() => openSection(x.id)} aria-current={section === x.id ? "page" : undefined} aria-expanded={subItems(x.id).length > 0 ? section === x.id && subFolded !== x.id : undefined}>
-                <NavIcon d={x.id === "more" ? "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" : x.icon} /><span>{t(x.label)}</span><Badge n={badge[x.id]} />
-              </button>
-              {section === x.id && subFolded !== x.id && subItems(x.id).length > 0 && (
-                <div className="rp-subnav">
-                  {subItems(x.id).map((it) => (
-                    <button key={it.label} type="button" onClick={() => openSub(it)}>{t(it.label)}</button>
-                  ))}
-                </div>
-              )}
-              </Fragment>
-            ))}
-          </nav>
+          <ResidentSideNav sections={navSections.map((x) => x.id)} section={section} subFolded={subFolded} activeSub={activeSub} subItems={subItems} badge={badge} onSection={openSection} onSub={openSub} />
+          <SaveNavContext flags={navFlags} badge={badge} moreBadge={moreTabBadge} />
 
           <AppBadge n={attention.length} />
           <div className="rp-main">
-            {section !== "home" && subItems(section).length > 0 && (
-              <div className="rp-subchips" role="navigation" aria-label={t("In this section")}>
-                {subItems(section).map((it) => <button key={it.label} type="button" onClick={() => openSub(it)}>{t(it.label)}</button>)}
-              </div>
-            )}
+            {section !== "home" && <ResidentSubChips items={subItems(section)} activeSub={activeSub} onSub={openSub} />}
             {/* Oct 26 (per Mely): inside a section, show what the red number means — tap one to go
                 straight to it. The number goes away by itself once it's done. */}
             {section !== "home" && message === "" && attention.some((a) => a.go === section) && (
@@ -1344,7 +1319,7 @@ export default function ResidentDashboard() {
                 {attention.filter((a) => a.go === section).map((a) => {
                   const body = (<><span className={`rp-attn-dot ${a.tone}`} /><span className="rp-attn-text"><b>{a.text}</b>{a.sub && <small>{a.sub}</small>}</span><span className="rp-attn-go">→</span></>);
                   return a.href
-                    ? <button key={a.key} type="button" className="rp-attn-row" onClick={() => router.push(a.href!)}>{body}</button>
+                    ? <button key={a.key} type="button" className="rp-attn-row" onClick={() => router.push(subPageHref(a.href!, a.go))}>{body}</button>
                     : <button key={a.key} type="button" className="rp-attn-row" onClick={() => goTo(a)}>{body}</button>;
                 })}
                 <p style={{ fontSize: 13, color: "#64748b", margin: "8px 0 0" }}>{t("The red number goes away as soon as each item is done.")}</p>
@@ -1409,7 +1384,7 @@ export default function ResidentDashboard() {
                   {attention.map((a) => {
                     const body = (<><span className={`rp-attn-dot ${a.tone}`} /><span className="rp-attn-text"><b>{a.text}</b>{a.sub && <small>{a.sub}</small>}</span><span className="rp-attn-go">→</span></>);
                     return a.href
-                      ? <button key={a.key} type="button" className="rp-attn-row" onClick={() => router.push(a.href!)}>{body}</button>
+                      ? <button key={a.key} type="button" className="rp-attn-row" onClick={() => router.push(subPageHref(a.href!, a.go))}>{body}</button>
                       : <button key={a.key} type="button" className="rp-attn-row" onClick={() => goTo(a)}>{body}</button>;
                   })}
                 </div>
@@ -1633,11 +1608,11 @@ export default function ResidentDashboard() {
           )}
               </div>
               <div className="rp-links">
-            <button onClick={() => router.push("/residents/invoices")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button onClick={() => router.push(subPageHref("/residents/invoices", "pay"))} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🧾 Invoices")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View your monthly invoices and charges.")}</p>
             </button>
-            <button onClick={() => router.push("/residents/payment-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button onClick={() => router.push(subPageHref("/residents/payment-history", "pay"))} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📜 Payment History")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View completed payments.")}</p>
             </button>
@@ -1669,7 +1644,7 @@ export default function ResidentDashboard() {
           </div>
               </div>
           {electricUsage.length > 0 && (
-            <button className="rp-linkcard" onClick={() => router.push("/electric-history")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button className="rp-linkcard" onClick={() => router.push(subPageHref("/electric-history", "pay"))} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📊 Electric Usage History")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View monthly electric readings, charges, and usage history.")}</p>
             </button>
@@ -1976,7 +1951,7 @@ export default function ResidentDashboard() {
           )}
               </div>
               <div className="rp-links">
-            <button id="documents" className="rp-anchor" onClick={() => router.push("/residents/documents")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button id="documents" className="rp-anchor" onClick={() => router.push(subPageHref("/residents/documents", "lot"))} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("📄 Documents")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View and print your signed site rental agreement and any signed resident agreements.")}</p>
             </button>
@@ -2007,7 +1982,7 @@ export default function ResidentDashboard() {
                   : t("{n} household occupants still need a background check paid for and started.", { n: pendingBgChecks.length })}
               </p>
               <button
-                onClick={() => router.push("/residents/background-checks")}
+                onClick={() => router.push(subPageHref("/residents/background-checks", "household"))}
                 style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "10px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
               >
                 {t("Continue to Background Check(s)")}
@@ -2112,7 +2087,7 @@ export default function ResidentDashboard() {
                           <p style={{ fontSize: 12, color: "#9a3412", marginBottom: 8 }}>
                             {t("Please upload a photo ID in Documents, then proceed with the background check.")}
                           </p>
-                          <button onClick={() => router.push(`/residents/documents?forOccupant=${person.id}`)} style={{ background: "#fff", border: "1.5px solid #9a3412", color: "#9a3412", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => router.push(subPageHref(`/residents/documents?forOccupant=${person.id}`, "household"))} style={{ background: "#fff", border: "1.5px solid #9a3412", color: "#9a3412", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                             {t("Upload ID")}
                           </button>
                         </>
@@ -2122,7 +2097,7 @@ export default function ResidentDashboard() {
                           <p style={{ fontSize: 12, color: "#9a3412", fontWeight: 700, marginBottom: 8 }}>
                             {t("ID received. Now proceed with the background check.")}
                           </p>
-                          <button onClick={() => router.push("/residents/background-checks")} style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => router.push(subPageHref("/residents/background-checks", "household"))} style={{ background: "#9a3412", color: "#fff", border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                             {t("Proceed with Background Check")}
                           </button>
                         </>
@@ -2261,7 +2236,7 @@ export default function ResidentDashboard() {
             {section === "requests" && (<>
               <div id="maintenance" className="rp-anchor">
           {maintenanceEnabled && (
-          <div className="rp-linkcard" onClick={() => router.push("/residents/maintenance")} style={{ ...card, cursor: "pointer" }}>
+          <div className="rp-linkcard" onClick={() => router.push(subPageHref("/residents/maintenance", "requests"))} style={{ ...card, cursor: "pointer" }}>
             <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("Maintenance Requests")}</h2>
             <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Report issues and track maintenance progress.")}</p>
           </div>
@@ -2275,7 +2250,7 @@ export default function ResidentDashboard() {
                   <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("Open Requests")}</h2>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {openMaintenance.slice(0, 5).map((r: any) => (
-                      <button key={r.id} type="button" className="rp-attn-row" onClick={() => router.push("/residents/maintenance")}>
+                      <button key={r.id} type="button" className="rp-attn-row" onClick={() => router.push(subPageHref("/residents/maintenance", "requests"))}>
                         <span className="rp-attn-text"><b>{r.subject || t("Maintenance request")}</b><small>{st(r.status)}{r.priority ? t(" · {p} priority", { p: st(r.priority) }) : ""}</small></span>
                         <span className="rp-attn-go">→</span>
                       </button>
@@ -2453,7 +2428,7 @@ export default function ResidentDashboard() {
           </div>
               </div>
               <div id="marketplace" className="rp-links">
-            <button onClick={() => router.push("/residents/marketplace")} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
+            <button onClick={() => router.push(subPageHref("/residents/marketplace", "more"))} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🛍️ Marketplace")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Buy and sell with your neighbors.")}</p>
             </button>
@@ -2630,17 +2605,7 @@ export default function ResidentDashboard() {
           </div>
         </div>
 
-        <nav className="rp-tabbar" aria-label={t("Resident Portal")}>
-          {MOBILE_TABS.map((id) => {
-            const x = SECTIONS.find((s) => s.id === id)!;
-            const on = section === id || (id === "more" && UNDER_MORE.includes(section));
-            return (
-              <button key={id} type="button" className={on ? "on" : ""} onClick={() => openSection(id)} aria-current={on ? "page" : undefined}>
-                <NavIcon d={x.icon} /><span>{t(x.short)}</span><Badge n={id === "more" ? moreTabBadge : badge[id]} />
-              </button>
-            );
-          })}
-        </nav>
+        <ResidentTabBar section={section} badge={badge} moreBadge={moreTabBadge} onSection={openSection} />
       </section>
     </>
   );

@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { portalBackHref } from "@/components/ResidentPortalNav";
 import { usePortalLang, type PortalI18n } from "@/lib/portalI18n";
 
 type Lease = {
@@ -319,7 +320,7 @@ function DocumentsContent() {
       <div style={{ maxWidth: 640, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button
-          onClick={() => router.push("/residents/dashboard")}
+          onClick={() => router.push(portalBackHref("lot"))}
           onMouseEnter={(e) => (e.currentTarget.style.color = "#111827")}
           onMouseLeave={(e) => (e.currentTarget.style.color = "#6b7280")}
           style={{
@@ -340,7 +341,7 @@ function DocumentsContent() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
-          {t("Back to Dashboard")}
+          {t("Back")}
         </button>
         <PortalLangSwitcher compact />
         </div>

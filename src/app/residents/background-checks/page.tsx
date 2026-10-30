@@ -2,6 +2,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { portalBackHref } from "@/components/ResidentPortalNav";
 import { usePortalLang } from "@/lib/portalI18n";
 
 const card: React.CSSProperties = { background: "var(--white)", border: "1.5px solid var(--border)", borderRadius: 8, padding: 24 };
@@ -97,7 +98,7 @@ function BackgroundChecksContent() {
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <PortalLangSwitcher compact />
           <button
-            onClick={() => router.push("/residents/dashboard")}
+            onClick={() => router.push(portalBackHref("household"))}
             style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
             {t("Back")}
           </button>

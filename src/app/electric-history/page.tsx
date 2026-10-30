@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
+import { portalBackHref } from "@/components/ResidentPortalNav";
 import { usePortalLang, formatDate } from "@/lib/portalI18n";
 import {
   ResponsiveContainer,
@@ -92,7 +93,7 @@ export default function ElectricHistoryPage() {
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <PortalLangSwitcher compact />
           <button
-            onClick={() => router.push("/residents/dashboard")}
+            onClick={() => router.push(portalBackHref("pay"))}
             style={{ background: "var(--black)", color: "var(--white)", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 600, cursor: "pointer" }}>
             {t("Back")}
           </button>
