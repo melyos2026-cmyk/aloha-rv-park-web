@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { refuseStorageAccount } from "@/lib/storageAccountGuard";
 
 // POST /api/portal/save-vehicle
 // Body: { residentId, vehicleId?, make, model, year, color, plate, state }
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
 
   const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
+  // Oct 30 (storage-only customers): refused on the server too (no lot / lease / household).
+  { const storageRefused = await refuseStorageAccount(residentId); if (storageRefused) return storageRefused; }
 
   if (vehicleId) {
     // SECURITY: confirm this vehicle actually belongs to the session's own

@@ -18,7 +18,7 @@ import PortalLangSwitcher from "@/components/PortalLangSwitcher";
 import RecHallCard, { fetchRecHallOn } from "@/components/RecHallCard";
 import { usePortalLang, adoptSavedPortalLang } from "@/lib/portalI18n";
 import {
-  SECTIONS, ANCHORS, sectionFor, filterSubItems, requestsVisible as requestsVisibleFor, subKey, subPageHref,
+  SECTIONS, ANCHORS, sectionFor, filterSubItems, requestsVisible as requestsVisibleFor, subKey, subPageHref, visibleSections,
   NavIcon, ResidentSideNav, ResidentSubChips, ResidentTabBar, SaveNavContext,
   type SectionId, type SubItem, type NavFlags,
 } from "@/components/ResidentPortalNav";
@@ -999,13 +999,18 @@ export default function ResidentDashboard() {
   // opened Messages, so they stay highlighted as "new" after being marked read.
   const [freshNotifIds, setFreshNotifIds] = useState<Set<string>>(new Set());
   const residentLoaded = !!resident;
-  const navFlags: NavFlags = { maintenance: maintenanceEnabled, propane: propaneOrders.length > 0, recHall: recHallOn };
+  // Oct 30 (per Mely): a STORAGE-ONLY customer (rents an RV storage space, doesn't live in the park)
+  // gets a reduced portal: Home, Payments, Messages, Park info, Profile — nothing about a lot.
+  const isStorage = String(resident?.account_type || "") === "storage";
+  const navFlags: NavFlags = { maintenance: maintenanceEnabled, propane: propaneOrders.length > 0, recHall: recHallOn, storage: isStorage };
+  const allowSection = (id: SectionId | null): SectionId => (id && (!isStorage || visibleSections(navFlags).includes(id)) ? id : "home");
   useEffect(() => {
     if (!residentLoaded) return;
     const go = () => {
       const h = window.location.hash.replace("#", "");
-      setSection(sectionFor(h) || "home");
-      if (h === "move-out" || h === "move-out-request") setShowMoveOutModal(true);
+      setSection(allowSection(sectionFor(h)));
+      // Oct 30: a storage-only account has no lease to move out of (the server refuses it too).
+      if ((h === "move-out" || h === "move-out-request") && !isStorage) setShowMoveOutModal(true);
       if (h && ANCHORS.includes(h)) {
         setTimeout(() => {
           const el = document.getElementById(h);
@@ -1018,7 +1023,8 @@ export default function ResidentDashboard() {
     go();
     window.addEventListener("hashchange", go);
     return () => window.removeEventListener("hashchange", go);
-  }, [residentLoaded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [residentLoaded, isStorage]);
   // Oct 30 (per Mely — the menu in sync with what's on the right): highlight the sub item for the
   // address (#charges…) and, while scrolling, the part of the section that's on screen.
   const [activeSub, setActiveSub] = useState<string | null>(null);
@@ -1056,7 +1062,7 @@ export default function ResidentDashboard() {
     if (!it.anchor) return;
     setActiveSub(subKey(it));
     if (window.location.hash.replace("#", "") === it.anchor) {
-      if (it.anchor === "move-out") setShowMoveOutModal(true);
+      if (it.anchor === "move-out" && !isStorage) setShowMoveOutModal(true);
       const el = document.getElementById(it.anchor);
       if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 110, behavior: "smooth" });
       return;
@@ -1137,18 +1143,18 @@ export default function ResidentDashboard() {
   if (!bgTodo.length && pendingBgChecks.length) attention.push({ key: "bgp", text: t("Background check needed"), sub: tp(pendingBgChecks.length, "{n} household occupant", "{n} household occupants"), tone: "bad", go: "household", href: "/residents/background-checks" });
   const addendaToSign = leaseAddenda.filter((a) => a.status === "pending");
   for (const a of addendaToSign) attention.push({ key: "la" + a.id, text: t("Please sign: {title}", { title: a.title }), sub: t("Review and sign it online — it takes a minute"), tone: "warn", go: "home", anchor: "lease-addendum" });
-  if (billOfSaleToSign) attention.push({ key: "bos", text: t("Sign your Bill of Sale"), sub: t("Your Rent-to-Own home is paid off"), tone: "warn", go: "lot", anchor: "rent-to-own" });
-  if (rvInfoMissing) attention.push({ key: "rv", text: t("Add your home/unit info"), sub: t("Make, model and VIN / Tag #"), tone: "warn", go: "lot", anchor: "home-info" });
+  if (billOfSaleToSign && !isStorage) attention.push({ key: "bos", text: t("Sign your Bill of Sale"), sub: t("Your Rent-to-Own home is paid off"), tone: "warn", go: "lot", anchor: "rent-to-own" });
+  if (rvInfoMissing && !isStorage) attention.push({ key: "rv", text: t("Add your home/unit info"), sub: t("Make, model and VIN / Tag #"), tone: "warn", go: "lot", anchor: "home-info" });
   if (emergencyMissing) attention.push({ key: "ec", text: t("Add an emergency contact"), tone: "warn", go: "more", anchor: "profile" });
-  if (petsNoShots.length) attention.push({ key: "pets", text: t("Pet shots records not provided"), sub: petsNoShots.map((p: any) => p.name || t("Pet")).join(", "), tone: "warn", go: "lot", anchor: "parking-pets" });
-  if (propaneReady.length) attention.push({ key: "pr", text: tp(propaneReady.length, "{n} propane order ready for pickup", "{n} propane orders ready for pickup"), sub: t("Show the QR code to staff"), tone: "info", go: "requests", anchor: "propane" });
+  if (petsNoShots.length && !isStorage) attention.push({ key: "pets", text: t("Pet shots records not provided"), sub: petsNoShots.map((p: any) => p.name || t("Pet")).join(", "), tone: "warn", go: "lot", anchor: "parking-pets" });
+  if (propaneReady.length && !isStorage) attention.push({ key: "pr", text: tp(propaneReady.length, "{n} propane order ready for pickup", "{n} propane orders ready for pickup"), sub: t("Show the QR code to staff"), tone: "info", go: "requests", anchor: "propane" });
   if (unreadNotifs.length) attention.push({ key: "nt", text: tp(unreadNotifs.length, "{n} new notification", "{n} new notifications"), sub: err(unreadNotifs[0]?.message), tone: "info", go: "messages" });
 
   const badge: Partial<Record<SectionId, number>> = {
     pay: pendingInvoices.length + (autopayFailed ? 1 : 0),
-    lot: (billOfSaleToSign ? 1 : 0) + (rvInfoMissing ? 1 : 0) + (petsNoShots.length ? 1 : 0),
-    household: bgTodo.length || pendingBgChecks.length,
-    requests: propaneReady.length,
+    lot: isStorage ? 0 : (billOfSaleToSign ? 1 : 0) + (rvInfoMissing ? 1 : 0) + (petsNoShots.length ? 1 : 0),
+    household: isStorage ? 0 : bgTodo.length || pendingBgChecks.length,
+    requests: isStorage ? 0 : propaneReady.length,
     messages: unreadNotifs.length,
     more: emergencyMissing ? 1 : 0,
   };
@@ -1158,7 +1164,8 @@ export default function ResidentDashboard() {
   // Oct 28 (per Mely): Requests holds maintenance (if the park turned it on) and propane orders.
   // Nothing to show there → hide the Requests nav item too.
   const requestsVisible = requestsVisibleFor(navFlags);
-  const navSections = SECTIONS.filter((x) => x.id !== "requests" || requestsVisible);
+  const navSections = isStorage ? SECTIONS.filter((x) => visibleSections(navFlags).includes(x.id)) : SECTIONS.filter((x) => x.id !== "requests" || requestsVisible);
+  const storageSpacesText = (Array.isArray(resident?.storage_spaces) ? resident.storage_spaces : []).join(", ");
   function goTo(item: { go: SectionId; anchor?: string }) {
     if (item.anchor) { window.location.hash = item.anchor; return; }
     openSection(item.go);
@@ -1244,7 +1251,7 @@ export default function ResidentDashboard() {
           <div>
             <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#d3f8e2", fontWeight: 600, marginBottom: 8 }}>{t("Resident Portal")}</div>
             <h1 style={{ fontSize: "clamp(28px, 4vw, 44px)", fontWeight: 900, marginBottom: 4 }}>{section === "home" ? t("Welcome, {name}", { name: resident.full_name }) : sectionTitle}</h1>
-            <p style={{ color: "#000000", fontSize: 14 }}>{resident.rv_lots?.lot_name ? t("Lot {name}", { name: resident.rv_lots.lot_name }) : (resident.companies?.company_name || "")}</p>
+            <p style={{ color: "#000000", fontSize: 14 }}>{isStorage ? (storageSpacesText ? t("Storage space {name}", { name: storageSpacesText }) : (resident.companies?.company_name || "")) : resident.rv_lots?.lot_name ? t("Lot {name}", { name: resident.rv_lots.lot_name }) : (resident.companies?.company_name || "")}</p>
             <ResidentPushAlerts residentId={residentId} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative", flexWrap: "wrap" }}>
@@ -1399,24 +1406,31 @@ export default function ResidentDashboard() {
                   nextPaymentDate && t("Next payment {date}", { date: dateLabel(nextPaymentDate) }),
                   autopayAvailable && (autopayEnabled ? `${t("Autopay on")}${autopayCardLast4 ? ` · ${t(autopayMethod === "ach" ? "bank" : "card")} •••• ${autopayCardLast4}` : ""}` : t("Autopay off")),
                 ]} />
+                {isStorage ? (
+                  <Tile go="more" anchor="storage-info" h={t("My storage")} cta={t("Details")} lines={[
+                    storageSpacesText ? t("Storage space {name}", { name: storageSpacesText }) : t("Storage"),
+                    resident.storage_active === false ? t("Storage ended") : Number(resident.storage_monthly) > 0 ? t("{amount} per month", { amount: money(Number(resident.storage_monthly)) }) : null,
+                  ]} />
+                ) : (
                 <Tile go="lot" h={t("My lot & home")} lines={[
                   resident.rv_lots?.lot_name ? t("Lot {name}", { name: resident.rv_lots.lot_name }) : (resident.companies?.company_name || t("My lot")),
                   rvInfoMissing ? t("Home/unit info not added yet") : `${t(rvType || "RV")} — ${[rvYear, rvMake, rvModel].filter(Boolean).join(" ")}`,
                   rtoLine || (activeLease?.requested_move_out_date ? t("Move-out requested: {date}", { date: date(activeLease.requested_move_out_date) }) : null),
                 ]} />
-                {electricUsage.length > 0 && (
+                )}
+                {!isStorage && electricUsage.length > 0 && (
                   <Tile go="pay" anchor="electric" h={t("Electric usage")} cta={t("Details")} lines={[
                     `${dateLabel(electricUsage[0]?.billing_month || "")} · ${electricUsage[0]?.current_reading || 0} kWh`,
                     t("Electric Charge {amount}", { amount: money(Number(electricUsage[0]?.charge_amount || 0)) }),
                   ]} />
                 )}
-                {(householdPeople.length + visitorPeople.length + vehicles.length) > 0 && (
+                {!isStorage && (householdPeople.length + visitorPeople.length + vehicles.length) > 0 && (
                   <Tile go="household" h={t("Household")} lines={[
                     [householdPeople.length && tp(householdPeople.length, "{n} occupant", "{n} occupants"), visitorPeople.length && tp(visitorPeople.length, "{n} visitor", "{n} visitors"), vehicles.length && tp(vehicles.length, "{n} vehicle", "{n} vehicles")].filter(Boolean).join(" · "),
                     bgTodo.length ? tp(bgTodo.length, "{n} background check needed", "{n} background checks needed") : householdPeople.slice(0, 3).map((p: any) => p.full_name).join(", "),
                   ]} />
                 )}
-                {(openMaintenance.length > 0 || propaneOrders.length > 0) && (
+                {!isStorage && (openMaintenance.length > 0 || propaneOrders.length > 0) && (
                   <Tile go="requests" h={t("Requests")} lines={[
                     openMaintenance.length ? tp(openMaintenance.length, "{n} open maintenance request", "{n} open maintenance requests") : tp(propaneReady.length, "{n} propane order ready", "{n} propane orders ready"),
                     openMaintenance[0] && `${openMaintenance[0].subject || t("Request")} — ${st(openMaintenance[0].status)}`,
@@ -1475,8 +1489,8 @@ export default function ResidentDashboard() {
               </div>
             ) : (
               <div className="autopay-card" style={card}>
-                <p style={label}>{t("Rent Amount")}</p>
-                <p style={bigNumber}>{money(resident.rent_amount)}</p>
+                <p style={label}>{isStorage ? t("Monthly storage") : t("Rent Amount")}</p>
+                <p style={bigNumber}>{money(isStorage ? Number(resident.storage_monthly || 0) : resident.rent_amount)}</p>
               </div>
             )}
             <div className="balance-card" style={{ ...cardAccent, order: -1, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "16px 20px" }}>
@@ -1617,6 +1631,7 @@ export default function ResidentDashboard() {
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View completed payments.")}</p>
             </button>
               </div>
+              {!isStorage && (<>
               <div id="electric" className="rp-anchor">
           <div style={card}>
             <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("⚡ Electric Usage")}</h2>
@@ -1649,6 +1664,7 @@ export default function ResidentDashboard() {
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("View monthly electric readings, charges, and usage history.")}</p>
             </button>
           )}
+              </>)}
             </>)}
 
             {section === "lot" && (<>
@@ -2351,11 +2367,20 @@ export default function ResidentDashboard() {
             {section === "more" && (<>
               <InstallApp appName={resident?.companies?.company_name || "resident"} accent="#0f5132" portal />
               <div className="rp-more-list">
-                {(["household", "requests", "info"] as SectionId[]).filter((id) => id !== "requests" || requestsVisible).map((id) => {
+                {(isStorage ? (["info"] as SectionId[]) : (["household", "requests", "info"] as SectionId[])).filter((id) => id !== "requests" || requestsVisible).map((id) => {
                   const x = SECTIONS.find((s) => s.id === id)!;
                   return <button key={id} type="button" onClick={() => openSection(id)}><NavIcon d={x.icon} /><span>{t(x.label)}</span><Badge n={badge[id]} /><span className="rp-attn-go">→</span></button>;
                 })}
               </div>
+              {isStorage && (
+                <div id="storage-info" className="rp-anchor" style={card}>
+                  <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>{t("My storage")}</h2>
+                  <p><strong>{t("Storage space:")}</strong> {storageSpacesText || t("None")}</p>
+                  {resident.storage_unit && <p style={{ marginTop: 8 }}><strong>{t("Stored:")}</strong> {t(resident.storage_unit)}{resident.rv_vin_or_tag ? ` · ${resident.rv_vin_or_tag}` : ""}</p>}
+                  <p style={{ marginTop: 8 }}><strong>{t("Monthly storage")}:</strong> {resident.storage_active === false ? t("Storage ended") : money(Number(resident.storage_monthly || 0))}</p>
+                  <p style={{ fontSize: 12, color: "var(--gray)", marginTop: 10 }}>{t("To change or end your storage, please contact the office.")}</p>
+                </div>
+              )}
               <div id="profile" className="rp-anchor">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
             {!editingResidentInfo ? (
@@ -2427,12 +2452,14 @@ export default function ResidentDashboard() {
             )}
           </div>
               </div>
+              {!isStorage && (
               <div id="marketplace" className="rp-links">
             <button onClick={() => router.push(subPageHref("/residents/marketplace", "more"))} style={{ ...card, textAlign: "left", cursor: "pointer" }}>
               <h2 style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>{t("🛍️ Marketplace")}</h2>
               <p style={{ color: "var(--gray)", fontSize: 13 }}>{t("Buy and sell with your neighbors.")}</p>
             </button>
               </div>
+              )}
               <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <button onClick={logout} style={{ background: "#000", color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", fontWeight: 700, cursor: "pointer" }}>
                   {t("Sign Out")}
@@ -2605,7 +2632,7 @@ export default function ResidentDashboard() {
           </div>
         </div>
 
-        <ResidentTabBar section={section} badge={badge} moreBadge={moreTabBadge} onSection={openSection} />
+        <ResidentTabBar section={section} badge={badge} moreBadge={moreTabBadge} onSection={openSection} storage={isStorage} />
       </section>
     </>
   );

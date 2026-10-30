@@ -28,6 +28,16 @@ export const SECTIONS: { id: SectionId; label: string; short: string; icon: stri
 const PROFILE_ICON = "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0";
 export const MOBILE_TABS: SectionId[] = ["home", "pay", "lot", "messages", "more"];
 export const UNDER_MORE: SectionId[] = ["household", "requests", "info", "more"];
+// Oct 30 (per Mely — storage-only customers: people who rent an RV storage space but don't live in the
+// park): a reduced portal — Home, Payments, Messages, Park info, Profile. No My lot, Household or
+// Requests, no electric, no marketplace. resident_accounts.account_type = 'storage' (NavFlags.storage).
+export const STORAGE_SECTIONS: SectionId[] = ["home", "pay", "messages", "info", "more"];
+export const STORAGE_MOBILE_TABS: SectionId[] = ["home", "pay", "messages", "info", "more"];
+/** The sections this account may open (storage customers: the reduced list). */
+export function visibleSections(f: NavFlags): SectionId[] {
+  if (f.storage) return STORAGE_SECTIONS;
+  return SECTIONS.map((x) => x.id).filter((id) => id !== "requests" || requestsVisible(f));
+}
 // Old anchors (from other pages and emails) → the section that now holds them.
 export const ANCHOR_SECTION: Record<string, SectionId> = {
   "household-occupants": "household", "visitors-section": "household", vehicles: "household", "golf-carts": "household",
@@ -37,6 +47,7 @@ export const ANCHOR_SECTION: Record<string, SectionId> = {
   announcements: "messages", notifications: "messages",
   profile: "more", "resident-info": "more", "emergency-contact": "more", marketplace: "more",
   "park-info": "info", emergency: "info", "emergency-line": "info", "office-hours": "info", "park-rules": "info",
+  "storage-info": "more", // Oct 30: storage customers' "My storage" card (Profile & more)
   "lease-addendum": "home", // Oct 28: Lease Addenda card (link in the "please sign" email)
 };
 export const ANCHORS = Object.keys(ANCHOR_SECTION);
@@ -59,7 +70,7 @@ export const SUBMENU: Partial<Record<SectionId, SubItem[]>> = {
   info: [{ label: "Call 9-1-1 first", anchor: "emergency" }, { label: "Park emergency line", anchor: "emergency-line" }, { label: "Office hours", anchor: "office-hours" }, { label: "Park rules", anchor: "park-rules" }],
   // Oct 29 (per Mely — "dentro de profile haz otro sub menú con lo que hay, ex. marketplace").
   // Oct 30: Marketplace opens the Marketplace page (the anchor only held a link to it).
-  more: [{ label: "My information", anchor: "resident-info" }, { label: "Emergency contact", anchor: "emergency-contact" }, { label: "Marketplace", anchor: "marketplace", href: "/residents/marketplace" }, { label: "Documents", href: "/residents/documents" }],
+  more: [{ label: "My storage", anchor: "storage-info" }, { label: "My information", anchor: "resident-info" }, { label: "Emergency contact", anchor: "emergency-contact" }, { label: "Marketplace", anchor: "marketplace", href: "/residents/marketplace" }, { label: "Documents", href: "/residents/documents" }],
 };
 export const sectionFor = (h: string): SectionId | null =>
   SECTIONS.some((x) => x.id === h) ? (h as SectionId) : ANCHOR_SECTION[h] || null;
@@ -68,9 +79,13 @@ const isSection = (x: unknown): x is SectionId => typeof x === "string" && SECTI
 export const subKey = (it: SubItem) => it.href || it.anchor || it.label;
 
 // What the conditional items depend on (the park's settings + the resident's data).
-export type NavFlags = { maintenance: boolean; propane: boolean; recHall: boolean };
+export type NavFlags = { maintenance: boolean; propane: boolean; recHall: boolean; storage?: boolean };
+// Oct 30: what a storage customer never sees (no lot → no electric, no lot documents, no marketplace).
+const STORAGE_HIDDEN = new Set(["electric", "/electric-history", "marketplace", "/residents/marketplace", "/residents/documents"]);
 export function filterSubItems(id: SectionId, f: NavFlags): SubItem[] {
-  return (SUBMENU[id] || []).filter((it) => it.anchor !== "maintenance" || f.maintenance).filter((it) => it.anchor !== "propane" || f.propane).filter((it) => it.anchor !== "rec-hall" || f.recHall);
+  const items = (SUBMENU[id] || []).filter((it) => it.anchor !== "maintenance" || f.maintenance).filter((it) => it.anchor !== "propane" || f.propane).filter((it) => it.anchor !== "rec-hall" || f.recHall);
+  if (!f.storage) return items.filter((it) => it.anchor !== "storage-info");
+  return items.filter((it) => !STORAGE_HIDDEN.has(String(it.href || it.anchor || "")) && !(it.anchor && STORAGE_HIDDEN.has(it.anchor)));
 }
 // Oct 28 (per Mely): Requests holds maintenance (if the park turned it on) and propane orders.
 // Nothing to show there → hide the Requests nav item too.
@@ -174,13 +189,13 @@ export function ResidentSubChips({ items, activeSub, onSub }: { items: SubItem[]
   );
 }
 
-export function ResidentTabBar({ section, badge, moreBadge, onSection }: { section: SectionId; badge: Partial<Record<SectionId, number>>; moreBadge: number; onSection: (id: SectionId) => void }) {
+export function ResidentTabBar({ section, badge, moreBadge, onSection, storage = false }: { section: SectionId; badge: Partial<Record<SectionId, number>>; moreBadge: number; onSection: (id: SectionId) => void; storage?: boolean }) {
   const { t } = usePortalLang();
   return (
     <nav className="rp-tabbar" aria-label={t("Resident Portal")}>
-      {MOBILE_TABS.map((id) => {
+      {(storage ? STORAGE_MOBILE_TABS : MOBILE_TABS).map((id) => {
         const x = SECTIONS.find((s) => s.id === id)!;
-        const on = section === id || (id === "more" && UNDER_MORE.includes(section));
+        const on = section === id || (id === "more" && !storage && UNDER_MORE.includes(section));
         return (
           <button key={id} type="button" className={on ? "on" : ""} onClick={() => onSection(id)} aria-current={on ? "page" : undefined}>
             <NavIcon d={x.icon} /><span>{t(x.short)}</span><NavBadge n={id === "more" ? moreBadge : badge[id]} />
@@ -228,7 +243,8 @@ function SubPageFrame({ pathname, parent, children }: { pathname: string; parent
 
   const flags: NavFlags = ctx?.flags || { maintenance: pathname === "/residents/maintenance", propane: false, recHall: false };
   const badge = ctx?.badge || {};
-  const sections = SECTIONS.map((x) => x.id).filter((id) => id !== "requests" || requestsVisible(flags) || section === "requests");
+  // Oct 30: storage customers get the reduced menu here too (flags saved by the dashboard).
+  const sections = flags.storage ? visibleSections(flags) : SECTIONS.map((x) => x.id).filter((id) => id !== "requests" || requestsVisible(flags) || section === "requests");
   const subItems = (id: SectionId) => filterSubItems(id, flags);
   const current = subItems(section).find((it) => it.href === pathname);
   const activeSub = current ? subKey(current) : null;
@@ -255,7 +271,7 @@ function SubPageFrame({ pathname, parent, children }: { pathname: string; parent
           {children}
         </div>
       </div>
-      <ResidentTabBar section={section} badge={badge} moreBadge={ctx?.moreBadge || 0} onSection={(id) => router.push(`/residents/dashboard#${id}`)} />
+      <ResidentTabBar section={section} badge={badge} moreBadge={ctx?.moreBadge || 0} storage={!!flags.storage} onSection={(id) => router.push(`/residents/dashboard#${id}`)} />
     </section>
   );
 }

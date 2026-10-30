@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { refuseStorageAccount } from "@/lib/storageAccountGuard";
 import { addDays, checkRecHallRequest, normalizeRecHallRules, type RecHallRules, parkHM, parkToDate, parkToday, recHallWhen } from "@/lib/recHall";
 
 // Oct 29 (per Mely): residents request the Rec Hall from the portal (free — no charge is ever added).
@@ -95,6 +96,8 @@ export async function POST(req: NextRequest) {
   const residentId = typeof body.residentId === "string" ? body.residentId : null;
   const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
+  // Oct 30 (storage-only customers): refused on the server too (no lot / lease / household).
+  { const storageRefused = await refuseStorageAccount(residentId); if (storageRefused) return storageRefused; }
   const resident = await residentRow(residentId!);
   if (!resident) return NextResponse.json({ error: "Resident not found." }, { status: 404 });
   const cid = resident.company_id as string;

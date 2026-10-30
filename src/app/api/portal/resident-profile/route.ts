@@ -22,6 +22,8 @@ const RESIDENT_PROFILE_FIELDS = [
   "parking_provided", "parking_spaces", "parking_free", "parking_cost",
   "pets_allowed", "pets_count", "pets_types", "pet_details", "golf_carts",
   "rv_lots", "companies",
+  // Oct 30 (storage-only customers): 'resident' | 'storage' (missing column → not sent → 'resident').
+  "account_type",
 ];
 
 export async function GET(req: NextRequest) {
@@ -49,6 +51,25 @@ export async function GET(req: NextRequest) {
   // below decides what leaves the server. Add a field here if the dashboard starts using it.
   const resident: Record<string, any> = {};
   for (const k of RESIDENT_PROFILE_FIELDS) if (row && (row as any)[k] !== undefined) resident[k] = (row as any)[k];
+
+  // Oct 30 (per Mely): a storage customer (rents an RV storage space, doesn't live in the park) sees
+  // their space(s), what is stored and the monthly storage price — from their own active "Storage
+  // Rental" recurring charge(s), same company only.
+  if (String((row as any)?.account_type || "") === "storage") {
+    const { data: rc } = await supabase
+      .from("recurring_charges")
+      .select("amount, storage_spaces")
+      .eq("resident_id", residentId)
+      .eq("company_id", (row as any).company_id)
+      .eq("charge_type", "Storage Rental")
+      .eq("active", true);
+    const spaces = Array.from(new Set((rc || []).flatMap((c: any) => (Array.isArray(c.storage_spaces) ? c.storage_spaces : []).map((x: any) => String(x)))));
+    resident.storage_spaces = spaces.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    resident.storage_monthly = Math.round((rc || []).reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0) * 100) / 100;
+    resident.storage_active = (rc || []).length > 0;
+    // rv_description stays office-only (same rule as for residents); the type + plate/VIN are theirs.
+    resident.storage_unit = String((row as any).rv_type || "");
+  }
 
   return NextResponse.json({ resident });
 }

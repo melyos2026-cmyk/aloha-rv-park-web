@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { refuseStorageAccount } from "@/lib/storageAccountGuard";
 
 // GET /api/portal/occupants-vehicles?residentId=...
 // FOUND THE ROOT CAUSE (Aug 3): resident_occupants and resident_vehicles
@@ -21,6 +22,8 @@ export async function GET(req: NextRequest) {
 
   const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
+  // Oct 30: a storage-only account has no household/vehicles — nothing to read.
+  if (await refuseStorageAccount(residentId)) return NextResponse.json({ occupants: [], vehicles: [], storageAccount: true });
 
   const { data: occupants, error: occError } = await supabase
     .from("resident_occupants")

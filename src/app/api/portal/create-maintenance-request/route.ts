@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { refuseStorageAccount } from "@/lib/storageAccountGuard";
 import { portalMaintenanceEnabled, MAINTENANCE_OFF_MESSAGE } from "@/lib/portalMaintenanceFlag";
 
 // POST /api/portal/create-maintenance-request
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest) {
 
   const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
+  // Oct 30 (storage-only customers): refused on the server too (no lot / lease / household).
+  { const storageRefused = await refuseStorageAccount(residentId); if (storageRefused) return storageRefused; }
 
   const { data: resident, error: residentError } = await supabase
     .from("resident_accounts")

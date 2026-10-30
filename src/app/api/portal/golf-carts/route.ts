@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
 import { requireMatchingSession } from "@/lib/portalSession";
+import { refuseStorageAccount } from "@/lib/storageAccountGuard";
 
 // Oct 19 (per Mely — Aloha rule: golf carts must be insured and driven by a
 // licensed driver). Residents manage their own golf carts in the portal.
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
   }
   const authError = await requireMatchingSession(req, residentId);
   if (authError) return authError;
+  // Oct 30 (storage-only customers): refused on the server too (no lot / lease / household).
+  { const storageRefused = await refuseStorageAccount(residentId); if (storageRefused) return storageRefused; }
 
   const { data: resident } = await supabase
     .from("resident_accounts")
