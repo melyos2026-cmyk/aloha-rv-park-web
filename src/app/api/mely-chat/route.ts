@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     // "Notes for Mely". Labeled so they read as current office notes; they
     // take priority for temporary changes or announcements.
     const extraInfo = company?.ai_assistant_info
-      ? `\n\nNotes from the park's office (written by the park, always current — use them, and if they conflict with older general information above, follow these):\n${company.ai_assistant_info}`
+      ? `\n\nNotes from the park's office (extras written by the park: temporary changes, holidays, promotions, how to say things). Lot prices, sizes and availability, and office hours and emergencies, come from the live park data in this prompt — if a note disagrees with those, follow the live data, never the note:\n${company.ai_assistant_info}`
       : "";
 
     // Sep 25 (per Mely — "necesito que pueda tambien ver la hora"): same
