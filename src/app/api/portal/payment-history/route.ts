@@ -53,5 +53,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ payments: data || [] });
+  // Oct 30 (per Mely — a test resident showed a $850 "payment" from a deleted test invoice): Payment
+  // history only lists REAL payments — a row counts only if its invoice still exists, belongs to this
+  // resident and is Paid (paid online by card/bank, or recorded by the office as Zelle, cash, check…).
+  // Leftover rows with no invoice, or whose invoice was deleted or isn't Paid, never show.
+  const rows = data || [];
+  const invoiceIds = [...new Set(rows.map((p: any) => p.invoice_id).filter(Boolean))] as string[];
+  const paid = new Map<string, any>();
+  if (invoiceIds.length) {
+    const { data: invs, error: invErr } = await supabase
+      .from("resident_invoices")
+      .select("id, resident_id, status, payment_method, paid_date")
+      .in("id", invoiceIds)
+      .eq("resident_id", residentId)
+      .eq("status", "Paid");
+    if (invErr) return NextResponse.json({ error: invErr.message }, { status: 500 });
+    for (const inv of invs || []) paid.set((inv as any).id, inv);
+  }
+  const payments = rows
+    .filter((p: any) => p.invoice_id && paid.has(p.invoice_id))
+    .map((p: any) => {
+      const inv = paid.get(p.invoice_id);
+      return { ...p, payment_method: p.payment_method || inv?.payment_method || null, payment_date: inv?.paid_date || p.payment_date };
+    });
+
+  return NextResponse.json({ payments });
 }
