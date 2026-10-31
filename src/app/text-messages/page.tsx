@@ -82,6 +82,15 @@ export default function TextMessagesPage() {
             </div>
           ) : (
             <form onSubmit={submit} style={{ marginBottom: 32 }}>
+              {/* Oct 31 (per Mely — Twilio error 30923 "forced consent"): say plainly that texts are
+                  optional and give a way to skip; the checkbox is separate from the Terms. */}
+              <div style={{ border: "1.5px solid #d1d5db", background: "#f9fafb", borderRadius: 6, padding: "12px 14px", marginBottom: 18 }}>
+                <p style={{ ...p, margin: 0 }}>
+                  <strong>Text messages are optional.</strong> You do not need to sign up to rent a site, apply, make a
+                  reservation, pay or use the resident portal — we will still reach you by email.{" "}
+                  <a href="/" style={{ color: "#111", textDecoration: "underline" }}>No thanks, skip</a>
+                </p>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
                 <div>
                   <span style={label}>Full name</span>
@@ -110,7 +119,7 @@ export default function TextMessagesPage() {
                   padding: "12px 24px", fontWeight: 700, fontSize: 15, cursor: "pointer", opacity: sending ? 0.6 : 1,
                 }}
               >
-                {sending ? "Saving..." : "Sign up for text messages"}
+                {sending ? "Saving..." : "Sign up for text messages (optional)"}
               </button>
             </form>
           )}

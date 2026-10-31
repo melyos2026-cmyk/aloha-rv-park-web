@@ -31,15 +31,20 @@ export default function SmsConsentCheckbox({
         style={{ width: 18, height: 18, marginTop: 2, flexShrink: 0, cursor: "pointer", accentColor: "#000" }}
       />
       <span style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
-        {smsConsentWording(parkName)}{" "}
-        <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#111", textDecoration: "underline" }}>
-          Terms
-        </a>{" "}
-        &amp;{" "}
-        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#111", textDecoration: "underline" }}>
-          Privacy Policy
-        </a>
-        . <span style={{ color: "#6b7280" }}>(Optional)</span>
+        <span style={{ color: "#6b7280", fontWeight: 600 }}>(Optional)</span> {smsConsentWording(parkName)}
+        {/* Oct 31 (Twilio 30923): the SMS box is its own consent — not bundled with the Terms. Links are
+            for reading only; leaving the box unchecked never blocks anything. */}
+        <span style={{ display: "block", marginTop: 4, color: "#6b7280" }}>
+          Leave this box unchecked if you don&apos;t want texts. See our{" "}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#111", textDecoration: "underline" }}>
+            SMS terms
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#111", textDecoration: "underline" }}>
+            Privacy Policy
+          </a>
+          .
+        </span>
       </span>
     </div>
   );
