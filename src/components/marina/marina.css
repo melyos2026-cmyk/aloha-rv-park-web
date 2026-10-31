@@ -945,3 +945,19 @@ button.mr-stmt-month { width: 100%; border: 0; cursor: pointer; font: inherit; f
 /* Oct 27: the marina's own logo alone in the header, a little larger */
 .mr-brand img.mr-brand-logo { height: 48px; max-width: 260px; object-fit: contain; border-radius: 4px; }
 @media (max-width: 640px) { .mr-brand img.mr-brand-logo { height: 38px; max-width: 180px; } }
+
+/* Oct 31 (per Mely — "las tarjetas solo de arriba hacia abajo"): a slip card never scrolls sideways.
+   On phones it is a full-width bottom sheet (a later desktop width rule used to shrink it to 64%,
+   so the price table overflowed and the card could be dragged left/right); everything inside wraps
+   to the card's width. */
+.mr-pop { overflow-x: hidden; overscroll-behavior: contain; }
+.mr-pop > * { min-width: 0; max-width: 100%; }
+.mr-rate-table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.mr-rate-table th, .mr-rate-table td { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .mr-pop { width: auto !important; left: 10px !important; right: 10px !important; touch-action: pan-y; }
+  .mr-rate-table { font-size: .9rem; }
+  .mr-rate-table thead th { font-size: .62rem; letter-spacing: .04em; line-height: 1.25; }
+  .mr-rate-table th:first-child { width: 30%; }
+  .mr-pop .mr-pop-rows { grid-template-columns: 1fr; }
+}
