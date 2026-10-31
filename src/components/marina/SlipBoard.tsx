@@ -39,6 +39,9 @@ export default function SlipBoard({ slips, mapUrl, allowSample = false }: { slip
   const [power, setPower] = useState(false);
   const [boat, setBoat] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
+  // Oct 31 (per Mely — "que la gente sepa que es un mapa interactivo"): a "Tap any slip" hint, a soft
+  // pulse on open slips and a pointer on one open slip, until the visitor touches the map once.
+  const [touched, setTouched] = useState(false);
   // Oct 24 (per Mely): on a computer, resting the mouse on a slip shows a small preview card.
   const [hover, setHover] = useState<string | null>(null);
   const [booking, setBooking] = useState<PublicSlip | null>(null);
@@ -152,7 +155,7 @@ export default function SlipBoard({ slips, mapUrl, allowSample = false }: { slip
       )}
 
       {showMap && (
-        <div className="mr-map" ref={mapBox} onClick={() => setPicked(null)}>
+        <div className="mr-map" ref={mapBox} data-hint={!touched} onPointerDown={() => setTouched(true)} onClick={() => setPicked(null)}>
           {/* Oct 27: the marina's own map picture (uploaded in the admin); the sample picture otherwise */}
           <img src={picture!} alt="Aerial view of the marina docks" />
           <svg className="mr-polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Slips on the marina map">
@@ -182,6 +185,24 @@ export default function SlipBoard({ slips, mapUrl, allowSample = false }: { slip
             if (!lab) return null;
             return <span key={s.id} className="mr-polylabel" data-dim={dim(s)} style={{ left: `${c[0]}%`, top: `${c[1]}%`, fontSize: lab.size, lineHeight: 1, whiteSpace: "nowrap", transform: `translate(-50%,-50%) rotate(${lab.angle}deg)` }}>{lab.text}</span>;
           })}
+          {!touched && !picked && (() => {
+            const first = slips.find((x) => x.map && eff(x) === "available" && (type === "all" || x.slip_type === type));
+            const c = first ? centroid(first.map!.points) : null;
+            return (
+              <>
+                <div className="mr-map-hint" aria-hidden>
+                  <span className="mr-map-hint-dot" />
+                  <b>Interactive map</b> · Tap any slip for size, power &amp; prices
+                </div>
+                {c && (
+                  <span className="mr-map-tap" style={{ left: `${c[0]}%`, top: `${c[1]}%` }} aria-hidden>
+                    <span className="mr-map-tap-ring" />
+                    <svg viewBox="0 0 24 24" width="30" height="30" className="mr-map-tap-hand"><path fill="#fff" stroke="#0f2540" strokeWidth="1.3" strokeLinejoin="round" d="M9 11V4.8a1.6 1.6 0 0 1 3.2 0V10l.6-.1V8.3a1.6 1.6 0 0 1 3.2 0v1.9l.5-.1a1.6 1.6 0 0 1 3 .8v4.6c0 3.6-2.6 6.5-6.2 6.5h-1.1c-1.9 0-3.6-.9-4.7-2.5l-3-4.4a1.6 1.6 0 0 1 2.5-2l2 1.9Z"/></svg>
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {(() => {
             const h = hover && hover !== picked ? slips.find((x) => x.id === hover) : null;
             if (!h || !h.map) return null;
