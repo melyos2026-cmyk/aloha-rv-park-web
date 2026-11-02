@@ -702,7 +702,18 @@ Never do this for a routine question or a non-urgent issue. Don't ever mention t
         issueType: "park_emergency",
         message: emergencyMatch[1],
         source: "mely_chat",
+        parkBell: false, // its own, louder bell row below
       });
+      // Nov 2 (per Mely): the admins' bell + a loud phone alert on the installed app (the push goes
+      // out from the notifications trigger; event "emergency_report"). Capped like the emails.
+      if (!(await tooManyForKey("mely-emergency-bell", company.id, 5))) {
+        await supabaseAdmin.from("resident_update_notifications").insert({
+          company_id: company.id,
+          resident_name: "🚨 Emergency — website chat",
+          update_type: "park_emergency",
+          message: String(emergencyMatch[1]).slice(0, 500),
+        }).then(() => null, () => null);
+      }
 
       // Oct 29 (security review): anyone can make the chat flag an "emergency" — staff emails for
       // one park are capped at 5 per hour (the System Health entry above is still recorded).

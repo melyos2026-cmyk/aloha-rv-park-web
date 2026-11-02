@@ -1019,6 +1019,7 @@ async function handleWebhook(req: Request) {
         companyId,
         issueType: "payment_failed",
         message: `Checkout session expired without completing — ${email}, $${amount} (${session.metadata?.type || "unknown charge type"}).`,
+        parkBell: false, // Nov 2: someone opened a payment page and left — logged, but not a bell alert
         source: "stripe_webhook",
       });
     }
