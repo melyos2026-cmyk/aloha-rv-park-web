@@ -43,6 +43,17 @@ export function proxy(req: NextRequest) {
       return NextResponse.next();
     }
     if (sitePasswordOk(req)) return NextResponse.next();
+    // Nov 8 (Twilio campaign review): only a real page visit gets the browser password prompt.
+    // Background requests (Next's link prefetch / RSC, images, scripts) get a plain 401 without
+    // WWW-Authenticate — otherwise opening /privacy, /terms or /text-messages pops the prompt
+    // because those pages link to (and prefetch) password-protected pages.
+    const dest = (req.headers.get("sec-fetch-dest") || "").toLowerCase();
+    const isBackground =
+      req.headers.has("rsc") || req.headers.has("next-router-prefetch") || req.nextUrl.searchParams.has("_rsc") ||
+      (dest !== "" && dest !== "document" && dest !== "iframe");
+    if (isBackground) {
+      return new NextResponse("Authentication required.", { status: 401, headers: { "Cache-Control": "no-store" } });
+    }
     return new NextResponse("Authentication required.", {
       status: 401,
       headers: { "WWW-Authenticate": 'Basic realm="Aloha RV Park"', "Cache-Control": "no-store" },
