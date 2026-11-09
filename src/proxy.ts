@@ -36,6 +36,12 @@ export function proxy(req: NextRequest) {
     if (!SITE_USER || !SITE_PASS) return NextResponse.next();
     const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
     if (PUBLIC_HOSTS.has(host) || UNGATED_PAGES.has(path)) return NextResponse.next();
+    // Nov 8 (Twilio campaign review): the ungated legal pages load the logo / favicon / manifest
+    // and Next's own files — those are public assets, so they must not ask for the password
+    // either, or the browser shows "Authorization required" on /privacy and /terms.
+    if (path.startsWith("/_next/") || /\.(png|jpe?g|gif|svg|webp|ico|css|js|json|txt|xml|webmanifest|woff2?|ttf|map)$/i.test(path)) {
+      return NextResponse.next();
+    }
     if (sitePasswordOk(req)) return NextResponse.next();
     return new NextResponse("Authentication required.", {
       status: 401,
