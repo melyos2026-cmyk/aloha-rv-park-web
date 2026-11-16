@@ -38,6 +38,7 @@ export default function RealEstatePage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const { company, loading: companyLoading } = useCompany();
+  const parkName = company?.company_name || "Aloha RV Park";
   const contactEmail = company?.contact_email || "info@aloharvparkfl.com";
   const contactPhone = company?.contact_phone || "(689) 252-0567";
   const phoneHref = `tel:${contactPhone.replace(/[^\d]/g, "")}`;
@@ -71,7 +72,7 @@ export default function RealEstatePage() {
         <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--red)", fontWeight: 600, marginBottom: 12 }}>Properties</div>
         <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16 }}>Real Estate</h1>
         <p style={{ fontSize: 16, color: "var(--black)", maxWidth: 500, margin: "0 auto" }}>
-          Mini homes, fixed RVs, and more. Find your perfect spot at Aloha RV Park.
+          Mini homes, fixed RVs, and more. Find your perfect spot at {parkName}.
         </p>
       </section>
 

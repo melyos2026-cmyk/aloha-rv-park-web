@@ -5,8 +5,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { isInvoicePayableNow, invoicePayableFrom, isPayAheadInvoice } from "@/lib/invoicePayable";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
 import { usePortalLang } from "@/lib/portalI18n";
+import { useCompany } from "@/lib/CompanyContext";
 
-const PARK_NAME = "Aloha RV Park";
 
 type InvoiceInfo = {
   lotName: string | null;
@@ -25,6 +25,8 @@ function PayInvoiceContent() {
   const searchParams = useSearchParams();
   const token = params?.token as string;
   const paidStatus = searchParams.get("paid");
+  const { company } = useCompany();
+  const PARK_NAME = company?.company_name || "Aloha RV Park";
 
   const [info, setInfo] = useState<InvoiceInfo | null>(null);
   const [loading, setLoading] = useState(true);

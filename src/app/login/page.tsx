@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import PortalLangSwitcher from "@/components/PortalLangSwitcher";
 import { usePortalLang } from "@/lib/portalI18n";
+import { useCompany } from "@/lib/CompanyContext";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "forgotPassword">("login");
@@ -13,6 +14,8 @@ export default function LoginPage() {
   const [payUrl, setPayUrl] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState("");
   const router = useRouter();
+  const { company } = useCompany();
+  const officePhone = company?.contact_phone || "(689) 252-0567";
   // Oct 29 (per the owner): login in English / Spanish / Portuguese — the choice carries into the portal.
   const { t, err } = usePortalLang();
   const [resetOk, setResetOk] = useState(false);
@@ -156,7 +159,7 @@ export default function LoginPage() {
                 </button>
 
                 <p style={{ fontSize: 12, color: "var(--gray)", textAlign: "center", marginTop: 16 }}>
-                  {t("Don't have an account? Contact the office at")} <a href="tel:6892520567" style={{ color: "var(--black)", fontWeight: 600 }}>(689) 252-0567</a>
+                  {t("Don't have an account? Contact the office at")} <a href={`tel:${officePhone.replace(/[^\d]/g, "")}`} style={{ color: "var(--black)", fontWeight: 600 }}>{officePhone}</a>
                 </p>
               </>
             ) : (

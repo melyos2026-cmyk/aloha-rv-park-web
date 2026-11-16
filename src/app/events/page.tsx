@@ -5,6 +5,7 @@ import PdfCalendarViewer from "@/components/PdfCalendarViewer";
 
 export default function EventsPage() {
   const { company } = useCompany();
+  const parkName = company?.company_name || "Aloha RV Park";
   const contactEmail = company?.contact_email || "info@aloharvparkfl.com";
   const contactPhone = company?.contact_phone || "(689) 252-0567";
   const phoneHref = `tel:${contactPhone.replace(/[^\d]/g, "")}`;
@@ -28,7 +29,7 @@ export default function EventsPage() {
         <div style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--black)", fontWeight: 600, marginBottom: 12 }}>{recHallOn !== false ? "Rec Hall" : "Community"}</div>
         <h1 style={{ fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, marginBottom: 16 }}>Events & Activities</h1>
         <p style={{ fontSize: 16, color: "#4b5563", maxWidth: 500, margin: "0 auto" }}>
-          Stay connected with everything happening at Aloha RV Park.
+          Stay connected with everything happening at {parkName}.
         </p>
       </section>
 
@@ -81,7 +82,7 @@ export default function EventsPage() {
         <div style={{ maxWidth: 800, margin: "0 auto", textAlign: "center" }}>
           <h2 style={{ fontSize: "clamp(28px, 4vw, 42px)", fontWeight: 900, marginBottom: 16 }}>Rec Hall</h2>
           <p style={{ fontSize: 16, color: "#4b5563", lineHeight: 1.8, marginBottom: 16 }}>
-            Our Recreation Hall is the heart of the community at Aloha RV Park. 
+            Our Recreation Hall is the heart of the community at {parkName}. 
             Available for resident events, activities, and community gatherings.
           </p>
           <p style={{ fontSize: 15, color: "#4b5563", lineHeight: 1.8, marginBottom: 32, fontWeight: 600 }}>
