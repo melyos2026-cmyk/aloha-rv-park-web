@@ -159,6 +159,7 @@ export default function RvHome() {
       {parkFull && <RvWaitlist parkName={company?.company_name} limits={parkLimits} />}
 
       {/* Map Section */}
+      {!isSunsetDemo && (<>
       {/* Oct 29 (per Mely): compact header — same information, less space. */}
       <section id="map" style={{ padding: "44px 24px 80px", background: "var(--white)" }}>
         <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -186,50 +187,37 @@ export default function RvHome() {
               <iframe src={mapSrc} style={{ width: "100%", height: "100%", border: "none" }} title="Lot Map" scrolling="no" />
             </div>
           )}
-          {/* Nov 21 (per Mely — "se ve perdido en el frame"): Sunset demo = the whole map on one screen, sized to the
-              map itself, with a booking guide beside it so the section reads full (phones: stacked, full width) */}
-          {isSunsetDemo && (
-            <div className="sunset-map-wrap">
-              <style>{`
-                .sunset-map-wrap{display:flex;flex-direction:column;gap:20px;align-items:center;margin-top:18px}
-                .sunset-live-map{width:100%;height:min(88vh,1100px);overflow:hidden;border-radius:16px;box-shadow:0 10px 30px rgba(15,37,64,.15);border:1px solid #e2e8f0;background:#fff}
-                .sunset-side{width:100%;max-width:520px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px;box-shadow:0 6px 20px rgba(15,37,64,.08)}
-                @media (min-width:900px){
-                  .sunset-map-wrap{flex-direction:row;justify-content:center;align-items:flex-start}
-                  .sunset-live-map{height:max(560px,calc(100vh - 200px));width:calc((max(560px,100vh - 200px) - 60px) * 0.612 + 2px);flex-shrink:0}
-                  .sunset-side{width:340px;position:sticky;top:200px}
-                }
-                .sunset-side h3{margin:0 0 6px;font-size:22px;font-weight:900}
-                .sunset-side ol{margin:14px 0 0;padding-left:20px;line-height:1.7;font-size:14.5px;color:#334155}
-                .sunset-legend{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:16px 0;font-size:13.5px;color:#334155}
-                .sunset-legend span{display:flex;align-items:center;gap:8px}
-                .sunset-legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
-                .sunset-btn{display:block;text-align:center;padding:12px 16px;border-radius:10px;font-weight:800;font-size:14.5px;text-decoration:none;margin-top:10px}
-              `}</style>
-              <div className="sunset-live-map">
-                <iframe src={mapSrc} style={{ width: "100%", height: "100%", border: "none" }} title="Lot Map" />
-              </div>
-              <aside className="sunset-side">
-                <h3>Book your site online</h3>
-                <p style={{ margin: 0, color: "#64748b", fontSize: 14.5 }}>Pick a lot on the map, choose your dates and pay — it takes a minute.</p>
-                <ol>
-                  <li>Tap a <b>green</b> lot (free today)</li>
-                  <li>Check the photos, size and price</li>
-                  <li>Pick your dates and pay by card</li>
-                </ol>
-                <div className="sunset-legend">
-                  <span><i style={{ background: "#22c55e" }} />Available</span>
-                  <span><i style={{ background: "#ef4444" }} />Occupied</span>
-                  <span><i style={{ background: "#eab308" }} />Reserved</span>
-                  <span><i style={{ background: "#8b5cf6" }} />Home for rent</span>
-                </div>
-                <Link href="/apply" className="sunset-btn" style={{ background: "#0f2540", color: "#fff" }}>Monthly or resident? Apply online →</Link>
-                {company?.contact_phone && <a href={`tel:${company.contact_phone.replace(/[^\d+]/g, "")}`} className="sunset-btn" style={{ border: "2px solid #0f2540", color: "#0f2540" }}>📞 Call {company.contact_phone}</a>}
-              </aside>
-            </div>
-          )}
         </div>
       </section>
+      </>)}
+
+      {/* Nov 21 (per Mely — "quiero que el mapa sea el corazón de la página"): Sunset demo = a full-width map
+          stage. The whole map sits big in the middle (one screen tall, sized to the map), over a soft, blurred
+          copy of the same aerial photo that fills the width, so the map reads as the centerpiece of the page. */}
+      {isSunsetDemo && (
+        <section id="map" className="sunset-stage">
+          <style>{`
+            .sunset-stage{position:relative;overflow:hidden;padding:34px 16px 44px;background:#0b1f33}
+            .sunset-stage:before{content:"";position:absolute;inset:-40px;background:url(https://www.melyos.io/explore/live/sunset/map.jpg) center/cover no-repeat;filter:blur(18px) saturate(1.1);opacity:.55;transform:scale(1.1)}
+            .sunset-stage:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,31,51,.55),rgba(11,31,51,.25) 40%,rgba(11,31,51,.6))}
+            .sunset-stage>*{position:relative;z-index:1}
+            .sunset-title{text-align:center;color:#fff;margin-bottom:18px}
+            .sunset-title small{display:block;font-size:12px;letter-spacing:.22em;text-transform:uppercase;font-weight:700;color:#7dd3fc;margin-bottom:6px}
+            .sunset-title h2{font-size:clamp(28px,3.4vw,42px);font-weight:900;margin:0;color:#fff}
+            .sunset-title p{margin:8px auto 0;max-width:620px;font-size:15px;color:#e2e8f0}
+            .sunset-frame{margin:0 auto;width:100%;height:min(88vh,1100px);border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);border:3px solid rgba(255,255,255,.85)}
+            @media (min-width:700px){.sunset-frame{height:max(600px,calc(100vh - 150px));width:min(100%,calc((max(600px,100vh - 150px) - 60px) * 0.612 + 8px))}}
+          `}</style>
+          <div className="sunset-title">
+            <small>{parkFull ? "Fully booked" : "Live lot map"}</small>
+            <h2>Pick your site</h2>
+            <p>Tap any green lot to see photos, size and price — then pick your dates and book online.</p>
+          </div>
+          <div className="sunset-frame">
+            <iframe src={mapSrc} style={{ width: "100%", height: "100%", border: "none" }} title="Lot Map" />
+          </div>
+        </section>
+      )}
 
       {/* Location */}
       <section style={{ padding: "80px 24px", background: "var(--offwhite)" }}>
