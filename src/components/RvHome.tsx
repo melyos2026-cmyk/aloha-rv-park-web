@@ -181,17 +181,51 @@ export default function RvHome() {
               <p style={{ fontSize: 14, color: "var(--gray)", marginTop: 12 }}>Map coming soon — contact the office for lot availability.</p>
             )}
           </div>
-          {company?.park_id && (
-            <div className={isSunsetDemo ? "sunset-live-map" : undefined} style={isSunsetDemo ? { overflow: "hidden", margin: "0 auto", borderRadius: 16, boxShadow: "0 10px 30px rgba(15,37,64,.15)", border: "1px solid #e2e8f0" } : { overflow: "hidden", height: mapHeight }}>
-              {/* Nov 21 (per Mely — "se ve perdido en el frame"): the frame is as wide as the map itself at that height
-                  (no grey side bands); on phones it's full width */}
-              {isSunsetDemo && <style>{`.sunset-live-map{height:min(90vh,1150px);width:100%}@media (min-width:700px){.sunset-live-map{width:min(100%,calc((min(90vh,1150px) - 60px) * 0.612 + 2px))}}`}</style>}
-              <iframe
-                src={mapSrc}
-                style={{ width: "100%", height: "100%", border: "none" }}
-                title="Lot Map"
-                scrolling={isSunsetDemo ? "auto" : "no"}
-              />
+          {company?.park_id && !isSunsetDemo && (
+            <div style={{ overflow: "hidden", height: mapHeight }}>
+              <iframe src={mapSrc} style={{ width: "100%", height: "100%", border: "none" }} title="Lot Map" scrolling="no" />
+            </div>
+          )}
+          {/* Nov 21 (per Mely — "se ve perdido en el frame"): Sunset demo = the whole map on one screen, sized to the
+              map itself, with a booking guide beside it so the section reads full (phones: stacked, full width) */}
+          {isSunsetDemo && (
+            <div className="sunset-map-wrap">
+              <style>{`
+                .sunset-map-wrap{display:flex;flex-direction:column;gap:20px;align-items:center;margin-top:18px}
+                .sunset-live-map{width:100%;height:min(88vh,1100px);overflow:hidden;border-radius:16px;box-shadow:0 10px 30px rgba(15,37,64,.15);border:1px solid #e2e8f0;background:#fff}
+                .sunset-side{width:100%;max-width:520px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:22px;box-shadow:0 6px 20px rgba(15,37,64,.08)}
+                @media (min-width:900px){
+                  .sunset-map-wrap{flex-direction:row;justify-content:center;align-items:flex-start}
+                  .sunset-live-map{height:max(560px,calc(100vh - 200px));width:calc((max(560px,100vh - 200px) - 60px) * 0.612 + 2px);flex-shrink:0}
+                  .sunset-side{width:340px;position:sticky;top:200px}
+                }
+                .sunset-side h3{margin:0 0 6px;font-size:22px;font-weight:900}
+                .sunset-side ol{margin:14px 0 0;padding-left:20px;line-height:1.7;font-size:14.5px;color:#334155}
+                .sunset-legend{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:16px 0;font-size:13.5px;color:#334155}
+                .sunset-legend span{display:flex;align-items:center;gap:8px}
+                .sunset-legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+                .sunset-btn{display:block;text-align:center;padding:12px 16px;border-radius:10px;font-weight:800;font-size:14.5px;text-decoration:none;margin-top:10px}
+              `}</style>
+              <div className="sunset-live-map">
+                <iframe src={mapSrc} style={{ width: "100%", height: "100%", border: "none" }} title="Lot Map" />
+              </div>
+              <aside className="sunset-side">
+                <h3>Book your site online</h3>
+                <p style={{ margin: 0, color: "#64748b", fontSize: 14.5 }}>Pick a lot on the map, choose your dates and pay — it takes a minute.</p>
+                <ol>
+                  <li>Tap a <b>green</b> lot (free today)</li>
+                  <li>Check the photos, size and price</li>
+                  <li>Pick your dates and pay by card</li>
+                </ol>
+                <div className="sunset-legend">
+                  <span><i style={{ background: "#22c55e" }} />Available</span>
+                  <span><i style={{ background: "#ef4444" }} />Occupied</span>
+                  <span><i style={{ background: "#eab308" }} />Reserved</span>
+                  <span><i style={{ background: "#8b5cf6" }} />Home for rent</span>
+                </div>
+                <Link href="/apply" className="sunset-btn" style={{ background: "#0f2540", color: "#fff" }}>Monthly or resident? Apply online →</Link>
+                {company?.contact_phone && <a href={`tel:${company.contact_phone.replace(/[^\d+]/g, "")}`} className="sunset-btn" style={{ border: "2px solid #0f2540", color: "#0f2540" }}>📞 Call {company.contact_phone}</a>}
+              </aside>
             </div>
           )}
         </div>
