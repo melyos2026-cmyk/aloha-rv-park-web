@@ -182,7 +182,10 @@ export default function RvHome() {
             )}
           </div>
           {company?.park_id && (
-            <div style={{ overflow: "hidden", height: isSunsetDemo ? "min(92vh, 1100px)" : mapHeight, borderRadius: isSunsetDemo ? 16 : 0 }}>
+            <div className={isSunsetDemo ? "sunset-live-map" : undefined} style={isSunsetDemo ? { overflow: "hidden", margin: "0 auto", borderRadius: 16, boxShadow: "0 10px 30px rgba(15,37,64,.15)", border: "1px solid #e2e8f0" } : { overflow: "hidden", height: mapHeight }}>
+              {/* Nov 21 (per Mely — "se ve perdido en el frame"): the frame is as wide as the map itself at that height
+                  (no grey side bands); on phones it's full width */}
+              {isSunsetDemo && <style>{`.sunset-live-map{height:min(90vh,1150px);width:100%}@media (min-width:700px){.sunset-live-map{width:min(100%,calc((min(90vh,1150px) - 60px) * 0.612 + 2px))}}`}</style>}
               <iframe
                 src={mapSrc}
                 style={{ width: "100%", height: "100%", border: "none" }}
