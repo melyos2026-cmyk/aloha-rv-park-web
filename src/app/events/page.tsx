@@ -46,8 +46,21 @@ export default function EventsPage() {
             {company?.events_calendar_pdf_url ? (
               <div style={{ marginBottom: 24 }}>
                 <div style={{ border: "1.5px solid var(--border)", borderRadius: 8, padding: 16, background: "var(--cream)" }}>
-                  <PdfCalendarViewer pdfUrl={company.events_calendar_pdf_url} />
+                  {/* Nov 21 (per Mely): an image calendar (PNG/JPG) shows big, like the marina demo; a PDF uses the viewer */}
+                  {/\.pdf($|\?)/i.test(company.events_calendar_pdf_url)
+                    ? <PdfCalendarViewer pdfUrl={company.events_calendar_pdf_url} />
+                    : <a href={company.events_calendar_pdf_url} target="_blank" rel="noopener noreferrer"><img src={company.events_calendar_pdf_url} alt={`${parkName} events calendar`} style={{ display: "block", width: "100%", height: "auto", borderRadius: 6 }} /></a>}
                 </div>
+                {!/\.pdf($|\?)/i.test(company.events_calendar_pdf_url) && (
+                  <button type="button" onClick={() => {
+                    const u = company.events_calendar_pdf_url as string, w = window.open("", "_blank");
+                    if (!w) return;
+                    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Events calendar</title><style>@page{size:landscape;margin:10mm}html,body{margin:0;height:100%}body{display:flex;align-items:center;justify-content:center}img{max-width:100%;max-height:100vh;object-fit:contain}</style></head><body><img src="${u.replace(/"/g, "&quot;")}" onload="setTimeout(function(){window.print()},150)" alt="Events calendar"/></body></html>`);
+                    w.document.close();
+                  }} style={{ display: "inline-block", marginTop: 16, marginRight: 10, background: "var(--white)", color: "var(--black)", padding: "12px 24px", borderRadius: 6, fontWeight: 700, fontSize: 14, border: "2px solid var(--black)", cursor: "pointer" }}>
+                    🖨️ Print calendar
+                  </button>
+                )}
                 <a
                   href={company.events_calendar_pdf_url}
                   target="_blank"
@@ -59,7 +72,7 @@ export default function EventsPage() {
                     textDecoration: "none"
                   }}
                 >
-                  📄 Download PDF
+                  {/\.pdf($|\?)/i.test(company.events_calendar_pdf_url) ? "📄 Download PDF" : "⬇️ Download"}
                 </a>
               </div>
             ) : (
