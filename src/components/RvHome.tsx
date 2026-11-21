@@ -20,7 +20,11 @@ export default function RvHome() {
   // Nov 21 (per Mely): the Sunset Ridge demo shows the full-featured live map (filters, lot cards,
   // booking, amenities — the 21 Palms design); every other park keeps its own map.
   const isSunsetDemo = company?.park_id === "sunset-ridge";
-  const mapSrc = isSunsetDemo ? "https://www.melyos.io/explore/live/sunset/index.html"
+  // Nov 21 (per Mely — "el view es de desktop, que se vea el mapa bien, no modo teléfono"): computers get the
+  // landscape map (fills the width); phones keep the tall one.
+  const [wideMap, setWideMap] = useState(true);
+  useEffect(() => { const f = () => setWideMap(window.innerWidth >= 900); f(); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
+  const mapSrc = isSunsetDemo ? `https://www.melyos.io/explore/live/sunset/${wideMap ? "wide" : "index"}.html`
     : `https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company?.park_id || "")}`;
   // Oct 28 (per Mely): "Join the waitlist" appears only when the park is full (storage spaces don't count).
   const [parkFull, setParkFull] = useState(false);
@@ -206,7 +210,7 @@ export default function RvHome() {
             .sunset-title h2{font-size:clamp(28px,3.4vw,42px);font-weight:900;margin:0;color:#fff}
             .sunset-title p{margin:8px auto 0;max-width:620px;font-size:15px;color:#e2e8f0}
             .sunset-frame{margin:0 auto;width:100%;height:min(88vh,1100px);border-radius:18px;overflow:hidden;background:#fff;box-shadow:0 24px 60px rgba(0,0,0,.45);border:3px solid rgba(255,255,255,.85)}
-            @media (min-width:700px){.sunset-frame{height:max(600px,calc(100vh - 150px));width:min(100%,calc((max(600px,100vh - 150px) - 60px) * 0.612 + 8px))}}
+            @media (min-width:900px){.sunset-frame{max-width:1400px;height:calc(min(100vw - 32px, 1400px) * 0.6116 + 118px)}}
           `}</style>
           <div className="sunset-title">
             <small>{parkFull ? "Fully booked" : "Live lot map"}</small>
