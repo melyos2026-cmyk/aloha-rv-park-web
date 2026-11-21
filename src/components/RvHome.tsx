@@ -17,6 +17,11 @@ export default function RvHome() {
   // mechanism. 1300 is just the fallback shown before that first report
   // arrives.
   const [mapHeight, setMapHeight] = useState(1300);
+  // Nov 21 (per Mely): the Sunset Ridge demo shows the full-featured live map (filters, lot cards,
+  // booking, amenities — the 21 Palms design); every other park keeps its own map.
+  const isSunsetDemo = company?.park_id === "sunset-ridge";
+  const mapSrc = isSunsetDemo ? "https://www.melyos.io/explore/live/sunset/index.html"
+    : `https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company?.park_id || "")}`;
   // Oct 28 (per Mely): "Join the waitlist" appears only when the park is full (storage spaces don't count).
   const [parkFull, setParkFull] = useState(false);
   const [parkLimits, setParkLimits] = useState<ParkLimits | null>(null);
@@ -164,7 +169,7 @@ export default function RvHome() {
               <p style={{ fontSize: 13.5, color: "var(--gray)", margin: "8px auto 0", maxWidth: 640, lineHeight: 1.55 }}>
                 Click any green or orange lot to check availability and book your spot. For the clearest view of every lot, use a computer or{" "}
                 <a
-                  href={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
+                  href={mapSrc}
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ color: "var(--red-dark)", fontWeight: 600, textDecoration: "underline", textUnderlineOffset: 3, whiteSpace: "nowrap" }}
@@ -177,12 +182,12 @@ export default function RvHome() {
             )}
           </div>
           {company?.park_id && (
-            <div style={{ overflow: "hidden", height: mapHeight }}>
+            <div style={{ overflow: "hidden", height: isSunsetDemo ? "min(92vh, 1100px)" : mapHeight, borderRadius: isSunsetDemo ? 16 : 0 }}>
               <iframe
-                src={`https://aloha-rv-park-lilac.vercel.app/?park_id=${encodeURIComponent(company.park_id)}`}
+                src={mapSrc}
                 style={{ width: "100%", height: "100%", border: "none" }}
                 title="Lot Map"
-                scrolling="no"
+                scrolling={isSunsetDemo ? "auto" : "no"}
               />
             </div>
           )}
