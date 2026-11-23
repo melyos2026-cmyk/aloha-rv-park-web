@@ -28,6 +28,15 @@ export default function PropanePage() {
 
   const parkId = company?.park_id || "aloha";
 
+  // Nov 22 (per Mely): the part of the Online Service Fee the buyer pays (Fee Settings split).
+  const [feeRatio, setFeeRatio] = useState(1);
+  useEffect(() => {
+    if (!company?.id) return;
+    fetch(`/api/get-processing-fee-settings?company_id=${company.id}`)
+      .then((r) => r.json())
+      .then((j) => setFeeRatio(typeof j.alwaysCustomerFeeRatio === "number" ? j.alwaysCustomerFeeRatio : 1))
+      .catch(() => setFeeRatio(1));
+  }, [company?.id]);
   useEffect(() => {
     fetch(`/api/get-propane-pricing?park_id=${parkId}`)
       .then((res) => res.json())
@@ -86,7 +95,7 @@ export default function PropanePage() {
   const taxIncludedInPrice = tax.enabled && selected?.tax_mode === "included";
   const salesTax = taxApplies ? subtotal * (tax.ratePercent / 100) : 0;
   // Oct 7: must match src/lib/platformFee.ts (3.5% or $2.25 minimum, whichever is greater) — the server charges that amount, this is only the preview shown before checkout.
-  const processingFee = subtotal > 0 ? Math.max(subtotal * 0.035, 2.25) : 0;
+  const processingFee = subtotal > 0 ? (() => { const f = Math.round(Math.max(subtotal * 0.035, 2.25) * 100) / 100; return Math.min(Math.round(f * feeRatio * 100) / 100, f); })() : 0;
   const total = subtotal + salesTax + processingFee;
 
   async function handleCheckout() {
@@ -256,7 +265,7 @@ export default function PropanePage() {
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--gray)" }}>
-            <span>Card Processing Fee</span>
+            <span title="Covers secure online payment processing and the MelyOS online booking & account platform.">Online Service Fee</span>
             <span>${processingFee.toFixed(2)}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, fontSize: 16, fontWeight: 700 }}>

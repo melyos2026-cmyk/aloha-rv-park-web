@@ -802,11 +802,13 @@ export default function LeaseApplicationForm({
   // processing surcharge the actual Stripe checkout now applies, instead
   // of it only appearing as a surprise on the payment page.
   const [passProcessingFeeToResident, setPassProcessingFeeToResident] = useState(true);
+  // Nov 22 (per Mely): the part of the Online Service Fee the applicant pays (Fee Settings split).
+  const [customerFeeRatio, setCustomerFeeRatio] = useState(1);
   useEffect(() => {
     if (!company.id) return;
     fetch(`/api/get-processing-fee-settings?company_id=${company.id}`)
       .then((res) => res.json())
-      .then((json) => setPassProcessingFeeToResident(json.passProcessingFeeToResident !== false))
+      .then((json) => { setPassProcessingFeeToResident(json.passProcessingFeeToResident !== false); setCustomerFeeRatio(typeof json.customerFeeRatio === "number" ? json.customerFeeRatio : 1); })
       .catch(() => setPassProcessingFeeToResident(true));
   }, [company.id]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
@@ -1124,8 +1126,9 @@ export default function LeaseApplicationForm({
   // everywhere else money gets charged (propane, rent, RTO deposit —
   // src/lib/platformFee.ts) — was never shown here before, meaning it
   // only ever appeared as a surprise on the actual Stripe payment page.
+  // Same rounding as the server (src/lib/platformFee.ts splitServiceFee).
   const cardProcessingFeeForModal = passProcessingFeeToResident
-    ? calculateProcessingFee(applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal)
+    ? (() => { const f = Math.round(calculateProcessingFee(applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal) * 100) / 100; return Math.min(Math.round(f * Math.min(Math.max(customerFeeRatio, 0), 1) * 100) / 100, f); })()
     : 0;
   const totalChargeForModal =
     applicationFeeTotalForModal + stayAmountForModal + depositAmountForModal + cardProcessingFeeForModal;
@@ -4215,7 +4218,7 @@ be sent to me electronically.
                     de stripe"): this "Before You Submit" screen is Aloha's
                     own page, meant to stay simple — just what the stay
                     actually costs (Rent + Deposit). The full breakdown
-                    including Card Processing Fee and the Application Fee
+                    including the Online Service Fee and the Application Fee
                     itself already shows on Stripe's own hosted checkout
                     page right after, which lists all four as separate
                     line items — removed the duplicate/early display here
@@ -4302,7 +4305,7 @@ be sent to me electronically.
                       marginBottom: 4,
                     }}
                   >
-                    <span>Card Processing Fee</span>
+                    <span title="Covers secure online payment processing and the MelyOS online booking & account platform.">Online Service Fee</span>
                     <strong>${cardProcessingFeeForModal.toFixed(2)}</strong>
                   </div>
                 )}
@@ -4349,7 +4352,7 @@ be sent to me electronically.
                       lineHeight: 1.4,
                     }}
                   >
-                    The application fee and card processing fee will show as
+                    The application fee and Online Service Fee will show as
                     separate line items on the next screen, when you pay.
                   </div>
                 )}

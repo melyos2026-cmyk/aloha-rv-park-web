@@ -2,7 +2,7 @@ import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError, returnedFeeRuleToDisclose } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, customerFeeRatio, splitServiceFee, ONLINE_SERVICE_FEE_LABEL, ONLINE_SERVICE_FEE_DESCRIPTION, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError, returnedFeeRuleToDisclose } from "@/lib/platformFee";
 import { achAllowed } from "@/lib/marina/checkout";
 import { isInvoicePayableNow, isPayAheadInvoice } from "@/lib/invoicePayable";
 import { invoicesPreparing, moveInInvoiceIds } from "@/lib/invoiceRentReady";
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
     // MelyOS keeps only the processing fee itself.
     const { data: feeSettings } = await supabase
       .from("company_fee_settings")
-      .select("pass_processing_fee_to_resident, ach_enabled, ach_min_amount")
+      .select("*")
       .eq("company_id", resident?.company_id || "")
       .maybeSingle();
 
@@ -108,10 +108,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
     const processingFee = ach
       ? Math.round(calculateAchFee(totalAmount) * 100) / 100
       : calculateProcessingFee(totalAmount);
+    // Nov 22 (per Mely): the park's split of the Online Service Fee (Fee Settings).
+    const feeSplit = splitServiceFee(processingFee, customerFeeRatio(feeSettings));
+    const customerFee = feeSplit.customer;
 
     // Aug 5 (per Mely): same company-wide sales tax settings used for
     // propane/reservations (rate + included/excluded/blank mode, varies
@@ -134,7 +136,7 @@ export async function POST(req: Request) {
     // Oct 29 (live-money audit): whole cents, so the tax line the webhook adds matches what Stripe charged.
     const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
 
-    const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? processingFee : 0)) * 100) / 100;
+    const chargeAmount = Math.round((totalAmount + taxAmount + customerFee) * 100) / 100;
 
     // Oct 29 (live-money audit — Low): the park's own name on the Stripe page (was "Aloha RV Park" for every park).
     const { data: companyRow } = await supabase.from("companies").select("company_name").eq("id", resident?.company_id || "").maybeSingle();
@@ -168,13 +170,13 @@ export async function POST(req: Request) {
       });
     }
 
-    if (passFeeToResident) {
+    if (customerFee > 0) {
       lineItems.push({
         quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: Math.round(processingFee * 100),
-          product_data: { name: ach ? "Bank Transfer Fee" : "Card Processing Fee" },
+          unit_amount: Math.round(customerFee * 100),
+          product_data: { name: ach ? `${ONLINE_SERVICE_FEE_LABEL} (bank payment)` : ONLINE_SERVICE_FEE_LABEL, description: ONLINE_SERVICE_FEE_DESCRIPTION },
         },
       });
     }
@@ -184,7 +186,7 @@ export async function POST(req: Request) {
     // from the resident's payment if they're covering it, or otherwise
     // out of the park's own invoice amount.
     // Oct 28 (per Mely): the returned bank payment fee goes to MelyOS, not the park (never below $0).
-    const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee) - returnedAchFees, 0);
+    const alohaShare = Math.max(totalAmount + taxAmount + -feeSplit.park - returnedAchFees, 0);
     const connectSplit = resident?.company_id
       ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
       : null;
@@ -226,7 +228,7 @@ export async function POST(req: Request) {
         // resident_invoice_items once payment is confirmed — otherwise
         // the fee/tax only ever existed as ephemeral Stripe line items,
         // never reflected on the invoice record itself.
-        processing_fee_charged: passFeeToResident ? String(processingFee) : "0",
+        processing_fee_charged: String(customerFee),
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
         // Oct 28: the webhook marks the invoices "Processing" until the bank confirms.

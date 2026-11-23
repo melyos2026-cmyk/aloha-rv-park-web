@@ -2,7 +2,7 @@ import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, loadReturnedFeeSettings, returnedFeePhrase, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, saveAutopayAuthorizationRule } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, customerFeeRatio, splitServiceFee, ONLINE_SERVICE_FEE_LABEL, ONLINE_SERVICE_FEE_DESCRIPTION, resolveConnectSplit, loadReturnedFeeSettings, returnedFeePhrase, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, saveAutopayAuthorizationRule } from "@/lib/platformFee";
 import type { MarinaCompany } from "./company";
 import { isDemoCompany } from "./host";
 import { round2, todayET } from "./data";
@@ -131,13 +131,13 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
   const total = round2(rows.reduce((a, r) => a + r.balance, 0));
   const ach = m.autopay_method === "ach";
   const demo = isDemoCompany(company);
-  const { data: fs } = await supabaseAdmin.from("company_fee_settings").select("pass_processing_fee_to_resident, ach_enabled").eq("company_id", company.id).maybeSingle();
-  const passFee = fs?.pass_processing_fee_to_resident !== false;
+  const { data: fs } = await supabaseAdmin.from("company_fee_settings").select("*").eq("company_id", company.id).maybeSingle();
   const fee = demo ? 0 : round2(ach ? calculateAchFee(total) : calculateProcessingFee(total));
-  const charge = round2(total + (passFee ? fee : 0));
+  const sp = splitServiceFee(fee, customerFeeRatio(fs)); // Nov 22 (per Mely): Fee Settings split
+  const charge = round2(total + sp.customer);
   // claim the day first (one attempt per boater per day)
   const { data: att, error: attErr } = await supabaseAdmin.from("marina_autopay_attempts").insert({
-    company_id: company.id, member_id: m.id, run_date: today, invoice_ids: rows.map((r) => r.id), amount: total, fee: passFee ? fee : 0, method: demo ? "demo" : ach ? "ach" : "card", status: "processing",
+    company_id: company.id, member_id: m.id, run_date: today, invoice_ids: rows.map((r) => r.id), amount: total, fee: sp.customer, method: demo ? "demo" : ach ? "ach" : "card", status: "processing",
   }).select("id").single();
   if (attErr || !att) return { status: "skipped" };
   const finish = (patch: Record<string, unknown>) => supabaseAdmin.from("marina_autopay_attempts").update(patch).eq("id", att.id);
@@ -162,7 +162,7 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
   if (!stripe || !m.stripe_customer_id || !m.autopay_pm_id) return fail("No saved payment method. Please turn autopay on again.");
   // Oct 28 (per Mely): MelyOS's share of a returned-payment fee invoice goes to MelyOS, not the marina.
   const returnedFeeMelyos = await marinaReturnedFeeMelyosPart(company.id, rows.map((r) => ({ id: r.id, balance: r.balance })));
-  const split = await resolveConnectSplit(company.id, charge, Math.max(total + (passFee ? 0 : -fee) - returnedFeeMelyos, 0));
+  const split = await resolveConnectSplit(company.id, charge, Math.max(total + -sp.park - returnedFeeMelyos, 0));
   if (!split) return fail("The marina's online payments are not set up.", false);
 
   // Only the charge itself is in this try: anything that fails AFTER money moved must never be
@@ -188,7 +188,7 @@ export async function chargeMember(company: MarinaCompany, m: any): Promise<{ st
   }
   await finish({ payment_intent_id: pi.id });
   if (pi.status !== "succeeded" && pi.status !== "processing") return fail(`Payment ${pi.status.replace(/_/g, " ")}`);
-  return afterCharge(company, m, att.id, pi, rows, charge, passFee ? fee : 0);
+  return afterCharge(company, m, att.id, pi, rows, charge, sp.customer);
 }
 
 // Money moved (or is moving, for a bank): record it on the invoices, receipt to the boater.

@@ -148,6 +148,10 @@ export default function ResidentDashboard() {
   const [achEnabled, setAchEnabled] = useState(false);
   const [achMinAmount, setAchMinAmount] = useState(100);
   const [passProcessingFee, setPassProcessingFee] = useState(true);
+  // Nov 22 (per Mely): the part of the Online Service Fee the resident pays (Fee Settings split).
+  const [feeRatio, setFeeRatio] = useState(1);
+  // Same rounding as the server (src/lib/platformFee.ts splitServiceFee).
+  const custFee = (fee: number) => { const f = Math.round(fee * 100) / 100; return Math.min(Math.round(f * Math.min(Math.max(feeRatio, 0), 1) * 100) / 100, f); };
   const [feeRates, setFeeRates] = useState<{ cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number; returnFeePhrase?: string } | null>(null);
   const [showPayChoice, setShowPayChoice] = useState(false);
   const [startingPayment, setStartingPayment] = useState(false);
@@ -379,6 +383,7 @@ export default function ResidentDashboard() {
     setAchEnabled(!!feeSettingsData?.achEnabled);
     setAchMinAmount(typeof feeSettingsData?.achMinAmount === "number" ? feeSettingsData.achMinAmount : 100);
     setPassProcessingFee(feeSettingsData?.passProcessingFeeToResident !== false);
+    setFeeRatio(typeof feeSettingsData?.customerFeeRatio === "number" ? feeSettingsData.customerFeeRatio : 1);
     setFeeRates(feeSettingsData?.fees || null);
 
     const pendingBgData = await fetch(`/api/portal/pending-background-checks?residentId=${residentId}`)
@@ -477,9 +482,9 @@ export default function ResidentDashboard() {
   const achEligible = achEligibleFor(outstandingBalance);
   // The dialog's amount: what is owed now, or (Pay ahead) next month's invoice.
   const payAmount = payScope === "ahead" ? payAheadTotal : outstandingBalance;
-  const cardFee = !passProcessingFee || !feeRates ? 0 : Math.max(payAmount * feeRates.cardPercent, feeRates.cardMinimum);
+  const cardFee = !passProcessingFee || !feeRates ? 0 : custFee(Math.max(payAmount * feeRates.cardPercent, feeRates.cardMinimum));
   const achFee = !passProcessingFee || !feeRates ? 0
-    : Math.round(Math.min(Math.max(payAmount * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100;
+    : custFee(Math.min(Math.max(payAmount * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum));
   const processingTotal = processingInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0);
 
   // Oct 28 (per Mely): fees for the monthly rent, to show bank autopay's real saving.
@@ -488,8 +493,8 @@ export default function ResidentDashboard() {
     enabled: true,
     passFee: passProcessingFee,
     exampleAmount: autopayExample,
-    cardFee: !passProcessingFee ? 0 : Math.round(Math.max(autopayExample * feeRates.cardPercent, feeRates.cardMinimum) * 100) / 100,
-    achFee: !passProcessingFee ? 0 : Math.round(Math.min(Math.max(autopayExample * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum) * 100) / 100,
+    cardFee: !passProcessingFee ? 0 : custFee(Math.max(autopayExample * feeRates.cardPercent, feeRates.cardMinimum)),
+    achFee: !passProcessingFee ? 0 : custFee(Math.min(Math.max(autopayExample * feeRates.achPercent, feeRates.achMinimum), feeRates.achMaximum)),
     achMin: achMinAmount,
     returnFee: feeRates.achReturnFee,
     returnFeePhrase: feeRates.returnFeePhrase,
@@ -1376,6 +1381,7 @@ export default function ResidentDashboard() {
                   companyId={resident?.company_id || ""}
                   exampleAmount={outstandingBalance > 0 ? outstandingBalance : autopayExample}
                   passFee={passProcessingFee}
+                  feeRatio={feeRatio}
                   fees={feeRates}
                   canPayNow={achEligible && acceptOnlinePayments}
                   canSetUpAutopay={autopayAvailable && !(autopayEnabled && autopayMethod === "ach")}

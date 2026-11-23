@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
+import { customerFeeRatio } from "@/lib/platformFee";
 
 // GET /api/get-processing-fee-settings?company_id=...
 // Aug 17 (per Mely — the 4% card processing fee needed to show up as its
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data: feeSettings, error } = await supabase
     .from("company_fee_settings")
-    .select("pass_processing_fee_to_resident")
+    .select("*")
     .eq("company_id", companyId)
     .maybeSingle();
 
@@ -26,6 +27,10 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    passProcessingFeeToResident: feeSettings?.pass_processing_fee_to_resident !== false,
+    passProcessingFeeToResident: customerFeeRatio(feeSettings) > 0,
+    // Nov 22 (per Mely): the part of the Online Service Fee the customer pays (0..1, Fee Settings split).
+    customerFeeRatio: customerFeeRatio(feeSettings),
+    // Propane/storage always charged the buyer the full fee unless the park sets a split.
+    alwaysCustomerFeeRatio: customerFeeRatio(feeSettings, { ignorePassSwitch: true }),
   });
 }

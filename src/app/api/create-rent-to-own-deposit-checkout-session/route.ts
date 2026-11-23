@@ -3,7 +3,7 @@ import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, resolveConnectSplit } from "@/lib/platformFee";
+import { calculateProcessingFee, resolveConnectSplit, customerFeeRatio, splitServiceFee, ONLINE_SERVICE_FEE_LABEL, ONLINE_SERVICE_FEE_DESCRIPTION } from "@/lib/platformFee";
 import {
   applicationHoldRef, attachSessionToHold, expireOlderSession, lotSessionExpiresAt, otherPaidHolder,
   releaseLotCheckoutHold, takeLotCheckoutHold, LOT_TAKEN_MESSAGE,
@@ -53,13 +53,14 @@ export async function POST(req: Request) {
     // pass_processing_fee_to_resident toggle as invoices/rent.
     const { data: feeSettings } = await supabase
       .from("company_fee_settings")
-      .select("pass_processing_fee_to_resident")
+      .select("*")
       .eq("company_id", application.company_id || "")
       .maybeSingle();
 
-    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
     const processingFee = calculateProcessingFee(depositAmount);
-    const chargeAmount = passFeeToResident ? depositAmount + processingFee : depositAmount;
+    // Nov 22 (per Mely): the park's split of the Online Service Fee (Fee Settings).
+    const feeSplit = splitServiceFee(processingFee, customerFeeRatio(feeSettings));
+    const chargeAmount = Math.round((depositAmount + feeSplit.customer) * 100) / 100;
 
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
@@ -75,13 +76,13 @@ export async function POST(req: Request) {
       },
     ];
 
-    if (passFeeToResident) {
+    if (feeSplit.customer > 0) {
       lineItems.push({
         quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: Math.round(processingFee * 100),
-          product_data: { name: "Card Processing Fee" },
+          unit_amount: Math.round(feeSplit.customer * 100),
+          product_data: { name: ONLINE_SERVICE_FEE_LABEL, description: ONLINE_SERVICE_FEE_DESCRIPTION },
         },
       });
     }
@@ -89,7 +90,7 @@ export async function POST(req: Request) {
     // Aloha's full deposit amount goes to their balance either way; MelyOS
     // keeps only the processing fee (from the resident if they're paying
     // it, or out of the deposit itself if the park absorbs it).
-    const alohaShare = passFeeToResident ? depositAmount : depositAmount - processingFee;
+    const alohaShare = Math.round((depositAmount - feeSplit.park) * 100) / 100;
     const connectSplit = application.company_id
       ? await resolveConnectSplit(application.company_id, chargeAmount, alohaShare)
       : null;

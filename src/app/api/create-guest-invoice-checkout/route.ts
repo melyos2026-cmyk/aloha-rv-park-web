@@ -2,7 +2,7 @@ import { demoPaymentBlock } from "@/lib/demoPayments";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError } from "@/lib/platformFee";
+import { calculateProcessingFee, customerFeeRatio, splitServiceFee, ONLINE_SERVICE_FEE_LABEL, ONLINE_SERVICE_FEE_DESCRIPTION, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, ReturnedFeeLookupError } from "@/lib/platformFee";
 import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 import { invoicesPreparing, invoiceGenerateDayForResident } from "@/lib/invoiceRentReady";
 import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
@@ -94,12 +94,13 @@ export async function POST(req: Request) {
 
     const { data: feeSettings } = await supabase
       .from("company_fee_settings")
-      .select("pass_processing_fee_to_resident")
+      .select("*")
       .eq("company_id", resident?.company_id || "")
       .maybeSingle();
 
-    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
-    const processingFee = calculateProcessingFee(totalAmount);
+    // Nov 22 (per Mely): the park's split of the Online Service Fee (Fee Settings).
+    const feeSplit = splitServiceFee(calculateProcessingFee(totalAmount), customerFeeRatio(feeSettings));
+    const customerFee = feeSplit.customer;
 
     const { data: taxSettings } = await supabase
       .from("company_tax_settings")
@@ -114,7 +115,7 @@ export async function POST(req: Request) {
     // Oct 29 (live-money audit): whole cents (the webhook matches the tax line it adds against this).
     const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
 
-    const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? processingFee : 0)) * 100) / 100;
+    const chargeAmount = Math.round((totalAmount + taxAmount + customerFee) * 100) / 100;
 
     // Oct 29 (live-money audit — Low): the park's own name and website (was always Aloha's).
     const { data: companyRow } = await supabase.from("companies").select("company_name, domain").eq("id", resident?.company_id || "").maybeSingle();
@@ -145,19 +146,19 @@ export async function POST(req: Request) {
       });
     }
 
-    if (passFeeToResident) {
+    if (customerFee > 0) {
       lineItems.push({
         quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: Math.round(processingFee * 100),
-          product_data: { name: "Card Processing Fee" },
+          unit_amount: Math.round(customerFee * 100),
+          product_data: { name: ONLINE_SERVICE_FEE_LABEL, description: ONLINE_SERVICE_FEE_DESCRIPTION },
         },
       });
     }
 
     // Oct 28 (per Mely): the returned bank payment fee goes to MelyOS, not the park (never below $0).
-    const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -processingFee) - returnedAchFees, 0);
+    const alohaShare = Math.max(totalAmount + taxAmount + -feeSplit.park - returnedAchFees, 0);
     const connectSplit = resident?.company_id
       ? await resolveConnectSplit(resident.company_id, chargeAmount, alohaShare)
       : null;
@@ -187,7 +188,7 @@ export async function POST(req: Request) {
         source: "guest_link",
         resident_id: invoice.resident_id,
         invoice_ids: invoice.id,
-        processing_fee_charged: passFeeToResident ? String(processingFee) : "0",
+        processing_fee_charged: String(customerFee),
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
       },

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateAchFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, returnedFeeForReturn, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, insertReturnedFeeLine, returnedPaymentFee, FLAT_FOUR_RETURNED_FEE, RETURNED_ACH_FEE_CHARGE_TYPE, billCompanyForReturnedPayment } from "@/lib/platformFee";
+import { calculateAchFee, customerFeeRatio, splitServiceFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices, returnedFeeForReturn, returnedFeeRuleToDisclose, loadAutopayAuthorizationRule, insertReturnedFeeLine, returnedPaymentFee, FLAT_FOUR_RETURNED_FEE, RETURNED_ACH_FEE_CHARGE_TYPE, billCompanyForReturnedPayment } from "@/lib/platformFee";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { isInvoicePayableNow } from "@/lib/invoicePayable";
@@ -230,7 +230,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   // Re-checked at charge time (per Mely): bank autopay only while the admin has bank payments ON.
   const { data: feeSettings, error: feeErr } = await supabase
     .from("company_fee_settings")
-    .select("pass_processing_fee_to_resident, ach_enabled, ach_min_amount")
+    .select("*")
     .eq("company_id", companyId)
     .maybeSingle();
   if (feeErr) return { status: "skipped", detail: "fee_settings_unreadable" };
@@ -244,7 +244,6 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   if (await failedSinceAuthorization(resident, companyId)) return { status: "skipped", detail: "failed_since_authorization" };
   const minRaw = Number(feeSettings?.ach_min_amount ?? 100);
   const achMin = Number.isFinite(minRaw) ? minRaw : 100;
-  const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
 
   const { data: pendingRows, error: invErr } = await supabase
     .from("resident_invoices")
@@ -305,9 +304,10 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
   try { feeTotals = await returnedAchFeeTotalsOnInvoices(invoiceIds, companyId); } catch { return { status: "skipped", detail: "returned_fee_lookup_failed" }; }
   const { total: returnedFeesTotal, melyos: returnedAchFees } = feeTotals;
   const taxAmount = taxEnabled ? Math.round(Math.max(totalAmount - returnedFeesTotal, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
-  const achFee = Math.round(calculateAchFee(totalAmount) * 100) / 100;
-  const chargeAmount = Math.round((totalAmount + taxAmount + (passFeeToResident ? achFee : 0)) * 100) / 100;
-  const alohaShare = Math.max(totalAmount + taxAmount + (passFeeToResident ? 0 : -achFee) - returnedAchFees, 0);
+  // Nov 22 (per Mely): the park's split of the Online Service Fee (Fee Settings).
+  const achSplit = splitServiceFee(calculateAchFee(totalAmount), customerFeeRatio(feeSettings));
+  const chargeAmount = Math.round((totalAmount + taxAmount + achSplit.customer) * 100) / 100;
+  const alohaShare = Math.max(totalAmount + taxAmount - achSplit.park - returnedAchFees, 0);
   const connectSplit = await resolveConnectSplit(companyId, chargeAmount, alohaShare);
   // Oct 29 (live-money audit H1): no payout account + the owner's refuse flag on → not charged.
   if (!connectSplit && refuseUnsplitRvPayments()) {
@@ -425,7 +425,7 @@ export async function chargeRvBankAutopay(resident: AutopayResident, todayStr: s
         resident_id: resident.id,
         company_id: companyId,
         invoice_ids: invoiceIds.join(","),
-        processing_fee_charged: passFeeToResident ? String(achFee) : "0",
+        processing_fee_charged: String(achSplit.customer),
         tax_charged: String(taxAmount),
         tax_rate_percent: String(taxRatePercent),
         ...(claimRowId ? { claim_id: claimRowId } : {}),

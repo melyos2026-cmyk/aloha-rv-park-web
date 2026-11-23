@@ -4,7 +4,7 @@ import { requireMatchingSession } from "@/lib/portalSession";
 import {
   PROCESSING_FEE_PERCENT, PROCESSING_FEE_MINIMUM,
   ACH_FEE_PERCENT, ACH_FEE_MINIMUM, ACH_FEE_MAXIMUM, ACH_RETURN_FEE,
-  loadReturnedFeeSettings, returnedFeePhrase,
+  loadReturnedFeeSettings, returnedFeePhrase, customerFeeRatio,
 } from "@/lib/platformFee";
 
 // GET /api/portal/fee-settings?residentId=...
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   const { data: feeSettings, error } = await supabase
     .from("company_fee_settings")
-    .select("accept_online_payments, autopay_available, pass_processing_fee_to_resident, ach_enabled, ach_min_amount")
+    .select("*")
     .eq("company_id", resident.company_id)
     .maybeSingle();
 
@@ -85,7 +85,9 @@ export async function GET(req: NextRequest) {
       const m = Number(feeSettings?.ach_min_amount ?? 100);
       return Number.isFinite(m) ? m : 100;
     })(),
-    passProcessingFeeToResident: feeSettings?.pass_processing_fee_to_resident !== false,
+    passProcessingFeeToResident: customerFeeRatio(feeSettings) > 0,
+    // Nov 22 (per Mely): the part of the Online Service Fee the resident pays (0..1, Fee Settings split).
+    customerFeeRatio: customerFeeRatio(feeSettings),
     fees: {
       cardPercent: PROCESSING_FEE_PERCENT,
       cardMinimum: PROCESSING_FEE_MINIMUM,

@@ -13,6 +13,7 @@ export default function BankPayBanner({
   companyId,
   exampleAmount,
   passFee,
+  feeRatio = 1,
   fees,
   canPayNow,
   canSetUpAutopay,
@@ -23,6 +24,8 @@ export default function BankPayBanner({
   companyId: string;
   exampleAmount: number;
   passFee: boolean;
+  // Nov 22 (per Mely): the part of the Online Service Fee the resident pays (Fee Settings split).
+  feeRatio?: number;
   fees: { cardPercent: number; cardMinimum: number; achPercent: number; achMinimum: number; achMaximum: number; achReturnFee: number; returnFeePhrase?: string };
   canPayNow: boolean;
   canSetUpAutopay: boolean;
@@ -48,8 +51,10 @@ export default function BankPayBanner({
   }
 
   const amount = exampleAmount > 0 ? exampleAmount : 0;
-  const cardFee = Math.round(Math.max(amount * fees.cardPercent, fees.cardMinimum) * 100) / 100;
-  const achFee = Math.round(Math.min(Math.max(amount * fees.achPercent, fees.achMinimum), fees.achMaximum) * 100) / 100;
+  const r = Math.min(Math.max(feeRatio, 0), 1);
+  const part = (fee: number) => { const f = Math.round(fee * 100) / 100; return Math.min(Math.round(f * r * 100) / 100, f); };
+  const cardFee = part(Math.max(amount * fees.cardPercent, fees.cardMinimum));
+  const achFee = part(Math.min(Math.max(amount * fees.achPercent, fees.achMinimum), fees.achMaximum));
   const showSaving = passFee && amount > 0 && achFee < cardFee;
 
   return (
@@ -72,7 +77,7 @@ export default function BankPayBanner({
         {showSaving
           ? t("On {amount} the fee is {ach} by bank instead of {card} by card.", { amount: money(amount), ach: money(achFee), card: money(cardFee) })
           : passFee
-            ? t("The bank fee is {achPct}% (at most {achMax}), the card fee {cardPct}%.", { achPct: Math.round(fees.achPercent * 1000) / 10, achMax: money(fees.achMaximum), cardPct: Math.round(fees.cardPercent * 1000) / 10 })
+            ? t("The bank fee is {achPct}% (at most {achMax}), the card fee {cardPct}%.", { achPct: Math.round(fees.achPercent * r * 1000) / 10, achMax: money(part(fees.achMaximum)), cardPct: Math.round(fees.cardPercent * r * 1000) / 10 })
             : t("No fee either way.")}{" "}
         {t("Bank payments take 3–5 business days to clear.")} {returnedFeeSentence(fees.returnFeePhrase)}
       </p>

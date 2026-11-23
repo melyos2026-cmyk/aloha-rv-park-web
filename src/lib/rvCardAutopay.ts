@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { notifyResidentBellOnce, bellMoney, bellMonths } from "@/lib/residentBell";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { calculateProcessingFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices } from "@/lib/platformFee";
+import { calculateProcessingFee, customerFeeRatio, splitServiceFee, resolveConnectSplit, returnedAchFeeTotalsOnInvoices } from "@/lib/platformFee";
 import { logSystemHealthIssue } from "@/lib/logSystemHealthIssue";
 import { logRvOnlinePayment } from "@/lib/logRvOnlinePayment";
 import { markInvoicesProcessing, disputeReopenedIds } from "@/lib/rvBankAutopay";
@@ -73,8 +73,7 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   const { data: company } = await supabase.from("companies").select("company_name, address, is_demo, domain").eq("id", companyId).maybeSingle();
   if (!company || company.is_demo === true || /(^|\.)melyos\.io$/i.test(String(company.domain || ""))) return { status: "skipped", detail: "demo" };
 
-  const { data: feeSettings } = await supabase.from("company_fee_settings").select("pass_processing_fee_to_resident").eq("company_id", companyId).maybeSingle();
-  const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
+  const { data: feeSettings } = await supabase.from("company_fee_settings").select("*").eq("company_id", companyId).maybeSingle();
   const { data: taxSettings } = await supabase.from("company_tax_settings").select("enable_tax, manual_tax_rate_percent, rent_tax_mode").eq("company_id", companyId).maybeSingle();
   const taxRatePercent = Number(taxSettings?.manual_tax_rate_percent || 0);
   const taxEnabled = !!taxSettings?.enable_tax && taxRatePercent > 0 && taxSettings?.rent_tax_mode === "excluded";
@@ -82,9 +81,10 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   let feeTotals: { total: number; melyos: number };
   try { feeTotals = await returnedAchFeeTotalsOnInvoices([invoice.id], companyId); } catch { return { status: "skipped", detail: "returned_fee_lookup_failed" }; }
   const taxAmount = taxEnabled ? Math.round(Math.max(amount - feeTotals.total, 0) * (taxRatePercent / 100) * 100) / 100 : 0;
-  const processingFee = calculateProcessingFee(amount);
-  const chargeAmount = Math.round((amount + taxAmount + (passFeeToResident ? processingFee : 0)) * 100) / 100;
-  const alohaShare = Math.max(amount + taxAmount + (passFeeToResident ? 0 : -processingFee) - feeTotals.melyos, 0);
+  // Nov 22 (per Mely): the park's split of the Online Service Fee (Fee Settings).
+  const feeSplit = splitServiceFee(calculateProcessingFee(amount), customerFeeRatio(feeSettings));
+  const chargeAmount = Math.round((amount + taxAmount + feeSplit.customer) * 100) / 100;
+  const alohaShare = Math.max(amount + taxAmount - feeSplit.park - feeTotals.melyos, 0);
   const connectSplit = await resolveConnectSplit(companyId, chargeAmount, alohaShare);
   if (!connectSplit && refuseUnsplitRvPayments()) {
     await logOncePerDay(companyId, "park_payout_refused",
@@ -116,7 +116,7 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   const metadata: Record<string, string> = {
     type: RV_CARD_AUTOPAY_TYPE, source: "autopay", payment_method: "card",
     company_id: companyId, resident_id: resident.id, invoice_ids: invoice.id, claim_stamp: stamp,
-    processing_fee_charged: passFeeToResident ? String(processingFee) : "0",
+    processing_fee_charged: String(feeSplit.customer),
     tax_charged: String(taxAmount), tax_rate_percent: String(taxRatePercent),
     ...parkShareMetadata(alohaShare),
   };

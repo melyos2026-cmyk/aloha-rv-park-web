@@ -225,6 +225,38 @@ export function calculateProcessingFee(amount: number): number {
   return roundCents(Math.max(percentFee, PROCESSING_FEE_MINIMUM));
 }
 
+// Nov 22 (per Mely — "Online Service Fee", Ticketmaster style): the fee on every online payment
+// (card 3.5% min $2.25; bank 1.2% min $2.00 max $9.95) is shown to the customer as the
+// "Online Service Fee". Each park decides in Fee Settings how much of the 3.5% its customers pay
+// (company_fee_settings.customer_fee_percent, 0–3.5); the park pays the rest out of its payout.
+// customer_fee_percent NULL (never set) = the old switch: pass_processing_fee_to_resident on → the
+// customer pays all of it (Aloha), off → the park pays all of it. The SAME share applies to bank fees.
+export const ONLINE_SERVICE_FEE_LABEL = "Online Service Fee";
+export const ONLINE_SERVICE_FEE_DESCRIPTION = "Covers secure online payment processing and the MelyOS online booking & account platform.";
+export const FEE_SETTINGS_COLUMNS_WITH_SPLIT = "customer_fee_percent";
+/** 0..1 — the part of the fee the customer pays. ignorePassSwitch: checkouts that always charged
+ *  the customer the full fee (propane, storage) keep doing so unless a split is set. */
+export function customerFeeRatio(settings: { pass_processing_fee_to_resident?: boolean | null; customer_fee_percent?: number | string | null } | null | undefined, opts?: { ignorePassSwitch?: boolean }): number {
+  const raw = settings?.customer_fee_percent;
+  if (raw !== null && raw !== undefined && raw !== "" && Number.isFinite(Number(raw))) {
+    return Math.min(Math.max(Number(raw) / (PROCESSING_FEE_PERCENT * 100), 0), 1);
+  }
+  if (opts?.ignorePassSwitch) return 1;
+  return settings?.pass_processing_fee_to_resident === false ? 0 : 1;
+}
+/** Splits a fee (dollars) into what the customer pays and what comes out of the park's share. Whole cents. */
+export function splitServiceFee(fee: number, ratio: number): { customer: number; park: number } {
+  const f = roundCents(fee);
+  const customer = Math.min(roundCents(f * Math.min(Math.max(ratio, 0), 1)), f);
+  return { customer, park: roundCents(f - customer) };
+}
+/** company_fee_settings row (all columns — works before and after customer_fee_percent exists). */
+export async function loadFeeSettingsRow(companyId: string | null | undefined): Promise<Record<string, any> | null> {
+  if (!companyId) return null;
+  const { data } = await supabase.from("company_fee_settings").select("*").eq("company_id", companyId).maybeSingle();
+  return (data as any) || null;
+}
+
 // Aug 4: Stripe's own real cut, so callers can compute MelyOS's actual net
 // margin if needed for reporting — not used to change what's charged, only
 // for anyone auditing the numbers later.

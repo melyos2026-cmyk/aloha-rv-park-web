@@ -3,7 +3,7 @@ import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin as supabase } from "@/lib/supabase-admin";
-import { resolveConnectSplit, calculateProcessingFee } from "@/lib/platformFee";
+import { resolveConnectSplit, calculateProcessingFee, customerFeeRatio, splitServiceFee, ONLINE_SERVICE_FEE_LABEL, ONLINE_SERVICE_FEE_DESCRIPTION } from "@/lib/platformFee";
 import { computeStayAndDeposit, leaseDefaultValue } from "@/lib/applicationPricing";
 import {
   applicationHoldRef, attachSessionToHold, expireOlderSession, lotOpenForApplication, lotSessionExpiresAt,
@@ -337,12 +337,16 @@ export async function POST(req: Request) {
     // shown as its own line item so it's never hidden from the applicant.
     const { data: feeSettings } = await supabase
       .from("company_fee_settings")
-      .select("pass_processing_fee_to_resident")
+      .select("*")
       .eq("company_id", application.company_id || "")
       .maybeSingle();
-    const passFeeToResident = feeSettings?.pass_processing_fee_to_resident !== false;
     const preSurchargeTotal = feeAmount + stayAmountNum + depositAmountNum;
-    const cardProcessingFee = passFeeToResident ? calculateProcessingFee(preSurchargeTotal) : 0;
+    // Nov 22 (per Mely): the park's split of the Online Service Fee (Fee Settings). Before a split is
+    // set, unchanged: switch on = the applicant pays it all, off = no fee line (nothing taken from the park).
+    const feeSplit = splitServiceFee(calculateProcessingFee(preSurchargeTotal), customerFeeRatio(feeSettings));
+    const splitIsSet = (feeSettings as any)?.customer_fee_percent !== null && (feeSettings as any)?.customer_fee_percent !== undefined;
+    const cardProcessingFee = feeSplit.customer;
+    const parkFeePart = splitIsSet ? feeSplit.park : 0;
 
     if (cardProcessingFee > 0) {
       lineItems.push({
@@ -351,8 +355,8 @@ export async function POST(req: Request) {
           currency: "usd",
           unit_amount: Math.round(cardProcessingFee * 100),
           product_data: {
-            name: "Card Processing Fee",
-            description: "Covers the cost of paying by card online.",
+            name: ONLINE_SERVICE_FEE_LABEL,
+            description: ONLINE_SERVICE_FEE_DESCRIPTION,
           },
         },
       });
@@ -370,7 +374,7 @@ export async function POST(req: Request) {
     const totalChargeAmount = feeAmount + stayAmountNum + depositAmountNum + cardProcessingFee;
     const alohaShare = Math.max(
       0,
-      (Number(application.park_share_total) || 0) + stayAmountNum + depositAmountNum - checkrCostTotal
+      (Number(application.park_share_total) || 0) + stayAmountNum + depositAmountNum - checkrCostTotal - parkFeePart
     );
     const connectSplit = application.company_id
       ? await resolveConnectSplit(application.company_id, totalChargeAmount, alohaShare)

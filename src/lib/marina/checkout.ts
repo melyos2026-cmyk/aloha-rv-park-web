@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { calculateProcessingFee, calculateAchFee, resolveConnectSplit, returnedFeeRuleToDisclose } from "@/lib/platformFee";
+import { calculateProcessingFee, calculateAchFee, customerFeeRatio, splitServiceFee, ONLINE_SERVICE_FEE_LABEL, ONLINE_SERVICE_FEE_DESCRIPTION, resolveConnectSplit, returnedFeeRuleToDisclose } from "@/lib/platformFee";
 import type { MarinaCompany } from "./company";
 import { isDemoCompany } from "./host";
 import { round2 } from "./data";
@@ -72,14 +72,14 @@ export async function startInvoicePayment(p: {
 
   const { data: feeSettings } = await supabaseAdmin
     .from("company_fee_settings")
-    .select("pass_processing_fee_to_resident, ach_enabled, ach_min_amount")
+    .select("*")
     .eq("company_id", company.id)
     .maybeSingle();
-  const passFee = feeSettings?.pass_processing_fee_to_resident !== false;
   const ach = p.method === "ach" && !p.hold; // a hold is always a card
   if (ach && !achAllowed(feeSettings, balance)) return { ok: false, status: 400, error: "Bank payment is not available for this invoice. Please pay by card." };
   const fee = round2(ach ? calculateAchFee(balance) : calculateProcessingFee(balance));
-  const chargeAmount = round2(balance + (passFee ? fee : 0));
+  const sp = splitServiceFee(fee, customerFeeRatio(feeSettings)); // Nov 22 (per Mely): Fee Settings split
+  const chargeAmount = round2(balance + sp.customer);
 
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
     {
@@ -91,16 +91,16 @@ export async function startInvoicePayment(p: {
       },
     },
   ];
-  if (passFee) {
+  if (sp.customer > 0) {
     lineItems.push({
       quantity: 1,
-      price_data: { currency: "usd", unit_amount: Math.round(fee * 100), product_data: { name: ach ? "Bank Transfer Fee" : "Card Processing Fee" } },
+      price_data: { currency: "usd", unit_amount: Math.round(sp.customer * 100), product_data: { name: ach ? `${ONLINE_SERVICE_FEE_LABEL} (bank payment)` : ONLINE_SERVICE_FEE_LABEL, description: ONLINE_SERVICE_FEE_DESCRIPTION } },
     });
   }
 
   // Oct 28 (per Mely): MelyOS's share of a returned-payment fee invoice goes to MelyOS, not the marina.
   const returnedFeeMelyos = await marinaReturnedFeeMelyosPart(company.id, [{ id: invoice.id, balance }]);
-  const marinaShare = Math.max(balance + (passFee ? 0 : -fee) - returnedFeeMelyos, 0);
+  const marinaShare = Math.max(balance + -sp.park - returnedFeeMelyos, 0);
   const split = await resolveConnectSplit(company.id, chargeAmount, marinaShare);
   if (!split) return noConnectedAccount(company);
 
@@ -126,7 +126,7 @@ export async function startInvoicePayment(p: {
         member_id: p.memberId || "",
         invoice_id: invoice.id,
         invoice_amount: String(balance),
-        processing_fee_charged: passFee ? String(fee) : "0",
+        processing_fee_charged: String(sp.customer),
         payment_method: ach ? "ach" : "card",
         ...(p.hold ? { hold: "1" } : {}),
         ...(ach ? { returned_fee_rule: await returnedFeeRuleToDisclose("marina", company.id) } : {}), // Oct 28: rule shown now
@@ -187,19 +187,19 @@ export async function startMultiInvoicePayment(p: {
     return { ok: true, demo: true };
   }
 
-  const { data: feeSettings } = await supabaseAdmin.from("company_fee_settings").select("pass_processing_fee_to_resident, ach_enabled, ach_min_amount").eq("company_id", company.id).maybeSingle();
-  const passFee = feeSettings?.pass_processing_fee_to_resident !== false;
+  const { data: feeSettings } = await supabaseAdmin.from("company_fee_settings").select("*").eq("company_id", company.id).maybeSingle();
   const ach = p.method === "ach";
   if (ach && !achAllowed(feeSettings, total)) return { ok: false, status: 400, error: "Bank payment is not available for this amount. Please pay by card." };
   const fee = round2(ach ? calculateAchFee(total) : calculateProcessingFee(total));
-  const chargeAmount = round2(total + (passFee ? fee : 0));
+  const sp = splitServiceFee(fee, customerFeeRatio(feeSettings)); // Nov 22 (per Mely): Fee Settings split
+  const chargeAmount = round2(total + sp.customer);
   const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = rows.map((r) => ({
     quantity: 1,
     price_data: { currency: "usd", unit_amount: Math.round(r.balance * 100), product_data: { name: `${company.company_name}: ${r.invoice_number}`, description: String(r.description || "").slice(0, 300) || undefined } },
   }));
-  if (passFee) lineItems.push({ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(fee * 100), product_data: { name: ach ? "Bank Transfer Fee" : "Card Processing Fee" } } });
+  if (sp.customer > 0) lineItems.push({ quantity: 1, price_data: { currency: "usd", unit_amount: Math.round(sp.customer * 100), product_data: { name: ach ? `${ONLINE_SERVICE_FEE_LABEL} (bank payment)` : ONLINE_SERVICE_FEE_LABEL, description: ONLINE_SERVICE_FEE_DESCRIPTION } } });
   const returnedFeeMelyos = await marinaReturnedFeeMelyosPart(company.id, rows.map((r) => ({ id: r.id, balance: r.balance }))); // Oct 28
-  const split = await resolveConnectSplit(company.id, chargeAmount, Math.max(total + (passFee ? 0 : -fee) - returnedFeeMelyos, 0));
+  const split = await resolveConnectSplit(company.id, chargeAmount, Math.max(total + -sp.park - returnedFeeMelyos, 0));
   if (!split) return noConnectedAccount(company);
   try {
     const checkout = await stripe.checkout.sessions.create({
@@ -214,7 +214,7 @@ export async function startMultiInvoicePayment(p: {
         member_id: p.memberId || "",
         allocs: rows.map((r) => `${r.id}:${r.balance.toFixed(2)}`).join(";"),
         invoice_amount: String(total),
-        processing_fee_charged: passFee ? String(fee) : "0",
+        processing_fee_charged: String(sp.customer),
         payment_method: ach ? "ach" : "card",
         ...(ach ? { returned_fee_rule: await returnedFeeRuleToDisclose("marina", company.id) } : {}), // Oct 28: rule shown now
       },
