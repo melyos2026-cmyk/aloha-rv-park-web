@@ -21,7 +21,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 // who physically clicked "Pay."
 export async function POST(req: Request) {
   try {
-    const { token } = await req.json();
+    // Nov 22 (per Mely): embedded = the office takes the customer's card inside the MelyOS admin
+    // ("Charge card with MelyOS" on the invoice) — same invoice, fee, tax and split; Stripe's secure card
+    // form shows inside the admin and the card number never touches MelyOS's servers.
+    const { token, embedded } = await req.json();
 
     if (!token) {
       return NextResponse.json({ error: "Missing payment link token." }, { status: 400 });
@@ -185,7 +188,7 @@ export async function POST(req: Request) {
       },
       metadata: {
         ...parkShareMetadata(alohaShare),
-        source: "guest_link",
+        source: embedded ? "office_card" : "guest_link",
         resident_id: invoice.resident_id,
         invoice_ids: invoice.id,
         processing_fee_charged: String(customerFee),
@@ -194,10 +197,12 @@ export async function POST(req: Request) {
       },
       // Oct 28 (review): short-lived (Stripe minimum is 30 min) so an old link can't pay a balance that changed.
       expires_at: Math.floor(Date.now() / 1000) + 31 * 60,
-      success_url: `${siteUrl}/pay-invoice/${token}?paid=success`,
-      cancel_url: `${siteUrl}/pay-invoice/${token}?paid=cancelled`,
+      ...(embedded
+        ? { ui_mode: "embedded_page" as const, redirect_on_completion: "never" as const }
+        : { success_url: `${siteUrl}/pay-invoice/${token}?paid=success`, cancel_url: `${siteUrl}/pay-invoice/${token}?paid=cancelled` }),
     });
 
+    if (embedded) return NextResponse.json({ clientSecret: session.client_secret });
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
     // Oct 28 (review): the returned-fee lookup failed — refuse rather than tax the fee or split it wrongly.
