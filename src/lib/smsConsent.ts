@@ -104,7 +104,7 @@ export async function hasSmsConsent(companyId: string, rawPhone: string | null |
 // newly agrees. Uses Twilio's REST API directly (no extra package). Silently
 // skipped when the TWILIO_* env vars aren't set on this site, and never
 // blocks the consent itself. Texts only deliver once the campaign is approved.
-export async function sendSmsOptInConfirmation(rawPhone: string, parkName: string) {
+export async function sendSmsOptInConfirmation(rawPhone: string, parkName: string, companyId?: string | null) {
   // Oct 20 (security review): confirmation texts only ever go to US numbers.
   const to = normalizeUsSmsPhone(rawPhone);
   const sid = process.env.TWILIO_ACCOUNT_SID;
@@ -112,6 +112,11 @@ export async function sendSmsOptInConfirmation(rawPhone: string, parkName: strin
   const keySecret = process.env.TWILIO_API_KEY_SECRET;
   const from = process.env.TWILIO_PHONE_NUMBER;
   if (!to || !sid || !keySid || !keySecret || !from) return;
+  // Nov 24 (per Mely): texts are optional per park (sms_plan.texts_enabled; no row = on)
+  if (companyId) {
+    const { data: plan } = await supabaseAdmin.from("sms_plan").select("texts_enabled").eq("company_id", companyId).maybeSingle().then((r) => r, () => ({ data: null }));
+    if ((plan as any)?.texts_enabled === false) return;
+  }
   const body =
     `${parkName}: You're signed up for account text alerts (invoices, payment notices, application and ` +
     `reservation messages). Msg frequency varies. Msg&data rates may apply. Reply HELP for help, STOP to opt out.`;
@@ -124,6 +129,8 @@ export async function sendSmsOptInConfirmation(rawPhone: string, parkName: strin
       },
       body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
     });
+    // counted for the park's text-message bill (same rule as melyos-builder lib/smsUsage.ts: 160 chars = 1)
+    if (companyId) await supabaseAdmin.from("sms_usage").insert({ company_id: companyId, kind: "welcome", segments: body.length <= 160 ? 1 : Math.ceil(body.length / 153) }).then(() => null, () => null);
   } catch (e: any) {
     console.error("sms opt-in confirmation failed:", e?.message);
   }
@@ -139,6 +146,6 @@ export async function recordSmsConsentAndConfirm(opts: Parameters<typeof recordS
   const normalized = normalizeSmsPhone(opts.phone);
   const recent = normalized ? await consentRecordedRecently(normalized) : false;
   const result = await recordSmsConsent(opts);
-  if (result.ok && !already && !recent) await sendSmsOptInConfirmation(opts.phone, opts.parkName);
+  if (result.ok && !already && !recent) await sendSmsOptInConfirmation(opts.phone, opts.parkName, opts.companyId);
   return result;
 }
