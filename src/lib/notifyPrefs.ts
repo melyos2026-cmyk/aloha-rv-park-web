@@ -65,6 +65,9 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     types: ["saved_card_charged", "card_saved"] },
   { key: "saved_card_failed", category: "payments", label: "Saved card declined", channels: ALL, defaults: { bell: true, phone: false, email: false },
     types: ["saved_card_failed"] },
+  // Nov 24 (per Mely): guests' texts only notify when a person must act (they can be turned off)
+  { key: "guest_needs_office", category: "bookings", label: "A guest needs the office", description: "Only when a guest asks for something a person must handle (stay longer, cancel, refund, complaint)", channels: ALL, defaults: { bell: true, phone: false, email: false },
+    types: ["guest_message"] },
   { key: "late_fee", category: "payments", label: "Invoice late / late fee applied", channels: ALL, defaults: BELL_PHONE,
     types: ["invoice_became_late"] },
   // Park money
