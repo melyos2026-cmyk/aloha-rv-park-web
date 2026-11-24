@@ -24,6 +24,8 @@ const RESIDENT_PROFILE_FIELDS = [
   "rv_lots", "companies",
   // Oct 30 (storage-only customers): 'resident' | 'storage' (missing column → not sent → 'resident').
   "account_type",
+  // Nov 24 (per Mely): the card the office saved with the resident's OK ("Visa •••• 4417" — never the number)
+  "office_card_label", "office_card_saved_at",
 ];
 
 export async function GET(req: NextRequest) {

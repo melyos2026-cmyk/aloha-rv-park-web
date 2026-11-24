@@ -60,6 +60,11 @@ export const NOTIFY_EVENTS: NotifyEvent[] = [
     types: ["autopay_failed"] },
   { key: "autopay_changed", category: "payments", label: "Autopay turned on / off", channels: ALL, defaults: BELL_PHONE,
     types: ["autopay_enabled", "autopay_disabled"] },
+  // Nov 24 (per Mely): saved cards at the office — the manager can turn these off (not critical)
+  { key: "saved_card", category: "payments", label: "Saved card charged / saved / removed", description: "Each time someone at the office saves or charges a resident's card, or a resident removes it", channels: ALL, defaults: BELL_PHONE,
+    types: ["saved_card_charged", "card_saved"] },
+  { key: "saved_card_failed", category: "payments", label: "Saved card declined", channels: ALL, defaults: { bell: true, phone: false, email: false },
+    types: ["saved_card_failed"] },
   { key: "late_fee", category: "payments", label: "Invoice late / late fee applied", channels: ALL, defaults: BELL_PHONE,
     types: ["invoice_became_late"] },
   // Park money

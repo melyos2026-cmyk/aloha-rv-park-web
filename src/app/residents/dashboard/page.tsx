@@ -1492,6 +1492,18 @@ export default function ResidentDashboard() {
                   autopayMethod={autopayMethod}
                   bank={bankAutopayOption}
                 />
+                {/* Nov 24 (per Mely): a card the office saved with the resident's OK — they can see it and remove it */}
+                {resident?.office_card_label && (
+                  <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #eee", fontSize: 13.5, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                    <span>{t("Card saved at the office")}: <b>{resident.office_card_label}</b></span>
+                    <button type="button" style={{ background: "none", border: "none", color: "#b42318", fontWeight: 700, cursor: "pointer", fontSize: 13 }}
+                      onClick={async () => {
+                        if (!window.confirm(t("Remove this card? The office won't be able to charge it."))) return;
+                        const r = await fetch("/api/portal/remove-office-card", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ residentId }) }).catch(() => null);
+                        if (r?.ok) loadResidentDashboard(); else window.alert(t("Could not remove the card. Please try again."));
+                      }}>{t("Remove")}</button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="autopay-card" style={card}>

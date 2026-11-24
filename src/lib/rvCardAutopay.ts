@@ -60,9 +60,14 @@ async function reopenClaim(invoiceId: string, residentId: string, stamp: string)
 export type CardAutopayResult = { status: "charged" | "failed" | "skipped" | "unknown"; amount?: number; detail?: string };
 
 /** One invoice, one day. Never charges an invoice that is not Pending right now. */
-export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { id: string; total_amount: number | string | null; due_date?: string | null; invoice_month?: string | null }, todayStr: string): Promise<CardAutopayResult> {
+// Nov 24 (per Mely): `office` = the park office charges a saved card for this invoice (MelyOS admin,
+// allowed staff only — src/app/api/office/charge-saved-card). Same claim/charge/finish safety; a
+// decline never touches the resident's autopay, and the office is told who charged.
+export type OfficeCharge = { pmId: string; by: string };
+export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { id: string; total_amount: number | string | null; due_date?: string | null; invoice_month?: string | null }, todayStr: string, office?: OfficeCharge): Promise<CardAutopayResult> {
   if (!stripe) return { status: "skipped", detail: "no_stripe" };
-  if (!resident.company_id || !resident.stripe_customer_id || !resident.stripe_payment_method_id) return { status: "skipped", detail: "no_payment_method" };
+  const pmId = office?.pmId || resident.stripe_payment_method_id;
+  if (!resident.company_id || !resident.stripe_customer_id || !pmId) return { status: "skipped", detail: "no_payment_method" };
   const companyId = resident.company_id;
   const amount = Math.round(Number(invoice.total_amount || 0) * 100) / 100;
   if (!(amount > 0)) return { status: "skipped", detail: "nothing_due" };
@@ -93,9 +98,10 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   }
 
   // The saved card must be this resident's (attached to their own Stripe customer).
-  const pm = await stripe.paymentMethods.retrieve(resident.stripe_payment_method_id).catch(() => null);
+  const pm = await stripe.paymentMethods.retrieve(pmId).catch(() => null);
   if (!pm) return { status: "skipped", detail: "payment_method_unreadable" };
   const pmCustomer = typeof pm.customer === "string" ? pm.customer : pm.customer?.id;
+  if (office && (pm.type !== "card" || pmCustomer !== resident.stripe_customer_id)) return { status: "failed", detail: "This saved card is no longer on the resident's account. Ask for the card again." };
   if (pm.type !== "card" || pmCustomer !== resident.stripe_customer_id) {
     await supabase.from("resident_accounts").update({ autopay_enabled: false }).eq("id", resident.id).eq("stripe_payment_method_id", resident.stripe_payment_method_id);
     await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} — the saved card is not on their account any more. Autopay has been turned off for them.`);
@@ -114,7 +120,8 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   await claimStripeEvent(claimMarker(invoice.id, stamp), MARKER_SOURCE);
 
   const metadata: Record<string, string> = {
-    type: RV_CARD_AUTOPAY_TYPE, source: "autopay", payment_method: "card",
+    type: RV_CARD_AUTOPAY_TYPE, source: office ? "office_saved_card" : "autopay", payment_method: "card",
+    ...(office ? { charged_by: office.by.slice(0, 80) } : {}),
     company_id: companyId, resident_id: resident.id, invoice_ids: invoice.id, claim_stamp: stamp,
     processing_fee_charged: String(feeSplit.customer),
     tax_charged: String(taxAmount), tax_rate_percent: String(taxRatePercent),
@@ -122,9 +129,9 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
   };
   const params: Stripe.PaymentIntentCreateParams = {
     amount: Math.round(chargeAmount * 100), currency: "usd",
-    customer: resident.stripe_customer_id, payment_method: resident.stripe_payment_method_id,
+    customer: resident.stripe_customer_id, payment_method: pmId,
     off_session: true, confirm: true, payment_method_types: ["card"],
-    description: `Autopay — ${company.company_name || "RV park"} invoice ${invoice.id}`,
+    description: `${office ? "Office charge (saved card)" : "Autopay"} — ${company.company_name || "RV park"} invoice ${invoice.id}`,
     metadata,
     ...(connectSplit ? {
       application_fee_amount: connectSplit.applicationFeeAmountCents,
@@ -133,7 +140,7 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
     } : {}),
   };
   // Same key as before (invoice + day + amount): a re-run the same day gets the SAME PaymentIntent.
-  const idempotencyKey = `autopay-${invoice.id}-${todayStr}-${Math.round(chargeAmount * 100)}`;
+  const idempotencyKey = office ? `office-card-${invoice.id}-${stamp}` : `autopay-${invoice.id}-${todayStr}-${Math.round(chargeAmount * 100)}`;
 
   let pi: Stripe.PaymentIntent | null = null;
   let lastErr: any = null;
@@ -156,7 +163,7 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
         message: `Card autopay for ${resident.full_name || "a resident"} (${money(chargeAmount)}, invoice ${invoice.invoice_month || invoice.id}) got no answer from Stripe (${String(lastErr?.message || "").slice(0, 200)}). The invoice was left "Processing" so it is not charged twice; the next autopay run checks Stripe and finishes it. Invoice ${invoice.id}.` });
       return { status: "unknown", amount };
     }
-    return declined(resident, invoice, stamp, chargeAmount, String(lastErr?.raw?.message || lastErr?.message || "the card was declined").slice(0, 200), null);
+    return declined(resident, invoice, stamp, chargeAmount, String(lastErr?.raw?.message || lastErr?.message || "the card was declined").slice(0, 200), null, office);
   }
   if (pi.status === "succeeded") {
     const r = await finishRvCardAutopay(pi);
@@ -167,12 +174,17 @@ export async function chargeRvCardAutopayInvoice(resident: Resident, invoice: { 
     return { status: "unknown", amount, detail: "processing" };
   }
   await stripe.paymentIntents.cancel(pi.id).catch(() => null);
-  return declined(resident, invoice, stamp, chargeAmount, `payment ${pi.status.replace(/_/g, " ")}${pi.last_payment_error?.message ? ` — ${pi.last_payment_error.message}` : ""}`.slice(0, 200), pi.id);
+  return declined(resident, invoice, stamp, chargeAmount, `payment ${pi.status.replace(/_/g, " ")}${pi.last_payment_error?.message ? ` — ${pi.last_payment_error.message}` : ""}`.slice(0, 200), pi.id, office);
 }
 
-async function declined(resident: Resident, invoice: { id: string; due_date?: string | null; invoice_month?: string | null }, stamp: string, chargeAmount: number, why: string, piId: string | null): Promise<CardAutopayResult> {
+async function declined(resident: Resident, invoice: { id: string; due_date?: string | null; invoice_month?: string | null }, stamp: string, chargeAmount: number, why: string, piId: string | null, office?: OfficeCharge): Promise<CardAutopayResult> {
   const back = await reopenClaim(invoice.id, resident.id, stamp);
   await finishStripeEvent(claimMarker(invoice.id, stamp), MARKER_SOURCE, true);
+  if (office) {
+    // the person at the desk sees the answer right away; autopay is not touched
+    await notifyOffice(resident, "saved_card_failed", `${office.by} tried to charge ${resident.full_name || "a resident"}'s saved card ${money(chargeAmount)} — declined (${why}). Nothing was charged.`);
+    return { status: "failed", detail: why };
+  }
   // A declined card is not retried every day without the resident knowing — autopay off (as before).
   await supabase.from("resident_accounts").update({ autopay_enabled: false }).eq("id", resident.id);
   await notifyOffice(resident, "autopay_failed", `Autopay FAILED for ${resident.full_name || "a resident"} (invoice due ${invoice.due_date || ""}, ${money(chargeAmount)}) — autopay has been turned off for them.`);
@@ -258,9 +270,11 @@ async function finishInner(pi: Stripe.PaymentIntent): Promise<{ ok: boolean; det
   if (m.claim_stamp) await finishStripeEvent(claimMarker(invoiceId, m.claim_stamp), MARKER_SOURCE, true);
   if (alreadyCounted) return { ok: true, detail: "already_finished" };
 
-  await logRvOnlinePayment({ companyId, sourceId: pi.id, description: "Autopay (online)", payerName: resident.full_name, amountCents: Number(pi.amount_received || pi.amount || 0), reference: pi.id });
+  const byOffice = m.source === "office_saved_card";
+  await logRvOnlinePayment({ companyId, sourceId: pi.id, description: byOffice ? "Office — saved card" : "Autopay (online)", payerName: resident.full_name, amountCents: Number(pi.amount_received || pi.amount || 0), reference: pi.id });
   await checkAndCompleteRentToOwnPlan(resident.id, companyId).catch(() => null);
-  await notifyOffice(resident, "autopay_charged", `Autopay charged ${resident.full_name || "a resident"} ${money(Number(pi.amount || 0) / 100)} for invoice due ${inv?.due_date || ""}.`);
+  if (byOffice) await notifyOffice(resident, "saved_card_charged", `${m.charged_by || "The office"} charged ${resident.full_name || "a resident"}'s saved card ${money(Number(pi.amount || 0) / 100)} for invoice due ${inv?.due_date || ""}.`);
+  else await notifyOffice(resident, "autopay_charged", `Autopay charged ${resident.full_name || "a resident"} ${money(Number(pi.amount || 0) / 100)} for invoice due ${inv?.due_date || ""}.`);
   // Oct 29 (per Mely): the RESIDENT's bell — once per payment. Never throws.
   await notifyResidentBellOnce({
     companyId, residentId: resident.id, onceKey: `payment_received:${pi.id}`, updateType: "payment_received",

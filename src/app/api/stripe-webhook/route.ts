@@ -24,6 +24,7 @@ import { handleOccupantBackgroundCheckPaid } from "@/lib/occupantBackgroundCheck
 import { reduceParkOwedForRefund, parkOwedForPayment, confirmSettledRefundBilled } from "@/lib/parkPayoutLedger";
 import { RV_CARD_AUTOPAY_TYPE } from "@/lib/rvCardAutopay";
 import { markDisputeReopened } from "@/lib/rvBankAutopay";
+import { saveOfficeCardFromSession } from "@/lib/officeSavedCard";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET as string;
@@ -628,6 +629,8 @@ async function handleWebhook(req: Request) {
         message: `We received your payment of ${bellMoney((session.amount_total || 0) / 100)} for ${bellMonths(bellMonthsPaid)}. Thank you!`,
       }).then(() => null, () => null);
     }
+    // Nov 24 (per Mely): the office saved this card with the resident's OK — keep it on their account.
+    if (session.metadata?.save_card === "1") await saveOfficeCardFromSession(stripe, session).catch((e: any) => console.error("saveOfficeCard:", e?.message));
     // Oct 28: a settled RV bank payment is fully handled above.
     if (rvAchSettled) return NextResponse.json({ received: true });
   }

@@ -7,6 +7,7 @@ import { isInvoicePayableNow, invoicePayableFrom } from "@/lib/invoicePayable";
 import { invoicesPreparing, invoiceGenerateDayForResident } from "@/lib/invoiceRentReady";
 import { parkShareMetadata, unsplitRefusal } from "@/lib/parkPayoutLedger";
 import { closeOtherInvoiceCheckouts } from "@/lib/invoiceCheckoutSessions";
+import { officeSigOk, officeSaveCardOn, ensureResidentCustomer } from "@/lib/officeSavedCard";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     // Nov 22 (per Mely): embedded = the office takes the customer's card inside the MelyOS admin
     // ("Charge card with MelyOS" on the invoice) — same invoice, fee, tax and split; Stripe's secure card
     // form shows inside the admin and the card number never touches MelyOS's servers.
-    const { token, embedded } = await req.json();
+    const { token, embedded, saveCard, savedBy, sig } = await req.json();
 
     if (!token) {
       return NextResponse.json({ error: "Missing payment link token." }, { status: 400 });
@@ -172,11 +173,22 @@ export async function POST(req: Request) {
     if (!connectSplit) { const refused = await unsplitRefusal(resident?.company_id, "invoice"); if (refused) return refused; }
     // Oct 29 (live-money audit M14): close other open checkouts (portal or guest) for this invoice.
     await closeOtherInvoiceCheckouts(stripe, { invoiceIds: [invoice.id], residentId: null });
+    // Nov 24 (per Mely): the office may save the card — only from the MelyOS admin (signed request),
+    // only when the resident agreed (the staff ticked it), and only for parks that turned it on.
+    let saveCustomer: string | null = null;
+    if (embedded && saveCard === true) {
+      if (!officeSigOk(sig, ["save_card", token, savedBy])) return NextResponse.json({ error: "Not allowed." }, { status: 403 });
+      if (!(await officeSaveCardOn(resident?.company_id))) return NextResponse.json({ error: "Saving cards at the office is turned off for this park (Fee Settings)." }, { status: 400 });
+      saveCustomer = await ensureResidentCustomer(stripe, invoice.resident_id);
+      if (!saveCustomer) return NextResponse.json({ error: "Resident not found." }, { status: 404 });
+    }
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems,
+      ...(saveCustomer ? { customer: saveCustomer } : {}),
       payment_intent_data: {
+        ...(saveCustomer ? { setup_future_usage: "off_session" as const } : {}),
         metadata: parkShareMetadata(alohaShare), // Oct 29 (H1)
         ...(connectSplit
           ? {
@@ -189,6 +201,7 @@ export async function POST(req: Request) {
       metadata: {
         ...parkShareMetadata(alohaShare),
         source: embedded ? "office_card" : "guest_link",
+        ...(saveCustomer ? { save_card: "1", saved_by: String(savedBy || "Office").slice(0, 80) } : {}),
         resident_id: invoice.resident_id,
         invoice_ids: invoice.id,
         processing_fee_charged: String(customerFee),
