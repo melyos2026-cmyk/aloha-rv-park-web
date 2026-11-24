@@ -182,7 +182,7 @@ async function handleWebhook(req: Request) {
         companyId: await resolveCompanyIdFromMetadata(session.metadata).catch(() => null),
         sourceId: session.id,
         description: kind === "application_fee" ? "Application fee (online)"
-          : kind === "manual_reservation" ? "Reservation (online)"
+          : kind === "manual_reservation" || kind === "class_stay_payment" ? "Reservation (online)"
           : kind === "rent_to_own_deposit" ? "Rent-to-own deposit (online)"
           : kind === "occupant_background_check" ? "Occupant background check (online)"
           : kind === "propane_fillup" || session.metadata?.productId ? "Propane (online)" : "Invoice payment (online)",
@@ -192,6 +192,11 @@ async function handleWebhook(req: Request) {
         parkShareCents: session.metadata?.park_share_cents !== undefined && Number.isFinite(Number(session.metadata.park_share_cents)) ? Number(session.metadata.park_share_cents) : null,
       });
     }
+
+    // Nov 24 (per Mely — Site Planner parks, e.g. Johnston): class bookings / early / extra nights paid online.
+    // admin.melyos.io applies them itself (the guest comes back with the session id, and its cron); here it is
+    // only recorded in the ledger above and never reaches the invoice paths below.
+    if (session.metadata?.type === "class_stay_payment") return NextResponse.json({ received: true });
 
     // Oct 28 (per Mely): an RV resident saved a bank account for autopay (Checkout "setup" mode). The
     // portal saves it (/api/portal/bank-autopay "confirm"); nothing to charge or record here — and it
